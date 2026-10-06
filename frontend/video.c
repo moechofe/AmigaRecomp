@@ -1,0 +1,116 @@
+#include "video.h"
+
+#include "RmlUi_Include_GL3.h"
+
+#include <stdio.h>
+
+static GLuint video_program, video_vao, video_texture;
+
+static const char *video_vs =
+	"#version 330 core\n"
+	"out vec2 uv;\n"
+	"void main()\n"
+	"{\n"
+	"	vec2 p = vec2(gl_VertexID & 1, gl_VertexID >> 1);\n"
+	"	uv = vec2(p.x, 1.0 - p.y);\n"
+	"	gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+	"}\n";
+
+static const char *video_fs =
+	"#version 330 core\n"
+	"in vec2 uv;\n"
+	"out vec4 color;\n"
+	"uniform sampler2D frame;\n"
+	"void main()\n"
+	"{\n"
+	"	color = vec4(texture(frame, uv).rgb, 1.0);\n"
+	"}\n";
+
+static GLuint video_shader(GLenum type, const char *source, const char *what)
+{
+	GLuint s = glCreateShader(type);
+	GLint ok = 0;
+	glShaderSource(s, 1, &source, NULL);
+	glCompileShader(s);
+	glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
+	if(!ok)
+	{
+		char log[1024];
+		glGetShaderInfoLog(s, sizeof log, NULL, log);
+		fprintf(stderr, "video: %s shader: %s\n", what, log);
+		glDeleteShader(s);
+		return 0;
+	}
+	return s;
+}
+
+int sdl_video_init(void)
+{
+	int v = gladLoadGL((GLADloadfunc)SDL_GL_GetProcAddress);
+	GLuint vs, fs;
+	GLint ok = 0;
+	if(GLAD_VERSION_MAJOR(v) * 10 + GLAD_VERSION_MINOR(v) < 33)
+	{
+		fprintf(stderr, "video: OpenGL 3.3 needed, the context has %d.%d\n", GLAD_VERSION_MAJOR(v), GLAD_VERSION_MINOR(v));
+		return -1;
+	}
+	vs = video_shader(GL_VERTEX_SHADER, video_vs, "vertex");
+	fs = video_shader(GL_FRAGMENT_SHADER, video_fs, "fragment");
+	if(!vs || !fs)
+		return -1;
+	video_program = glCreateProgram();
+	glAttachShader(video_program, vs);
+	glAttachShader(video_program, fs);
+	glLinkProgram(video_program);
+	glDeleteShader(vs);
+	glDeleteShader(fs);
+	glGetProgramiv(video_program, GL_LINK_STATUS, &ok);
+	if(!ok)
+	{
+		char log[1024];
+		glGetProgramInfoLog(video_program, sizeof log, NULL, log);
+		fprintf(stderr, "video: link: %s\n", log);
+		return -1;
+	}
+	glGenVertexArrays(1, &video_vao);
+	glGenTextures(1, &video_texture);
+	glBindTexture(GL_TEXTURE_2D, video_texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, AMIGA_FRAME_W, AMIGA_FRAME_H, 0, GL_BGRA, GL_UNSIGNED_SHORT_4_4_4_4_REV, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	if(glGetError() != GL_NO_ERROR)
+	{
+		fprintf(stderr, "video: the frame texture\n");
+		return -1;
+	}
+	return 0;
+}
+
+void sdl_video_draw(SDL_Window *window, const uint16_t frame[AMIGA_FRAME_H][AMIGA_FRAME_W])
+{
+	int w = 0, h = 0;
+	SDL_GetWindowSizeInPixels(window, &w, &h);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glViewport(0, 0, w, h);
+	glDisable(GL_BLEND);
+	glDisable(GL_SCISSOR_TEST);
+	glDisable(GL_STENCIL_TEST);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, video_texture);
+	/* $0RGB is BGRA 4444 reversed: B in bits 0-3 up to an alpha nibble the shader ignores. */
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, AMIGA_FRAME_W, AMIGA_FRAME_H, GL_BGRA, GL_UNSIGNED_SHORT_4_4_4_4_REV, frame);
+	glUseProgram(video_program);
+	glBindVertexArray(video_vao);
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+}
+
+void sdl_video_quit(void)
+{
+	glDeleteTextures(1, &video_texture);
+	glDeleteVertexArrays(1, &video_vao);
+	glDeleteProgram(video_program);
+}

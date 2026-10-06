@@ -1,0 +1,116 @@
+#include "png.h"
+
+#include <stdio.h>
+#include <string.h>
+
+/* RGB8 PNG with stored (uncompressed) deflate blocks: PNG spec (ISO 15948) and RFC 1950/1951. */
+
+static uint32_t sdl_crc_table[256];
+
+static void sdl_crc_init(void)
+{
+	uint32_t n, k;
+	for(n = 0; n < 256; n++)
+	{
+		uint32_t c = n;
+		for(k = 0; k < 8; k++)
+			c = (c & 1) ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+		sdl_crc_table[n] = c;
+	}
+}
+
+static uint32_t sdl_crc(uint32_t crc, const uint8_t *p, size_t n)
+{
+	size_t i;
+	crc = ~crc;
+	for(i = 0; i < n; i++)
+		crc = sdl_crc_table[(crc ^ p[i]) & 0xFF] ^ (crc >> 8);
+	return ~crc;
+}
+
+static void sdl_be32(uint8_t *p, uint32_t v)
+{
+	p[0] = (uint8_t)(v >> 24);
+	p[1] = (uint8_t)(v >> 16);
+	p[2] = (uint8_t)(v >> 8);
+	p[3] = (uint8_t)v;
+}
+
+static void sdl_chunk(FILE *f, const char *type, const uint8_t *data, uint32_t len)
+{
+	uint8_t head[8], tail[4];
+	uint32_t crc;
+	sdl_be32(head, len);
+	memcpy(head + 4, type, 4);
+	crc = sdl_crc(0, head + 4, 4);
+	crc = sdl_crc(crc, data, len);
+	sdl_be32(tail, crc);
+	fwrite(head, 1, 8, f);
+	fwrite(data, 1, len, f);
+	fwrite(tail, 1, 4, f);
+}
+
+#define SDL_PNG_RAW (AMIGA_FRAME_H * (1 + AMIGA_FRAME_W * 3))
+#define SDL_PNG_BLOCKS ((SDL_PNG_RAW + 65534) / 65535)
+
+static uint8_t sdl_png_raw[SDL_PNG_RAW];
+static uint8_t sdl_png_z[2 + SDL_PNG_RAW + SDL_PNG_BLOCKS * 5 + 4];
+
+int sdl_png_write(const char *path, const uint16_t frame[AMIGA_FRAME_H][AMIGA_FRAME_W])
+{
+	static const uint8_t sig[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+	uint8_t ihdr[13];
+	uint32_t a = 1, b = 0, i, zn = 0, done = 0;
+	int x, y;
+	FILE *f;
+	sdl_crc_init();
+	for(y = 0, i = 0; y < AMIGA_FRAME_H; y++)
+	{
+		sdl_png_raw[i++] = 0;
+		for(x = 0; x < AMIGA_FRAME_W; x++)
+		{
+			uint16_t c = frame[y][x];
+			sdl_png_raw[i++] = (uint8_t)(((c >> 8) & 15) * 17);
+			sdl_png_raw[i++] = (uint8_t)(((c >> 4) & 15) * 17);
+			sdl_png_raw[i++] = (uint8_t)((c & 15) * 17);
+		}
+	}
+	for(i = 0; i < SDL_PNG_RAW; i++)
+	{
+		a = (a + sdl_png_raw[i]) % 65521;
+		b = (b + a) % 65521;
+	}
+	sdl_png_z[zn++] = 0x78;
+	sdl_png_z[zn++] = 0x01;
+	while(done < SDL_PNG_RAW)
+	{
+		uint32_t n = SDL_PNG_RAW - done > 65535 ? 65535 : SDL_PNG_RAW - done;
+		sdl_png_z[zn++] = done + n == SDL_PNG_RAW ? 1 : 0;
+		sdl_png_z[zn++] = (uint8_t)n;
+		sdl_png_z[zn++] = (uint8_t)(n >> 8);
+		sdl_png_z[zn++] = (uint8_t)~n;
+		sdl_png_z[zn++] = (uint8_t)(~n >> 8);
+		memcpy(sdl_png_z + zn, sdl_png_raw + done, n);
+		zn += n;
+		done += n;
+	}
+	sdl_be32(sdl_png_z + zn, (b << 16) | a);
+	zn += 4;
+
+	sdl_be32(ihdr, AMIGA_FRAME_W);
+	sdl_be32(ihdr + 4, AMIGA_FRAME_H);
+	ihdr[8] = 8;
+	ihdr[9] = 2;
+	ihdr[10] = 0;
+	ihdr[11] = 0;
+	ihdr[12] = 0;
+
+	f = fopen(path, "wb");
+	if(!f)
+		return -1;
+	fwrite(sig, 1, 8, f);
+	sdl_chunk(f, "IHDR", ihdr, 13);
+	sdl_chunk(f, "IDAT", sdl_png_z, zn);
+	sdl_chunk(f, "IEND", 0, 0);
+	return fclose(f) ? -1 : 0;
+}

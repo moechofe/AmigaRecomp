@@ -1,0 +1,10 @@
+# Cold boot to the language menu, sprites off, one shot: the frame WinUAE's
+# `capture.py --game deuteros --until 4` takes. Colour counts: docs/format.md, "Screens".
+until colours 16
+wait 50
+click
+until colours 4
+sprites off
+wait 2
+shot lang-menu-nosprite
+quit

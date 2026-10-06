@@ -1,0 +1,62 @@
+# Engine ours, bytes theirs. Nothing derived from a player's disks enters git. When in doubt,
+# ignore it — a false positive costs a line here, a false negative costs a repo rewrite.
+
+# scratch
+/QUESTION.md
+
+# game data in any container
+/games/*/disks/
+*.adf
+*.adz
+*.dms
+*.ipf
+*.hdf
+*.zip
+*.lha
+*.gz
+
+# ROMs and emulator state
+# (committed templates are *.uae.in, which these patterns miss on purpose)
+*.rom
+*.key
+*.uss
+*.uae
+*.sav
+
+# derived and reference
+# (our own artwork, when it exists, gets a decision first)
+/games/*/build/
+/games/*/reference/
+/build/
+*.png
+*.bmp
+*.ppm
+*.wav
+*.bin
+*.raw
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# build
+*.o
+*.obj
+*.exe
+*.pdb
+CMakeCache.txt
+CMakeFiles/
+compile_commands.json
+
+# editor, OS and Syncthing
+.DS_Store
+Thumbs.db
+desktop.ini
+.stfolder/
+.stversions/
+.stignore
+.idea/
+*.swp
+.claude/settings.local.json
