@@ -1,8 +1,8 @@
 # Games — the per-game method
 
 How a game is added, laid out, identified, verified and hacked. Decisions 005, 006, 007, 011,
-013. ☐ marks a part that a later milestone implements, with that milestone's number; ☑ marks a
-part that exists and has been observed.
+013. ☐ marks a part that a later milestone of `games/deuteros/PLAN.md` implements, with that
+milestone's number; ☑ marks a part that exists and has been observed.
 
 ## 1. What a supported game is
 
@@ -50,8 +50,12 @@ These files are committed:
     - Every file in it is ours: no game graphics, ever.
 - `scripts/<name>.input` — headless input scripts.
 - `scripts/<name>.dbg` — `tools/capture.py` session files that take the WinUAE references.
-- `README.md` — every command line for this game, in the order they are used (`PLAN.md`,
-  "Per-game commands").
+- `README.md` — every command line for this game, in the order they are used: unpack the
+  images, generate the WinUAE config, take the references, build, run, and compare. The README
+  owns the command lines, and `docs/tools.md` owns the tools' options. A command whose result
+  changes updates the README in the same change.
+- `PLAN.md` — what happens next for this game, written from the template in the root
+  `PLAN.md`.
 - `oracle.uae.in` — the WinUAE config template for this game, filled in by
   `tools/emulator.py`.
 - `docs/format.md` — the game's boot chain and disk facts, each citing an ADF name and a byte

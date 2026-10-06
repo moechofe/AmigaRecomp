@@ -79,5 +79,5 @@ On Linux, use `games/deuteros/build/cmake-linux/deuteros` instead. `menu.input` 
     python tools/pixdiff.py --game deuteros games/deuteros/build/shots/lang-menu-nosprite.png games/deuteros/reference/menu-nosprite.png
     python tools/pixdiff.py --game deuteros games/deuteros/build/shots/earth-base-nosprite.png games/deuteros/reference/earth-base-nosprite.png
 
-The expected figures are in `PLAN.md`, M2: 81 920 of 81 920 for the menu, and for the Earth
-base every difference inside x 13–23, y 79–90.
+The expected figures are in this folder's `PLAN.md`, M2: 81 920 of 81 920 for the menu, and for
+the Earth base every difference inside x 13–23, y 79–90.

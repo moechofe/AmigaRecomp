@@ -11,8 +11,10 @@ task.
 
 ## Where the project is
 
-M0 is done. `PLAN.md` says what is next. `../proof` (OpenDeuteros) is prior art: read-only,
-cited for measurements, ported from only when a milestone says so.
+M0 is done. Each game's `games/<id>/PLAN.md` says what is next for it; `games/deuteros/PLAN.md`
+also builds the shared root. `PLAN.md` says how to start another game. `../proof`
+(OpenDeuteros) is prior art: read-only, cited for measurements, ported from only when a
+milestone says so.
 
 ## Shared root, self-contained games
 
@@ -38,7 +40,8 @@ This table owns the roster; `docs/tools.md` explains how to run them.
 
 | If you're going to… | Read first |
 | --- | --- |
-| decide what to do next | `PLAN.md` |
+| decide what to do next | `games/<id>/PLAN.md` |
+| start work on another game | `PLAN.md`, then `docs/game.md` |
 | find out what happened | `PROGRESS.md` |
 | find out why | `DECISIONS.md` |
 | find a folder | `ARCHITECTURE.md` |
@@ -63,8 +66,8 @@ This table owns the roster; `docs/tools.md` explains how to run them.
 5. Never invent a constant.
 6. A clean compile is not a test result.
 7. Hack value 0 is the original game, and headless runs force every hack to 0 (decision 011).
-8. `PLAN.md` is the author's file. Tick boxes only on observation, and propose scope changes
-   in conversation.
+8. `PLAN.md` and every `games/<id>/PLAN.md` are the author's files. Tick boxes only on
+   observation, and propose scope changes in conversation.
 9. No obvious comments, and no decision history in code comments.
 10. One owner per fact.
 

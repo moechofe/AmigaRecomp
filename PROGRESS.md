@@ -1,8 +1,8 @@
 # Progress log
 
-What has already happened, newest last, one or two lines each. `PLAN.md` owns what happens
-next; this file owns what is behind us. Detail belongs in the doc the work produced; an entry
-here is a date, the headline claim, and a pointer.
+What has already happened, newest last, one or two lines each. Each game's
+`games/<id>/PLAN.md` owns what happens next; this file owns what is behind us. Detail belongs
+in the doc the work produced; an entry here is a date, the headline claim, and a pointer.
 
 A number quoted here is a verification that was observed, not a target.
 

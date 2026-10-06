@@ -60,5 +60,5 @@ The comparison writes its difference image to `games/lemmings/build/pixdiff/diff
 
 ## 7. Build and run the recompiled version
 
-There is nothing to build yet: this folder has no `CMakeLists.txt` and no `game.c`. `PLAN.md`,
-"Per-game commands", tracks that.
+There is nothing to build yet: this folder has no `CMakeLists.txt` and no `game.c`. This
+folder's `PLAN.md`, M2, tracks that.

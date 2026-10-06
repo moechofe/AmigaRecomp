@@ -72,6 +72,6 @@ Do not commit.
 
 ## Progress
 
-- Tick a `PLAN.md` box only once its *Done when* has been observed, and append one or two lines
-  to `PROGRESS.md`.
+- Tick a box in a game's `PLAN.md` only once its *Done when* has been observed, and append one
+  or two lines to `PROGRESS.md`.
 - Changes to scope or order are proposed in conversation.

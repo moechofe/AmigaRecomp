@@ -1,7 +1,8 @@
 # Architecture
 
-> Start at `CLAUDE.md`. What happens next is in `PLAN.md`, what already happened is in
-> `PROGRESS.md`, and the reasons are in `DECISIONS.md`.
+> Start at `CLAUDE.md`. What happens next is in each game's `games/<id>/PLAN.md`, how to start
+> a game is in `PLAN.md`, what already happened is in `PROGRESS.md`, and the reasons are in
+> `DECISIONS.md`.
 
 Folders are plain lowercase words naming what they hold (decision 014). Folders are named here
 before they exist, so each name is decided once; a folder appears on disk when a milestone
@@ -22,7 +23,7 @@ Shared code sits at the root. Each game is the self-contained folder `games/<id>
 - `tools/` — `doctor.py`, `emulator.py`, `capture.py` and `pixdiff.py`.
 - `games/deuteros/` — the first game.
 - `games/lemmings/` — the second game; only its WinUAE oracle so far (`oracle.uae.in`,
-  `scripts/boot.dbg`, `docs/dumps.md`, `README.md`).
+  `scripts/boot.dbg`, `docs/dumps.md`, `README.md`, `PLAN.md`).
 
 ## Local only, gitignored
 
@@ -36,7 +37,7 @@ Shared code sits at the root. Each game is the self-contained folder `games/<id>
 
 ## Created by a milestone
 
-Each entry names its milestone.
+Each entry names its milestone in `games/deuteros/PLAN.md`.
 
 - `cmake/` (M1) — shared CMake modules. It is not a project of its own.
     - `amigarecomp.cmake` covers the dependencies, the core and frontend libraries, the
