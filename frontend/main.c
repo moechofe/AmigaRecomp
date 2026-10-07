@@ -302,18 +302,20 @@ static int sdl_clamp(int v, int lo, int hi)
 	return v < lo ? lo : v > hi ? hi : v;
 }
 
-/* The counts that move the game's pointer onto the OS cursor: the whole error, so the loop
+/* The counts that move the game's pointer onto the OS cursor, mapped into the drawn frame: the whole error, so the loop
  * closes for any pointer that moves at most two frame pixels per count. The bound keeps
  * JOY0DAT's 8-bit counter from wrapping (HRM), and hle_input_vblank reads the counters'
  * difference as a signed byte. */
 static void sdl_pointer_step(const struct SdlPointer *p, SDL_Window *window, int *dx, int *dy)
 {
+	struct SdlVideoRect r;
 	int px, py, ww = 0, wh = 0, tx, ty;
 	*dx = *dy = 0;
-	if(!p->inside || !denise_pointer(&machine, &px, &py) || !SDL_GetWindowSize(window, &ww, &wh) || ww <= 0 || wh <= 0)
+	if(!p->inside || !denise_pointer(&machine, &px, &py) || !SDL_GetWindowSize(window, &ww, &wh) || ww <= 0 || wh <= 0
+		|| sdl_video_rect(window, &r))
 		return;
-	tx = sdl_clamp((int)(p->wx * AMIGA_FRAME_W / ww), 0, AMIGA_FRAME_W - 1);
-	ty = sdl_clamp((int)(p->wy * AMIGA_FRAME_H / wh), 0, AMIGA_FRAME_H - 1);
+	tx = sdl_clamp((int)SDL_floorf((p->wx * r.window_w / ww - r.x) * AMIGA_FRAME_W / r.w), 0, AMIGA_FRAME_W - 1);
+	ty = sdl_clamp((int)SDL_floorf((p->wy * r.window_h / wh - r.y) * AMIGA_FRAME_H / r.h), 0, AMIGA_FRAME_H - 1);
 	*dx = sdl_clamp(tx - px, -127, 127);
 	*dy = sdl_clamp(ty - py, -127, 127);
 }
@@ -400,12 +402,13 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-	window = SDL_CreateWindow(game_def.title, AMIGA_FRAME_W * 3, AMIGA_FRAME_H * 3, SDL_WINDOW_OPENGL);
+	window = SDL_CreateWindow(game_def.title, AMIGA_FRAME_W * 3, AMIGA_FRAME_H * 3, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 	if(!window)
 	{
 		fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
 		return 1;
 	}
+	SDL_SetWindowMinimumSize(window, AMIGA_FRAME_W, AMIGA_FRAME_H);
 	gl = SDL_GL_CreateContext(window);
 	if(!gl)
 	{
@@ -475,13 +478,14 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 				else
 				{
 					int ww = 0, wh = 0;
+					struct SdlVideoRect r;
 					ptr.wx = e.motion.x;
 					ptr.wy = e.motion.y;
 					ptr.inside = 1;
-					if(captured && SDL_GetWindowSize(window, &ww, &wh) && ww > 0 && wh > 0)
+					if(captured && SDL_GetWindowSize(window, &ww, &wh) && ww > 0 && wh > 0 && !sdl_video_rect(window, &r))
 					{
-						fx += e.motion.xrel * AMIGA_FRAME_W / (float)ww;
-						fy += e.motion.yrel * AMIGA_FRAME_H / (float)wh;
+						fx += e.motion.xrel * r.window_w / (float)ww * AMIGA_FRAME_W / (float)r.w;
+						fy += e.motion.yrel * r.window_h / (float)wh * AMIGA_FRAME_H / (float)r.h;
 					}
 				}
 				if(open)

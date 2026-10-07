@@ -28,9 +28,10 @@ body
 	position: absolute;
 	top: 24dp;
 	left: 50%;
-	width: 640dp;
-	margin-left: -320dp;
+	width: 600dp;
+	margin-left: -300dp;
 	bottom: 24dp;
+	box-sizing: border-box;
 	padding: 20dp;
 	background-color: #202020f0;
 }
@@ -68,7 +69,7 @@ h2
 {
 	display: inline-block;
 	vertical-align: top;
-	width: 500dp;
+	width: 436dp;
 }
 
 .source
@@ -115,7 +116,7 @@ button:hover
 .name
 {
 	display: inline-block;
-	width: 420dp;
+	width: 356dp;
 	font-weight: bold;
 }
 

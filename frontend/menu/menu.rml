@@ -58,8 +58,8 @@
 				<h2>Save states</h2>
 				<p data-if="!booted">Save states can be used once the game has started.</p>
 				<div class="actions" data-if="booted">
-					<button data-event-click="state_save">F5 Quick save</button>
-					<button data-event-click="state_load">F9 Quick load</button>
+					<button data-event-click="state_save"><span class="cap">F5</span> Quick save</button>
+					<button data-event-click="state_load"><span class="cap">F9</span> Quick load</button>
 					<button data-event-click="state_save_as">Save state as…</button>
 					<button data-event-click="state_load_from">Load state…</button>
 				</div>

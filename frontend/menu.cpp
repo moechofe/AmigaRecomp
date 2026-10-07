@@ -124,6 +124,7 @@ struct Menu
 	RenderInterface_GL3 *render = nullptr;
 	Rml::Context *context = nullptr;
 	Rml::ElementDocument *doc = nullptr;
+	Rml::Element *panel = nullptr;
 	Rml::DataModelHandle handle;
 	MenuModel model;
 	SDL_Window *window = nullptr;
@@ -307,7 +308,6 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 	menu->context = Rml::CreateContext("menu", Rml::Vector2i(w, h));
 	if(!menu->context)
 		return menu_fail("the context");
-	menu->context->SetDensityIndependentPixelRatio(SDL_GetWindowDisplayScale(window));
 
 	ctor = menu->context->CreateDataModel("menu");
 	if(!ctor)
@@ -404,6 +404,9 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 	menu->doc = menu->context->LoadDocument("menu.rml");
 	if(!menu->doc)
 		return menu_fail("menu.rml");
+	menu->panel = menu->doc->GetElementById("panel");
+	if(!menu->panel)
+		return menu_fail("#panel in menu.rml");
 	menu->doc->Show();
 	menu_options_refresh();
 	return 0;
@@ -476,6 +479,12 @@ void sdl_menu_render(SDL_Window *window)
 		menu->model.banner_on = false;
 		menu->handle.DirtyVariable("banner_on");
 	}
+	/* At most the display scale; below it, #panel's width fills the window. */
+	float dp = SDL_GetWindowDisplayScale(window);
+	const Rml::Property *pw = menu->panel->GetProperty("width");
+	if(w > 0 && pw && pw->unit == Rml::Unit::DP && pw->Get<float>() > 0.0f && (float)w / pw->Get<float>() < dp)
+		dp = (float)w / pw->Get<float>();
+	menu->context->SetDensityIndependentPixelRatio(dp);
 	menu->context->SetDimensions(Rml::Vector2i(w, h));
 	menu->render->SetViewport(w, h);
 	menu->context->Update();

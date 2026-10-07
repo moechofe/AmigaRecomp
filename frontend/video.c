@@ -1,5 +1,7 @@
 #include "video.h"
 
+#include "settings.h"
+
 #include "RmlUi_Include_GL3.h"
 
 #include <stdio.h>
@@ -88,15 +90,51 @@ int sdl_video_init(void)
 	return 0;
 }
 
+int sdl_video_rect(SDL_Window *window, struct SdlVideoRect *r)
+{
+	int pw = 0, ph = 0, w, h;
+	if(!SDL_GetWindowSizeInPixels(window, &pw, &ph) || pw <= 0 || ph <= 0)
+		return -1;
+	if(sdl_setting(SdlSettingScale) == SdlScaleInteger)
+	{
+		int n = pw / AMIGA_FRAME_W < ph / AMIGA_FRAME_H ? pw / AMIGA_FRAME_W : ph / AMIGA_FRAME_H;
+		if(n < 1)
+			n = 1;
+		w = AMIGA_FRAME_W * n;
+		h = AMIGA_FRAME_H * n;
+	}
+	else if((long long)pw * AMIGA_FRAME_H <= (long long)ph * AMIGA_FRAME_W)
+	{
+		w = pw;
+		h = pw * AMIGA_FRAME_H / AMIGA_FRAME_W;
+	}
+	else
+	{
+		h = ph;
+		w = ph * AMIGA_FRAME_W / AMIGA_FRAME_H;
+	}
+	r->x = (pw - w) / 2;
+	r->y = (ph - h) / 2;
+	r->w = w;
+	r->h = h;
+	r->window_w = pw;
+	r->window_h = ph;
+	return 0;
+}
+
 void sdl_video_draw(SDL_Window *window, const uint16_t frame[AMIGA_FRAME_H][AMIGA_FRAME_W])
 {
-	int w = 0, h = 0;
-	SDL_GetWindowSizeInPixels(window, &w, &h);
+	struct SdlVideoRect r;
+	if(sdl_video_rect(window, &r))
+		return;
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	glViewport(0, 0, w, h);
 	glDisable(GL_BLEND);
 	glDisable(GL_SCISSOR_TEST);
 	glDisable(GL_STENCIL_TEST);
+	glViewport(0, 0, r.window_w, r.window_h);
+	glClearColor(0, 0, 0, 1);
+	glClear(GL_COLOR_BUFFER_BIT);
+	glViewport(r.x, r.window_h - r.y - r.h, r.w, r.h);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 	glActiveTexture(GL_TEXTURE0);

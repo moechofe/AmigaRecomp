@@ -45,8 +45,10 @@ every accepted image line (`<file>: <label>, <verified|known|unknown> dump`). Th
 the menu's state save/load confirmations go to stdout only; the Disks page lists the last six
 errors (a rejected image, a failed state save or load) above its Drives section.
 
-Window mode (no `--headless`) opens a 960 x 768 window, three times the 320 x 256 frame,
-with an OpenGL 3.3 core context, and paces itself to one frame of 142 102 CPU cycles at
+Window mode (no `--headless`) opens a resizable window, 960 x 768 at first (three times the
+320 x 256 frame; at least 320 x 256), with an OpenGL 3.3 core context. The frame is drawn centred
+on black: with the setting `scale` `integer`, the largest whole multiple that fits the window;
+with `float`, the largest size that fits and keeps square pixels. It paces itself to one frame of 142 102 CPU cycles at
 7 093 790 Hz (about 20.03 ms; *Timing*). Audio is 48 kHz 16-bit stereo from Paula. Keys the
 frontend takes:
 
@@ -60,7 +62,8 @@ frontend takes:
 By default the mouse is not captured: the OS cursor is hidden while the game runs (shown while
 the menu is open) and, every frame, the frontend gives the
 game's pointer the whole remaining error as counts, clamped to +/-127 a frame (unit gain,
-closed loop). The error is between the OS cursor, scaled to frame pixels, and where
+closed loop). The error is between the OS cursor, mapped into the drawn frame (a cursor over a
+border counts as the nearest frame edge), and where
 `denise_pointer()` says the game's pointer sprite is. With the setting `mouse_capture` on, the
 window grabs the mouse (SDL relative mode) and the motion, scaled to frame pixels, is given to the
 game's pointer as counts instead; opening the menu releases it. Neither mode has been tried
@@ -70,7 +73,8 @@ pointer, and nothing is captured.
 ### Settings and hacks
 
 The menu's Settings page lists the frontend's own settings (`frontend/settings.c`,
-`sdl_settings[]`: `mouse_capture`, bool, default off) and its Hacks page lists
+`sdl_settings[]`: `mouse_capture`, bool, default off; `scale`, choice `integer` or `float`, default
+`integer`) and its Hacks page lists
 `game_def.hacks`. Each toggle is applied at once and stored in `<pref>settings.ini`, which is
 saved when a value changes: a setting under its id (`mouse_capture=1`), a hack under
 `hack.<hackid>` (`hack.keep_pointer=1`). A bool is `0` or `1`; a choice is its choice id. A missing
