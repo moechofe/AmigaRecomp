@@ -100,10 +100,31 @@ Headless, with a script, writing the script's shot into `games/deuteros/build/sh
 On Linux, use `games/deuteros/build/cmake-linux/deuteros` instead. `menu.input` writes
 `lang-menu-nosprite.png` and `earth-base.input` writes `earth-base-nosprite.png`.
 
+The executable takes ADF, ADZ, GZ and ZIP images, in any order, from the command line, from files
+dropped on the window, from the Disks page's "Open…" button, and from the paths it remembers in
+`settings.ini` (`docs/game.md`, item 5). With no arguments and no remembered paths it shows the
+Disks page. Group images by CRC and check them against `dumps.txt`:
+
+    python tools/adf.py games/deuteros/disks
+
+Make a ZIP of the untagged pair (the Linux command; `python` on Windows):
+
+    python3 -m zipfile -c games/deuteros/build/pair.zip "games/deuteros/build/adf/Deuteros - The Next Millennium (1991)(Activision)(M3)(Disk 1 of 2).adf" "games/deuteros/build/adf/Deuteros - The Next Millennium (1991)(Activision)(M3)(Disk 2 of 2).adf"
+
+Run both scripts from the ZIP instead of the two ADFs:
+
+    games/deuteros/build/cmake-linux/deuteros --headless --shot-dir games/deuteros/build/shots --script games/deuteros/scripts/menu.input games/deuteros/build/pair.zip
+    games/deuteros/build/cmake-linux/deuteros --headless --shot-dir games/deuteros/build/shots --script games/deuteros/scripts/earth-base.input games/deuteros/build/pair.zip
+
+Run the unit tests of the image loader:
+
+    ctest --test-dir games/deuteros/build/cmake-linux --output-on-failure
+
 ## 8. Compare with WinUAE
 
     python tools/pixdiff.py --game deuteros games/deuteros/build/shots/lang-menu-nosprite.png games/deuteros/reference/menu-nosprite.png
     python tools/pixdiff.py --game deuteros games/deuteros/build/shots/earth-base-nosprite.png games/deuteros/reference/earth-base-nosprite.png
 
 The expected figures are in this folder's `PLAN.md`, M2: 81 920 of 81 920 for the menu, and for
-the Earth base every difference inside x 13–23, y 79–90.
+the Earth base every difference inside x 13–23, y 79–90. The runs from `pair.zip` give the same
+figures as the runs from the two ADFs.

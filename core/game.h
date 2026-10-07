@@ -6,8 +6,9 @@
 struct GameDisk
 {
 	const char *id;    /* role: "disk1", "save", … */
-	const char *label; /* shown in messages */
+	const char *label; /* shown in the menu and in messages */
 	int writable;      /* 1: our file <pref>/<id>.adf, zero-filled when absent */
+	int (*identify)(const uint8_t *adf, uint32_t size); /* unknown dumps: 1 = this role; NULL for writable roles */
 };
 struct GameDef
 {

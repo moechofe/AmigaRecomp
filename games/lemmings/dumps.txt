@@ -1,0 +1,3 @@
+# docs/game.md, item 4.
+074bc441 disk1 known Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR]
+6a322665 disk2 known Lemmings (1991)(Psygnosis)(Disk 2 of 2)[cr SR]

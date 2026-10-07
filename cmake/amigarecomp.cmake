@@ -75,6 +75,8 @@ set(CMAKE_DISABLE_FIND_PACKAGE_Freetype ON)
 amiga_fetch(rmlui https://github.com/mikke89/RmlUi.git 6.3 GIT_SHALLOW TRUE)
 
 amiga_fetch(miniz https://github.com/richgel999/miniz.git 3.1.2 GIT_SHALLOW TRUE)
+include("${CMAKE_CURRENT_LIST_DIR}/dumps.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/embed.cmake")
 
 # --- the core ----------------------------------------------------------------------------------
 
@@ -116,13 +118,19 @@ amiga_warnings(amiga_core)
 set(RMLUI_GL3_SOURCE "${rmlui_SOURCE_DIR}/Backends/RmlUi_Renderer_GL3.cpp")
 # This is the one translation unit that defines GLAD_GL_IMPLEMENTATION, so gladLoadGL links
 # without libGL.
-set_source_files_properties("${RMLUI_GL3_SOURCE}" PROPERTIES COMPILE_OPTIONS -w)
+set_source_files_properties("${RMLUI_GL3_SOURCE}" "${rmlui_SOURCE_DIR}/Backends/RmlUi_Platform_SDL.cpp" PROPERTIES COMPILE_OPTIONS -w)
 file(GLOB AMIGA_FRONTEND_SOURCES CONFIGURE_DEPENDS "${AMIGA_ROOT}/frontend/*.c" "${AMIGA_ROOT}/frontend/*.cpp")
 # main.c is compiled into each executable: on MinGW it defines only SDL's WinMain, which nothing
 # references before libmingw32, so the linker would never pull it out of an archive.
 set(AMIGA_FRONTEND_MAIN "${AMIGA_ROOT}/frontend/main.c")
 list(REMOVE_ITEM AMIGA_FRONTEND_SOURCES "${AMIGA_FRONTEND_MAIN}")
-add_library(amiga_frontend STATIC ${AMIGA_FRONTEND_SOURCES} "${RMLUI_GL3_SOURCE}")
+file(GLOB AMIGA_MENU_SHARED CONFIGURE_DEPENDS "${AMIGA_ROOT}/frontend/menu/*")
+list(APPEND AMIGA_MENU_SHARED
+	"${rmlui_SOURCE_DIR}/Samples/assets/LatoLatin-Regular.ttf"
+	"${rmlui_SOURCE_DIR}/Samples/assets/LatoLatin-Bold.ttf")
+amiga_embed("${CMAKE_BINARY_DIR}/menu_shared.c" sdl_menu_shared ${AMIGA_MENU_SHARED})
+add_library(amiga_frontend STATIC ${AMIGA_FRONTEND_SOURCES} "${RMLUI_GL3_SOURCE}" "${rmlui_SOURCE_DIR}/Backends/RmlUi_Platform_SDL.cpp"
+	"${CMAKE_BINARY_DIR}/menu_shared.c")
 target_include_directories(amiga_frontend PUBLIC
 	"${AMIGA_ROOT}/frontend"
 	"${rmlui_SOURCE_DIR}/Backends")
@@ -133,8 +141,15 @@ amiga_warnings(amiga_frontend)
 # --- one executable per game -------------------------------------------------------------------
 
 function(amiga_add_game id)
+	if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/dumps.txt")
+		message(FATAL_ERROR "${CMAKE_CURRENT_SOURCE_DIR}/dumps.txt is missing (docs/game.md, item 4)")
+	endif()
+	amiga_dumps("${CMAKE_CURRENT_SOURCE_DIR}/dumps.txt" "${CMAKE_CURRENT_BINARY_DIR}/game_dumps.c")
+	file(GLOB game_menu CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/menu/*")
+	amiga_embed("${CMAKE_CURRENT_BINARY_DIR}/game_menu.c" sdl_menu_game ${game_menu})
 	file(GLOB game_sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.c")
-	add_executable(${id} ${game_sources} "${AMIGA_FRONTEND_MAIN}")
+	add_executable(${id} ${game_sources} "${AMIGA_FRONTEND_MAIN}"
+		"${CMAKE_CURRENT_BINARY_DIR}/game_dumps.c" "${CMAKE_CURRENT_BINARY_DIR}/game_menu.c")
 	target_link_libraries(${id} PRIVATE amiga_frontend)
 	set_target_properties(${id} PROPERTIES LINKER_LANGUAGE CXX)
 	amiga_warnings(${id})
@@ -144,3 +159,16 @@ function(amiga_add_game id)
 		target_link_options(${id} PRIVATE -static-libgcc -static-libstdc++)
 	endif()
 endfunction()
+
+# --- tests -------------------------------------------------------------------------------------
+
+enable_testing()
+
+if(NOT TARGET test_image)
+	amiga_dumps("${AMIGA_ROOT}/tests/dumps.txt" "${CMAKE_BINARY_DIR}/tests/test_dumps.c")
+	add_executable(test_image "${AMIGA_ROOT}/tests/test_image.c" "${AMIGA_ROOT}/frontend/image.c" "${CMAKE_BINARY_DIR}/tests/test_dumps.c")
+	target_include_directories(test_image PRIVATE "${AMIGA_ROOT}/frontend")
+	target_link_libraries(test_image PRIVATE amiga_core miniz)
+	amiga_warnings(test_image)
+	add_test(NAME test_image COMMAND test_image)
+endif()

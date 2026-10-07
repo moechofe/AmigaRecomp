@@ -165,9 +165,23 @@ for this file. Paths are from the `amigarecomp/` root, and the command lines are
 
 ### M3 — Player disk images
 
-- `[ ]`
+- `[x]`
     - Implement `docs/game.md` item 5 in `frontend/` with miniz: command line, drop, dialog,
       remembered paths, the banner, and the Disks page.
+    - The F1 menu's skeleton, in RmlUi, holding only the Disks page and the banner.
+        - The shared documents are `frontend/menu/menu.rml`, `menu.rcss`, and a comment-only
+          `game.rcss`. `menu.rml` links `menu.rcss`, then `game.rcss`.
+        - `cmake/embed.cmake` embeds two tables. `sdl_menu_shared[]` holds the shared
+          `frontend/menu/*` plus the LatoLatin Regular and Bold fonts from RmlUi's
+          `Samples/assets/`. `sdl_menu_game[]` holds the game's `menu/*`.
+        - The menu's `Rml::FileInterface` resolves a file name in `sdl_menu_game[]` first, then
+          in `sdl_menu_shared[]`.
+        - The shared `menu.rcss` uses a neutral panel colour, `#202020f0`.
+    - `frontend/settings.c` keeps `settings.ini` in the pref path with the keys `disk.<role>`;
+      headless mode neither reads nor writes it.
+    - `GameDisk` gains `identify` (`docs/game.md` item 3). Deuteros's `dumps.txt` lists the
+      untagged pair as `known`, and its two `identify` functions are CRC anchors recorded in
+      `docs/format.md`, "Identification".
     - `cmake/dumps.cmake` turns `dumps.txt` into `game_dumps.c` in the game's build tree.
       `amiga_add_game` calls it.
     - `amigarecomp.cmake` adds the `tests/` targets once per build tree, guarded by
@@ -192,7 +206,47 @@ for this file. Paths are from the `amigarecomp/` root, and the command lines are
         - an image missing from `dumps.txt` boots with the banner;
         - started with no arguments, the executable shows the Disks page. Opening the images
           through the dialog boots the game, and the next launch boots with no dialog.
-    - *Observed:*
+    - *Observed:* 2026-10-07, Linux (Ubuntu, X11 GNOME, `DISPLAY=:1`), Release (-O3).
+        - `ctest --test-dir games/deuteros/build/cmake-linux` passes; `test_image` prints `ok`
+          for the ZIP, ADZ, GZ, double-size, truncated-ZIP, dumps-table and identification
+          checks. Changing `known` to `kown` in `tests/dumps.txt` fails the build with
+          `cannot parse`.
+        - `pair.zip`, made under `games/deuteros/build/` from the untagged pair (the commands
+          are in `README.md`, sections 7 and 8), printed `pair.zip:…(Disk 1 of 2).adf: Disk 1,
+          known dump` and the same for Disk 2. `earth-base.input` gave 81 862 of 81 920 inside
+          x 13-23, y 79-90, and `menu.input` gave 81 920 of 81 920 EXACT, the same figures as
+          the two ADFs on the command line.
+        - Unknown dump: `[a](Disk 1 of 2).zip` (CRC `8cf442c6`) with the untagged Disk 2 ZIP
+          printed `Unknown dump of Disk 1: running anyway; some hacks may stay inactive`. The
+          headless `menu.input` run ended with exit 1 and `fatal: input.device command 1 is
+          not implemented` at frame 364, before the language menu, so no shot and no pixdiff
+          figure exist for it. In window mode the banner was visible over the game 4 s after
+          launch.
+        - Rejections, headless, exit 2 each: `x.txt: not an ADF, ADZ, GZ or ZIP`; `big.adf:
+          not an 880 KB double-density ADF`; a Lemmings ZIP, `…: not a disk of Deuteros: The
+          Next Millennium`; Disk 2 alone, `Deuteros: The Next Millennium is missing: Disk 1`.
+        - Window, no images, `--pref /tmp/m3-dialog`: the Disks page listed Disk 1 "missing,
+          needed to start", Disk 2 "missing, needed later" and `kept in /tmp/m3-dialog/save.adf`.
+          A throwaway python-xlib XTEST script clicked "Open…", the GTK portal dialog opened
+          with the "Amiga disk images" filter, and the script typed the path of `pair.zip`
+          and pressed Return: the game booted, the panel closed, the title was drawn, and
+          `settings.ini` held `disk.disk1=` and `disk.disk2=` with that path (the dialog returned
+          it as `//home/…`, the dialog's own `/` plus the typed one). A relaunch with the same
+          `--pref` booted with no panel; F1 showed `known dump` for both roles and Esc closed
+          it.
+        - `python tools/adf.py games/deuteros/disks games/lemmings/disks` exits 0: the untagged
+          pair and `[f AGA Access]` print `deuteros: e55363d8 disk1 known …`, the Lemmings
+          oracle pair prints `lemmings:` lines, `[a](Disk 1 of 2)` prints `not in any dumps.txt:
+          8cf442c6 ROLE known …`, and Disk 1 prints `DOS0  sum-ok`.
+        - Lemmings, rebuilt with the shared change: `ctest` passes, and `psygnosis.input` on the
+          two `[cr SR]` ZIPs ends with `fatal: OpenLibrary("intuition.library") is not
+          implemented` at frame 600, exit 1.
+        - `grep -rni deuteros core frontend cmake tools tests` prints nothing.
+        - RmlUi logs `Failed to load style sheet game.rcss.` at every start: it rejects a
+          stylesheet with no rule, and the shared `game.rcss` holds only a comment. `menu.rcss`
+          still applies.
+        - Not observed: Windows; files dropped on the window (`SDL_EVENT_DROP_FILE`), which
+          nothing here can inject; a game's own `menu/` folder.
 
 ### M4 — Settings menu and hacks
 
@@ -205,22 +259,13 @@ for this file. Paths are from the `amigarecomp/` root, and the command lines are
         - Each hack's status is tracked.
     - The frontend's own settings form a `struct GameSetting` table in `frontend/settings.c`.
       Its only entry for now is `mouse_capture`: bool, default 0.
-    - The F1 menu:
-        - The shared documents are `frontend/menu/menu.rml`, `menu.rcss`, and a comment-only
-          `game.rcss`. `menu.rml` links `menu.rcss`, then `game.rcss`.
+    - The F1 menu, on M3's skeleton:
         - An RmlUi data model exposes arrays of `{id, label, hint, type, value, choices,
           status}`. `data-for` renders the "Settings" and "Hacks" sections, so no RML is
           generated.
-        - `cmake/embed.cmake` embeds two tables. `sdl_menu_shared[]` holds the shared
-          `frontend/menu/*` plus the LatoLatin Regular and Bold fonts from RmlUi's
-          `Samples/assets/`. `sdl_menu_game[]` holds the game's `menu/*`.
-        - The menu's `Rml::FileInterface` resolves a file name in `sdl_menu_game[]` first, then
-          in `sdl_menu_shared[]`.
-        - The shared `menu.rcss` uses a neutral panel colour, `#202020f0`.
-          `games/deuteros/menu/game.rcss` sets `#panel` to the proof's navy, `#101c3cf0`.
+        - `games/deuteros/menu/game.rcss` sets `#panel` to the proof's navy, `#101c3cf0`.
     - Settings storage:
-        - `settings.ini` lives in the pref path. Its keys are `<setting id>`, `hack.<hackid>`
-          and `disk.<role>`.
+        - `settings.ini` (M3) gains the keys `<setting id>` and `hack.<hackid>`.
         - Bool values are `0` or `1`; a choice value is the choice id.
         - Headless mode ignores the file and sets every hack to 0 (decision 011).
     - Add the script directive `hack <hackid> on|off|<choice id>`.

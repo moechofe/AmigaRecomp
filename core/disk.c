@@ -1,6 +1,8 @@
 #include "amiga.h"
 #include "game.h"
 
+#include <stddef.h>
+
 /* Floppy hardware: Paula's disk DMA, the drive control on CIA-B PRB and the drive status on
  * CIA-A PRA. HRM "Disk controller" chapter and appendix F (CIA pins); track layout per the ADF
  * FAQ (Laurent Clevy), "MFM track format". A disk is an ADF image, so every track is the

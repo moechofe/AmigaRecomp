@@ -148,3 +148,40 @@ Outputs: dumps under `games/<id>/reference/ramdump/`, kept screenshots in
 gitignored. Exit 0 on a completed run, 2 for an unknown game or a non-Windows system; other
 failures (no WinUAE, no config, a debugger that never opened, no screenshot, a timeout) stop
 with a message. Unless `--keep` is given, WinUAE is closed at the end.
+
+## `adf.py`
+
+    python tools/adf.py games/<id>/disks/*
+    python tools/adf.py disks/
+
+Read-only. It identifies Amiga disk images and groups copies of one dump together. A directory
+argument stands for its files, non-recursively and sorted. The container rules are those of
+`docs/game.md` item 5; the format is in `docs/formats/adf.md`.
+
+It reads every `games/*/dumps.txt` (the grammar is in `docs/game.md` item 4). A line that does
+not parse stops the run: `error: games/<id>/dumps.txt: cannot parse `<line>``.
+
+Output is one block per candidate, sorted by bootblock bytes, then CRC, then source. A
+901 120-byte image prints:
+
+    <crc8>  <boot>  <sum>  <source>
+        <id>: <crc> <role> <status> <name>
+
+- `<crc8>` is the lowercase zlib CRC-32 of the image.
+- `<boot>` is `DOS<n>` when bytes 0-2 are `DOS` (`n` is byte 3 in decimal), otherwise the first
+  four bytes with non-printables as `\xNN`.
+- `<sum>` is `sum-ok` when the bootblock checksum validates, otherwise `sum-bad`.
+- `<source>` is `path`, or `path:member` for a ZIP member.
+- The indented line appears once for each matching line of any game's `dumps.txt`. An image
+  that matches none prints `    not in any dumps.txt: <crc> ROLE known <name>`, a line ready to
+  paste into a `dumps.txt` once `ROLE` is filled in; `<name>` is the file name without folder
+  and extension.
+
+Any other size prints `--------  not an 880 KB double-density ADF (<n> bytes)  <source>`.
+
+An unreadable path, an unsupported extension, or a bad gzip or ZIP prints
+`error: <path>: <reason>` to stderr, and the other paths are still processed.
+
+Exit status: 0 when everything was readable and every candidate was 901 120 bytes; 1 when a
+path could not be read or a candidate had another size; 2 for a usage error or a `dumps.txt`
+that does not parse.

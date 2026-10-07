@@ -1,8 +1,7 @@
 # Lemmings dumps
 
 Evidence for each dump seen. CRC-32 is zlib's over the 901 120 decompressed bytes. The images
-sit in `games/lemmings/disks/` as they arrived. No `dumps.txt` exists yet, so no dump has a
-status.
+sit in `games/lemmings/disks/` as they arrived. `dumps.txt` lists the oracle's pair as `known`.
 
 ## The oracle's pair
 

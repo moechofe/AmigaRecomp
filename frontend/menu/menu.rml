@@ -1,0 +1,23 @@
+<rml>
+<head>
+	<title>Menu</title>
+	<link type="text/rcss" href="menu.rcss"/>
+	<link type="text/rcss" href="game.rcss"/>
+</head>
+<body data-model="menu">
+	<div id="banner" data-if="banner_on">{{banner}}</div>
+	<div id="panel" data-if="open">
+		<h1>{{title}}</h1>
+		<h2>Disks</h2>
+		<div class="disk" data-for="disk : disks">
+			<span class="label">{{disk.label}}</span>
+			<span class="state">{{disk.state}}</span>
+			<span class="source">{{disk.source}}</span>
+		</div>
+		<p data-if="!booted">Give the missing disks with Open…, by dropping files on this window, or as paths on the command line. ADF, ADZ, GZ and ZIP are accepted.</p>
+		<p class="message" data-for="m : messages">{{m}}</p>
+		<button data-event-click="open_file">Open…</button>
+		<button data-if="booted" data-event-click="close">Close</button>
+	</div>
+</body>
+</rml>

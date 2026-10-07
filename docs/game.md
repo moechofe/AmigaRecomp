@@ -33,8 +33,9 @@ These files are committed:
         amiga_add_game(<id>)
 
   `amiga_add_game(<id>)` compiles every `*.c` in the game folder together with the shared core
-  and frontend. It also generates `game_dumps.c` from `dumps.txt` (☐ M3) and embeds the menu
-  assets (☐ M4). Anything else the game's build needs goes after that call, in this file only.
+  and frontend. It also generates `game_dumps.c` from `dumps.txt` (☑) and embeds the menu
+  assets (☑ for the shared files; ☐ M4 for a game's own `menu/`). Anything else the game's
+  build needs goes after that call, in this file only.
 - `game.c` — defines the only exported symbol, `const struct GameDef game_def`.
 - `hack_<hackid>.c` — one file per hack. Every function in it is `static`; the file exports
   only `const struct GameHack <id>_hack_<hackid>`, which `game.c` uses.
@@ -81,7 +82,8 @@ These are local only and never committed; `.gitignore` covers them:
 ## 3. The contract `core/game.h` (☐ M4)
 
 M2 implements the subset `GameDisk {id, label, writable}` and `GameDef {id, title, disks,
-disk_count, drives, df0_cycle, df0_cycle_count, pointer_sprite}`; the rest arrives in M3/M4.
+disk_count, drives, df0_cycle, df0_cycle_count, pointer_sprite}`; M3 adds `GameDisk.identify`
+and the rest arrives in M4.
 
 The C below is the spec.
 
@@ -154,10 +156,10 @@ Runtime rules:
     - `refused`: identified, but does not work. The name field is the message shown to the
       player.
 - The CRC-32 is zlib's, over the 901 120 decompressed bytes.
-- CMake turns the file into `game_dumps.c` (☐ M3), and `tools/adf.py` reads it.
+- CMake turns the file into `game_dumps.c` (☑), and `tools/adf.py` reads it.
 - This file is the single owner of the dump list; `docs/dumps.md` holds only the evidence.
 
-## 5. How the executable accepts images (☐ M3)
+## 5. How the executable accepts images (☑)
 
 1. **Sources.** The executable takes images from four places:
     - paths on the command line;
@@ -190,7 +192,7 @@ Runtime rules:
 An ordered checklist:
 
 1. Put the images in `games/<id>/disks/`.
-2. Run `python tools/adf.py games/<id>/disks/*` (☐ M3) to group the images by CRC and
+2. Run `python tools/adf.py games/<id>/disks/*` (☑) to group the images by CRC and
    bootblock. Pick the reference dump that WinUAE will boot.
 3. Create `games/<id>/CMakeLists.txt` (item 2), a minimal `game.c` (roles and drives, no
    hacks), and `dumps.txt` listing the reference dump as `known`. Configure and build.

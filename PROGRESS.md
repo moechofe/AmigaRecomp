@@ -22,3 +22,8 @@ A number quoted here is a verification that was observed, not a target.
 - **2026-10-06** — **M1 done.** Static Windows `deuteros.exe` with WinLibs GCC 16.2.0: only
   system DLLs, and the M2 diffs reproduce exactly; `frontend/main.c` moved into the executable
   to fix the MinGW `WinMain` link. docs/runtime.md, "Windows toolchain".
+- **2026-10-07** — **M3 done.** ADF, ADZ, GZ and ZIP images from the command line, the Open…
+  dialog and remembered paths, identified by `dumps.txt` and `identify`; an unknown dump runs
+  under a banner; `test_image` passes; the untagged pair from a ZIP reproduces M2's figures
+  (81 862/81 920 and 81 920/81 920). Dropped files and Windows not observed. docs/game.md,
+  docs/runtime.md, docs/formats/adf.md.

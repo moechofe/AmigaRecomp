@@ -1,7 +1,10 @@
 #include "amiga.h"
+#include "disks.h"
 #include "game.h"
+#include "menu.h"
 #include "png.h"
 #include "script.h"
+#include "settings.h"
 #include "video.h"
 
 #include <SDL3/SDL.h>
@@ -15,6 +18,11 @@ static struct Amiga sdl_state;
 static struct Script sdl_script;
 static char sdl_script_text[1 << 16];
 static char sdl_pref[1024];
+static int sdl_booted;
+static int sdl_report_errors;
+static int sdl_fatal_shown;
+
+#define SDL_MAX_PATHS 16
 
 struct SdlOptions
 {
@@ -37,7 +45,8 @@ static int sdl_usage(void)
 {
 	fprintf(stderr,
 		"usage: %s [--headless] [--frames N] [--script FILE] [--shot-dir DIR] [--state PATH]\n"
-		"          [--pref DIR] [--dump FILE] [--no-sprites] <image.adf>...\n",
+		"          [--pref DIR] [--dump FILE] [--no-sprites] <image>...\n"
+		"images: .adf .adz .gz .zip\n",
 		game_def.id);
 	return 2;
 }
@@ -161,6 +170,9 @@ static void sdl_stats(void)
 static void sdl_report_fatal(void)
 {
 	const struct Cpu *c = &machine.cpu;
+	if(sdl_fatal_shown)
+		return;
+	sdl_fatal_shown = 1;
 	fprintf(stderr, "fatal: %s\n", machine.fatal_msg);
 	fprintf(stderr, "  PC %06X SR %04X  frame %u\n", c->pc, c->sr | (c->x << 4) | (c->n << 3) | (c->z << 2) | (c->v << 1) | c->c,
 		machine.frame_count);
@@ -296,19 +308,67 @@ static void sdl_pointer_step(const struct SdlPointer *p, SDL_Window *window, int
 	*dy = sdl_clamp(ty - py, -127, 127);
 }
 
-/* F11: the next role in the game's DF0 order. */
+/* F11: the next attached role in the game's DF0 order. */
 static void sdl_cycle_df0(void)
 {
-	uint32_t i, next = 0;
+	uint32_t i, step, at = game_def.df0_cycle_count - 1;
 	for(i = 0; i < game_def.df0_cycle_count; i++)
 		if(game_def.df0_cycle[i] == machine.drive_role[0])
-			next = (i + 1) % game_def.df0_cycle_count;
-	amiga_insert(&machine, 0, game_def.df0_cycle[next]);
-	printf("DF0: %s\n", game_def.disks[game_def.df0_cycle[next]].label);
-	fflush(stdout);
+			at = i;
+	for(step = 1; step <= game_def.df0_cycle_count; step++)
+	{
+		int role = game_def.df0_cycle[(at + step) % game_def.df0_cycle_count];
+		if(machine.disks[role].image && role != machine.drive_role[0])
+		{
+			amiga_insert(&machine, 0, role);
+			printf("DF0: %s\n", game_def.disks[role].label);
+			fflush(stdout);
+			return;
+		}
+	}
 }
 
-static int sdl_window(const struct SdlOptions *o)
+static void sdl_report_headless(int error, const char *text)
+{
+	if(error)
+	{
+		fprintf(stderr, "%s\n", text);
+		sdl_report_errors++;
+	}
+	else
+		sdl_log(text);
+}
+
+static void sdl_report_window(int error, const char *text)
+{
+	sdl_report_headless(error, text);
+	sdl_menu_message(text);
+	if(error && sdl_booted)
+		sdl_menu_show(1);
+}
+
+static void sdl_banner_window(const char *text)
+{
+	sdl_log(text);
+	sdl_menu_banner(text);
+}
+
+/* 0, or -1 with the fatal error printed. */
+static int sdl_boot(void (*banner)(const char *text))
+{
+	int i;
+	sdl_disks_attach(&machine, banner);
+	for(i = 0; i < 4; i++)
+		amiga_insert(&machine, i, game_def.drives[i]);
+	if(machine.fatal || amiga_boot(&machine))
+	{
+		sdl_report_fatal();
+		return -1;
+	}
+	return 0;
+}
+
+static int sdl_window(const struct SdlOptions *o, const char *const *paths, int path_count)
 {
 	/* 142 102 CPU cycles a frame at 7 093 790 Hz (twice the PAL colour clock). */
 	const uint64_t frame_ns = (uint64_t)AMIGA_CYCLES_PER_FRAME * 1000000000ull / (2ull * AMIGA_CCK_HZ);
@@ -319,7 +379,7 @@ static int sdl_window(const struct SdlOptions *o)
 	struct SdlPointer ptr;
 	uint64_t next;
 	uint32_t audio_read = 0;
-	int running = 1, code = 0, lmb = 0, rmb = 0;
+	int running = 1, code = 0, lmb = 0, rmb = 0, cursor_shown = -1, i;
 
 	if(!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))
 	{
@@ -350,7 +410,8 @@ static int sdl_window(const struct SdlOptions *o)
 	SDL_GL_SetSwapInterval(0);
 	if(sdl_video_init())
 		return 1;
-	SDL_HideCursor();
+	if(sdl_menu_init(window))
+		return 1;
 	ptr.inside = SDL_GetMouseFocus() == window;
 	SDL_GetMouseState(&ptr.wx, &ptr.wy);
 	spec.format = SDL_AUDIO_S16;
@@ -359,23 +420,64 @@ static int sdl_window(const struct SdlOptions *o)
 	audio = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, 0, 0);
 	if(audio)
 		SDL_ResumeAudioStreamDevice(audio);
+
+	for(i = 0; i < path_count; i++)
+		sdl_disks_offer(paths[i], SdlOfferGiven, sdl_report_window);
+	sdl_disks_offer_remembered(sdl_report_window);
+	if(sdl_disks_ready())
+	{
+		if(sdl_boot(sdl_banner_window))
+		{
+			running = 0;
+			code = 1;
+		}
+		else
+		{
+			sdl_booted = 1;
+			sdl_disks_remember();
+		}
+	}
+	else
+		sdl_menu_show(1);
+	sdl_menu_refresh(sdl_booted);
 	next = SDL_GetTicksNS();
 
 	while(running)
 	{
 		SDL_Event e;
-		int dx, dy;
+		int dx, dy, filled = 0;
 		while(SDL_PollEvent(&e))
 		{
+			int open = sdl_menu_is_open();
 			if(e.type == SDL_EVENT_QUIT)
 				running = 0;
-			else if(e.type == SDL_EVENT_WINDOW_MOUSE_LEAVE)
-				ptr.inside = 0;
-			else if(e.type == SDL_EVENT_MOUSE_MOTION)
+			else if(e.type == SDL_EVENT_DROP_FILE)
+				filled += sdl_disks_offer(e.drop.data, SdlOfferGiven, sdl_report_window);
+			else if(e.type == sdl_menu_path_event)
 			{
-				ptr.wx = e.motion.x;
-				ptr.wy = e.motion.y;
-				ptr.inside = 1;
+				filled += sdl_disks_offer(e.user.data1, SdlOfferGiven, sdl_report_window);
+				SDL_free(e.user.data1);
+			}
+			else if(e.type == SDL_EVENT_WINDOW_MOUSE_LEAVE || e.type == SDL_EVENT_MOUSE_MOTION)
+			{
+				if(e.type == SDL_EVENT_WINDOW_MOUSE_LEAVE)
+					ptr.inside = 0;
+				else
+				{
+					ptr.wx = e.motion.x;
+					ptr.wy = e.motion.y;
+					ptr.inside = 1;
+				}
+				if(open)
+					sdl_menu_event(&e);
+			}
+			else if(open)
+			{
+				if(e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && sdl_booted
+					&& (e.key.scancode == SDL_SCANCODE_F1 || e.key.scancode == SDL_SCANCODE_ESCAPE))
+					sdl_menu_show(0);
+				else
+					sdl_menu_event(&e);
 			}
 			else if(e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP)
 			{
@@ -389,8 +491,11 @@ static int sdl_window(const struct SdlOptions *o)
 			{
 				int down = e.type == SDL_EVENT_KEY_DOWN, k;
 				if(e.key.scancode == SDL_SCANCODE_F1)
-					continue;
-				if(e.key.scancode == SDL_SCANCODE_F11)
+				{
+					if(down)
+						sdl_menu_show(1);
+				}
+				else if(e.key.scancode == SDL_SCANCODE_F11)
 				{
 					if(down)
 						sdl_cycle_df0();
@@ -416,41 +521,76 @@ static int sdl_window(const struct SdlOptions *o)
 			}
 		}
 
-		if(o->script)
-			dx = dy = 0;
-		else
-			sdl_pointer_step(&ptr, window, &dx, &dy);
-		amiga_mouse(&machine, dx, dy, lmb, rmb);
-
-		if(o->script)
+		if(filled)
 		{
-			code = sdl_script_step(o);
-			if(code >= 0)
-				break;
-		}
-		if(amiga_run_frame(&machine))
-		{
-			code = 1;
-			break;
-		}
-		sdl_flush_disks();
-
-		if(audio)
-		{
-			if(machine.paula.audio_write - audio_read > AMIGA_AUDIO_FRAMES)
-				audio_read = machine.paula.audio_write;
-			while(audio_read != machine.paula.audio_write)
+			if(!sdl_booted && sdl_disks_ready())
 			{
-				uint32_t at = audio_read % AMIGA_AUDIO_FRAMES;
-				uint32_t n = machine.paula.audio_write - audio_read;
-				if(n > AMIGA_AUDIO_FRAMES - at)
-					n = AMIGA_AUDIO_FRAMES - at;
-				SDL_PutAudioStreamData(audio, machine.paula.audio[at], (int)(n * 4));
-				audio_read += n;
+				if(sdl_boot(sdl_banner_window))
+				{
+					code = 1;
+					break;
+				}
+				sdl_booted = 1;
+				sdl_disks_remember();
+				sdl_menu_show(0);
+			}
+			else if(sdl_booted)
+			{
+				sdl_disks_attach(&machine, sdl_banner_window);
+				sdl_disks_remember();
+			}
+			sdl_menu_refresh(sdl_booted);
+		}
+		if(sdl_menu_is_open())
+			lmb = rmb = 0;
+		if(sdl_menu_is_open() != cursor_shown)
+		{
+			cursor_shown = sdl_menu_is_open();
+			if(cursor_shown)
+				SDL_ShowCursor();
+			else
+				SDL_HideCursor();
+		}
+
+		if(sdl_booted && !sdl_menu_is_open())
+		{
+			if(o->script)
+				dx = dy = 0;
+			else
+				sdl_pointer_step(&ptr, window, &dx, &dy);
+			amiga_mouse(&machine, dx, dy, lmb, rmb);
+
+			if(o->script)
+			{
+				code = sdl_script_step(o);
+				if(code >= 0)
+					break;
+			}
+			if(amiga_run_frame(&machine))
+			{
+				code = 1;
+				break;
+			}
+			sdl_flush_disks();
+
+			if(audio)
+			{
+				if(machine.paula.audio_write - audio_read > AMIGA_AUDIO_FRAMES)
+					audio_read = machine.paula.audio_write;
+				while(audio_read != machine.paula.audio_write)
+				{
+					uint32_t at = audio_read % AMIGA_AUDIO_FRAMES;
+					uint32_t n = machine.paula.audio_write - audio_read;
+					if(n > AMIGA_AUDIO_FRAMES - at)
+						n = AMIGA_AUDIO_FRAMES - at;
+					SDL_PutAudioStreamData(audio, machine.paula.audio[at], (int)(n * 4));
+					audio_read += n;
+				}
 			}
 		}
 
 		sdl_video_draw(window, machine.frame);
+		sdl_menu_render(window);
 		SDL_GL_SwapWindow(window);
 
 		sdl_pace(&next, frame_ns);
@@ -458,6 +598,7 @@ static int sdl_window(const struct SdlOptions *o)
 	sdl_flush_disks();
 	if(audio)
 		SDL_DestroyAudioStream(audio);
+	sdl_menu_quit();
 	sdl_video_quit();
 	SDL_GL_DestroyContext(gl);
 	SDL_DestroyWindow(window);
@@ -465,81 +606,10 @@ static int sdl_window(const struct SdlOptions *o)
 	return code;
 }
 
-/* Read an ADF into `buf`. 0, or -1 with the message printed. */
-static int sdl_read_adf(const char *path, uint8_t *buf)
-{
-	FILE *f = fopen(path, "rb");
-	size_t n;
-	if(!f)
-	{
-		fprintf(stderr, "cannot read %s\n", path);
-		return -1;
-	}
-	n = fread(buf, 1, AMIGA_ADF_SIZE, f);
-	if(n != AMIGA_ADF_SIZE || fgetc(f) != EOF)
-	{
-		fprintf(stderr, "%s: not an 880 KB double-density ADF\n", path);
-		fclose(f);
-		return -1;
-	}
-	fclose(f);
-	return 0;
-}
-
-/* Load every role's image and attach it. 0, or -1 with the message printed. */
-static int sdl_load_images(const char *const *paths, int path_count)
-{
-	uint32_t r, wanted = 0;
-	int used = 0;
-	for(r = 0; r < game_def.disk_count; r++)
-		if(!game_def.disks[r].writable)
-			wanted++;
-	if(path_count != (int)wanted)
-	{
-		fprintf(stderr, "%s needs %u images, in this order:", game_def.title, wanted);
-		for(r = 0; r < game_def.disk_count; r++)
-			if(!game_def.disks[r].writable)
-				fprintf(stderr, " %s", game_def.disks[r].id);
-		fprintf(stderr, "\n");
-		return -1;
-	}
-	for(r = 0; r < game_def.disk_count; r++)
-	{
-		uint8_t *image = malloc(AMIGA_ADF_SIZE);
-		if(!image)
-		{
-			fprintf(stderr, "out of memory\n");
-			return -1;
-		}
-		if(!game_def.disks[r].writable)
-		{
-			if(sdl_read_adf(paths[used++], image))
-				return -1;
-		}
-		else
-		{
-			char path[1280];
-			FILE *f;
-			snprintf(path, sizeof path, "%s%s.adf", sdl_pref, game_def.disks[r].id);
-			f = fopen(path, "rb");
-			if(f)
-			{
-				fclose(f);
-				if(sdl_read_adf(path, image))
-					return -1;
-			}
-			else
-				memset(image, 0, AMIGA_ADF_SIZE);
-		}
-		amiga_attach(&machine, (int)r, image, game_def.disks[r].writable);
-	}
-	return 0;
-}
-
 int main(int argc, char **argv)
 {
 	struct SdlOptions o;
-	const char *paths[AMIGA_ROLES];
+	const char *paths[SDL_MAX_PATHS];
 	const char *pref_arg = 0;
 	char state_path[1024], shot_dir[1024];
 	int i, n, code, path_count = 0;
@@ -552,7 +622,7 @@ int main(int argc, char **argv)
 		const char *v = i + 1 < argc ? argv[i + 1] : 0;
 		if(strncmp(a, "--", 2))
 		{
-			if(path_count == AMIGA_ROLES)
+			if(path_count == SDL_MAX_PATHS)
 				return sdl_usage();
 			paths[path_count++] = a;
 		}
@@ -614,16 +684,33 @@ int main(int argc, char **argv)
 	machine.log = sdl_log;
 	if(o.no_sprites)
 		machine.sprites_enabled = 0;
-	if(sdl_load_images(paths, path_count))
+	if(sdl_disks_init(sdl_pref))
 		return 2;
-	for(i = 0; i < 4; i++)
-		amiga_insert(&machine, i, game_def.drives[i]);
-	if(machine.fatal || amiga_boot(&machine))
+	if(o.headless)
 	{
-		sdl_report_fatal();
-		return 1;
+		char missing[256];
+		for(i = 0; i < path_count; i++)
+			sdl_disks_offer(paths[i], SdlOfferGiven, sdl_report_headless);
+		if(sdl_report_errors)
+			return 2;
+		if(!sdl_disks_ready())
+		{
+			sdl_disks_missing(missing, sizeof missing);
+			fprintf(stderr, "%s is missing: %s\n", game_def.title, missing);
+			return 2;
+		}
+		if(sdl_boot(sdl_log))
+			return 1;
+		code = sdl_headless(&o);
 	}
-	code = o.headless ? sdl_headless(&o) : sdl_window(&o);
+	else
+	{
+		char settings_path[1100];
+		snprintf(settings_path, sizeof settings_path, "%ssettings.ini", sdl_pref);
+		if(sdl_settings_load(settings_path))
+			return 2;
+		code = sdl_window(&o, paths, path_count);
+	}
 	if(machine.fatal)
 		sdl_report_fatal();
 	sdl_stats();

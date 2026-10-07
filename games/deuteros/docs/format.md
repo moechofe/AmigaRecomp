@@ -103,3 +103,17 @@ the 320x256 capture area being 81 920 pixels:
 | Earth base, sprites off | 81 862 of 81 920 | inside x 13-23, y 79-90 |
 
 What causes the 58 differing pixels in that rectangle is not established here: unknown.
+
+## Identification
+
+`game.c` recognises a dump that `dumps.txt` does not list by two CRC-32 anchors (decision 006:
+CRCs and addresses, no bytes). A throwaway read of every image in `disks/` on 2026-10-07 gave
+these figures:
+
+- Disk 1, stage 2 (ADF 0x002C00-0x0041FF, 0x1600 bytes), CRC `0fa5e766`:
+    - held by the untagged Disk 1, `[a]`, `[cr SKR]`, `[cr SR]`, `[f AGA Access]`,
+      `[f IMG][a cracktro disabled]`, `[f crack IMG]` and `[f crack L.A.]`;
+    - other stage-2 CRCs do not identify: `db749c89` (Black Monks), `a2fb4c87` (`[a2]` and
+      `(1991-09)`) and `36063ce7` (SKN). M5 decides whether they should.
+- Disk 2, bootblock (ADF 0x000000-0x0003FF), CRC `e58d146a`: all 8 Disk 2 images on hand, which
+  start `DEU\0`.

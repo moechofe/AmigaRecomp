@@ -42,11 +42,11 @@ Each entry names its milestone in `games/deuteros/PLAN.md`.
 - `cmake/` (M1) — shared CMake modules. It is not a project of its own.
     - `amigarecomp.cmake` covers the dependencies, the core and frontend libraries, the
       `amiga_add_game()` function and the `tests/` targets.
-    - `dumps.cmake` (M3) and `embed.cmake` (M4) come later.
+    - `dumps.cmake` and `embed.cmake` (M3) turn `dumps.txt` into `game_dumps.c` and embed the
+      menu assets.
     - Every game's `CMakeLists.txt` includes `amigarecomp.cmake`.
-- `frontend/` (M1) — window, GL quad, audio and input. Later milestones add the RmlUi F1 menu,
-  whose shared documents live in `frontend/menu/` (M4), disk-image loading (M3) and settings
-  persistence (M4). Game-agnostic.
+- `frontend/` (M1) — window, GL quad, audio and input. M3 adds disk-image loading, `settings.ini`
+  and the RmlUi F1 menu's skeleton, whose shared documents live in `frontend/menu/`. Game-agnostic.
 - `core/` (M2) — the A500/OCS runtime: bus, scheduler, copper, Denise, blitter, Paula, the
   CIAs, Kickstart HLE, Musashi glue, input scripts, save states, and the game contract
   `game.h` (M4). It is C99 with no SDL, no OS headers, no file I/O and no `malloc`.

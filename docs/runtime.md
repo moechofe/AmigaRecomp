@@ -15,7 +15,7 @@ Build a game with the commands of `docs/game.md`, item 1; they are not repeated 
 executable is named `<id>` (`<id>.exe`) and is written to the game's build directory.
 
     <id> [--headless] [--frames N] [--script FILE] [--shot-dir DIR] [--state PATH]
-         [--pref DIR] [--dump FILE] [--no-sprites] <image.adf>...
+         [--pref DIR] [--dump FILE] [--no-sprites] <image>...
 
 | Option | Effect |
 | --- | --- |
@@ -28,13 +28,21 @@ executable is named `<id>` (`<id>.exe`) and is written to the game's build direc
 | `--dump FILE` | write the 512 KB of chip RAM to FILE at exit (failure is reported; the exit code is unchanged) |
 | `--no-sprites` | start with sprite rendering off (a script's `sprites on` turns it back on) |
 
-Positional arguments are ADF paths. They fill the game's **read-only** roles in the order of
-`game_def.disks` (`core/game.h`); the count must equal the number of read-only roles and each
-file must be exactly 901 120 bytes (80 cylinders x 2 heads x 11 sectors x 512). A **writable**
-role takes no argument: its image is `<pref><role id>.adf` if that file exists, else 901 120
-zero bytes. After every frame, and once more at exit, each writable image the game changed is
-written back to that file (a write failure is reported and the run continues). At boot every
-drive DF0-DF3 gets the role `game_def.drives[n]` names (-1: empty).
+Positional arguments are image paths, at most 16, accepted in any order: `.adf`, `.adz`, `.gz`
+and `.zip` (`docs/game.md`, item 5). Each image is identified by its CRC-32 against `dumps.txt`
+and then by the roles' `identify`, and fills the **read-only** role it names. The machine boots
+once every role in `game_def.drives[]` has an image; an unknown dump runs with a banner. A
+**writable** role takes no argument: its image is `<pref><role id>.adf` if that file exists,
+else 901 120 zero bytes. After every frame, and once more at exit, each writable image the game
+changed is written back to that file (a write failure is reported and the run continues). At
+boot every drive DF0-DF3 gets the role `game_def.drives[n]` names (-1: empty).
+
+Headless mode rejects any image it cannot use (exit 2), and neither reads nor writes
+`settings.ini`. Window mode also takes images dropped on the window, from the Disks page's
+"Open…" button, and from `<pref>settings.ini`, whose `disk.<role>` keys remember the path of
+each read-only role's image once the game has booted; with a role missing, the Disks page opens
+and the game waits. The banner shows for 10 s after boot and is also printed to stdout, as is
+every accepted image line (`<file>: <label>, <verified|known|unknown> dump`).
 
 Window mode (no `--headless`) opens a 960 x 768 window, three times the 320 x 256 frame,
 with an OpenGL 3.3 core context, and paces itself to one frame of 142 102 CPU cycles at
@@ -43,13 +51,14 @@ frontend takes:
 
 | Key | Action |
 | --- | --- |
-| F1 | swallowed, never reaches the game; the settings menu is a later milestone |
+| F1 | opens the Disks page and pauses the game; F1 or Esc closes it once the game has booted. Never reaches the game |
 | F5 / F9 | save / load the state file (*Save states*); failures print and the run goes on |
-| F11 | put the next role of `game_def.df0_cycle` in DF0 and print its label |
+| F11 | put the next role of `game_def.df0_cycle` that holds an image in DF0 and print its label |
 | F12 | write `frame-NNNNNN.png` (the frame counter, six digits) into the shot directory |
 | other keys | letters, digits, F2-F10, Space, Backspace, Tab, Return, Esc, Delete, arrows, Shift, Ctrl, Alt as Amiga raw keycodes (HRM appendix H) |
 
-The mouse is not captured: the OS cursor is hidden and, every frame, the frontend gives the
+The mouse is not captured: the OS cursor is hidden while the game runs (shown while the Disks
+page is open) and, every frame, the frontend gives the
 game's pointer the whole remaining error as counts, clamped to +/-127 a frame (unit gain,
 closed loop). The error is between the OS cursor, scaled to frame pixels, and where
 `denise_pointer()` says the game's pointer sprite is. This has not been tried interactively;
@@ -61,13 +70,15 @@ Exit codes, from `frontend/main.c`:
 | --- | --- |
 | 0 | normal end: window closed, `--frames` reached, the script ended or said `quit` |
 | 1 | a fatal runtime error (before or during the run); SDL or GL set-up failure; a `shot` whose PNG cannot be written |
-| 2 | usage error; no pref directory; unreadable script; wrong image count or an unreadable or wrong-sized image; a script error (`script error: ...`); a failed `state save` / `state load` in a script |
+| 2 | usage error; no pref directory; unreadable script; an unreadable, rejected or missing image (headless); an unreadable `settings.ini`; a script error (`script error: ...`); a failed `state save` / `state load` in a script |
 | 3 | a script timeout (`until colours` never reached) |
 
-Messages that explain exit 2 for images: `cannot read <path>`, `<path>: not an 880 KB
-double-density ADF`, and, for a wrong count, `<title> needs N images, in this order:` followed
-by the read-only role ids. A fatal runtime error prints `fatal: <message>`, then PC, SR and
-frame, then D0-D7 and A0-A7, to stderr.
+Messages that explain exit 2 for images, each on stderr: `cannot read <path>`, `<file>:
+<reason>` (`not an ADF, ADZ, GZ or ZIP`, `not an 880 KB double-density ADF`, `not a readable
+gzip stream`, `not a readable ZIP (<miniz error>)`, `holds no .adf, .adz or .gz`, `more than 16
+images`, `not a disk of <title>`, or a `refused` dump's name), and `<title> is missing: <labels>`
+when a disk that `game_def.drives[]` names is still empty. A fatal runtime error prints
+`fatal: <message>`, then PC, SR and frame, then D0-D7 and A0-A7, to stderr.
 
 Every run ends by printing, to stdout: `frames F, instructions I, cycles C, reads R, loads L`
 (frame count, interpreter instructions, CPU cycles, trackdisk reads served, distinct entries in
@@ -425,6 +436,7 @@ What `docs/game.md`, item 3, refers to. Game code uses only these; the declarati
 - `cpu_push16` / `cpu_push32 (m, v)`: push a word or longword on A7 (decrement, then write).
 - `cpu_pop16` / `cpu_pop32 (m)`: pop and return a word or longword from A7 (read, then
   increment).
+- `amiga_crc32 (p, len)`: zlib's CRC-32 of `len` host bytes; game code uses it in `identify`.
 
 ## Speed
 
