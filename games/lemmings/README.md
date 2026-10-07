@@ -56,9 +56,29 @@ needs the interactive desktop: do not touch the keyboard or the mouse while it r
     python tools/pixdiff.py --game lemmings <shot.png> games/lemmings/reference/psygnosis.png
 
 `--colours` flags any colour that is not a 12-bit OCS colour, which marks a scaled capture.
-The comparison writes its difference image to `games/lemmings/build/pixdiff/diff.png`.
+The comparison writes its difference image to `games/lemmings/build/pixdiff/diff.png`. The
+comparison of the recompiled run is:
+
+    python tools/pixdiff.py --game lemmings games/lemmings/build/shots/psygnosis.png games/lemmings/reference/psygnosis.png
 
 ## 7. Build and run the recompiled version
 
-There is nothing to build yet: this folder has no `CMakeLists.txt` and no `game.c`. This
-folder's `PLAN.md`, M2, tracks that.
+Windows (PowerShell and Git Bash are the same; the compiler is WinLibs, `docs/runtime.md`,
+"Windows toolchain"):
+
+    cmake -S games/lemmings -B games/lemmings/build/cmake -G Ninja
+    cmake --build games/lemmings/build/cmake
+
+Linux:
+
+    cmake -S games/lemmings -B games/lemmings/build/cmake-linux -G Ninja
+    cmake --build games/lemmings/build/cmake-linux
+
+Headless, with `scripts/psygnosis.input` (it writes `games/lemmings/build/shots/psygnosis.png`
+once the run reaches the owl):
+
+    games/lemmings/build/cmake/lemmings.exe --headless --shot-dir games/lemmings/build/shots --script games/lemmings/scripts/psygnosis.input "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR].adf" "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 2 of 2)[cr SR].adf"
+
+On Linux, use `games/lemmings/build/cmake-linux/lemmings`. Today the run stops at the
+cracktro's exit: `fatal: OpenLibrary("intuition.library") is not implemented`. This folder's
+`PLAN.md`, M2, has the state.

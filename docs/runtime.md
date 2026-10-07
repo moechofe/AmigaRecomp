@@ -76,6 +76,25 @@ called, in the order exec, graphics, trackdisk, input. `shot` prints `shot <path
 colours)`, and a runtime log line `load N: DFn=<role> ADF 0x<offset> +0x<length> -> RAM
 0x<address>` is printed for every trackdisk read.
 
+### Windows toolchain
+
+Observed 2026-10-06 on Windows 11 (build 26200), building `games/deuteros`: WinLibs GCC 16.2.0
+(MinGW-w64, x86_64, UCRT runtime, POSIX threads; winget id `BrechtSanders.WinLibs.POSIX.UCRT`),
+its bundled CMake 4.4.2 and Ninja 1.13.2, Python 3.14 and Git. Only GCC has built the project:
+`cmake/amigarecomp.cmake` passes GCC options (`-Wextra`, `-w`, `-static`).
+
+- winget adds WinLibs' `mingw64\bin` to the user `PATH`. A terminal opened before the install
+  does not see it, and `tools/doctor.py` then reports `[--]  C compiler`.
+- The first configure cloned the five dependencies into the root `build/deps/` (182 MB) in
+  170 s; the first build ran 555 steps in about 140 s; the build tree is 234 MB.
+- The executable is linked `-static` and is a console-subsystem program, so its stdout and
+  stderr reach the terminal. `objdump -p <id>.exe` lists only these DLLs: ADVAPI32, GDI32,
+  IMM32, KERNEL32, ole32, OLEAUT32, SETUPAPI, SHELL32, USER32, VERSION, WINMM, and the
+  `api-ms-win-crt-*` forwarders of the Universal CRT, which is part of Windows 10 and later.
+- `frontend/main.c` is compiled into each executable instead of `amiga_frontend`. Kept in the
+  archive, it is never pulled in on MinGW and the link fails with `undefined reference to
+  'WinMain'`; the comment in `cmake/amigarecomp.cmake` says why.
+
 ## Input scripts
 
 A script is text, one directive per line. `#` starts a comment that runs to the end of the line
@@ -175,8 +194,10 @@ PAL, derived from the CPU cycle counter (`core/sched.c`):
   `../proof/doc.agent/recomp.md`, "Timing model and its simplifications". The game itself is in
   [`games/deuteros/docs/format.md`](../games/deuteros/docs/format.md).
 - **The blitter and the disk are instant**: a blit finishes when BLTSIZE is written (BBUSY
-  reads 0), and a trackdisk transfer lands in RAM before the call returns. No DMA contention:
-  the CPU never waits for bitplane, copper, sprite or blitter DMA.
+  reads 0), a trackdisk transfer lands in RAM before the call returns, and so does a hardware
+  disk DMA: the second DSKLEN write copies the words and raises DSKBLK at once (the rotation
+  position is `amiga_now / 227 % 6250` words, so a WORDSYNC scan starts there). No DMA
+  contention: the CPU never waits for bitplane, copper, sprite or blitter DMA.
 - The copper runs at colour-clock granularity.
 - **Lores only.** Hires, HAM and dual playfield are logged once and drawn as lores.
 - **Unmeasured: the first line of sprite DMA.** `DENISE_SPRITE_LINE` (`core/denise.c`) is 25,
@@ -261,6 +282,31 @@ non-interlaced lores ViewPort; other modes or a horizontal RxOffset are fatal.
 plus the commands below, reached through `DoIO` / `SendIO`.
 
 **input.device** (`core/hle_input.c`): -30 BeginIO and -36 AbortIO, plus the commands below.
+
+### Floppy hardware
+
+`core/disk.c`, for a loader that drives Paula and the CIAs itself. A disk is its ADF; every
+track is encoded to MFM on each transfer (no cache): 11 sectors of 544 words, then a gap, 6250
+words a revolution (200 ms at 32 us a word). Layout per the ADF FAQ (Laurent Clevy), "MFM
+track format"; registers per the HRM, "Disk controller" chapter and appendix F.
+
+- `DSKPTH/L`, `DSKSYNC` and `DSKLEN` (0x020, 0x022, 0x07E, 0x024). A read starts when DSKLEN
+  is written twice with bit 15 set. Fatal: a write transfer (bit 14), DMACON without DMAEN and
+  DSKEN, not exactly one drive selected, an empty drive, a stopped motor, WORDSYNC with no
+  sync word on the track. FAST clear is logged once and read as MFM. WORDSYNC raises DSKSYN
+  and starts the copy after the sync word; DSKBLK is raised when the copy ends.
+- CIA-B PRB: /SELn falling latches the motor from /MTR; the rising edge of /STEP moves the
+  head one cylinder (DIR high: toward 0; limits 0 and 79); /SIDE selects the head. The
+  trackdisk read leaves the head on the cylinder it read.
+- CIA-A PRA bits 2-5 (`/CHNG`, `/WPRO`, `/TK0`, `/RDY`) come from the selected drives and
+  read high with none selected. `/CHNG` is low for an empty drive and after an insert once
+  booted, and a step clears it. A role without a writable image reads write-protected.
+- The index pulse is CIA-B's /FLAG once a revolution while a selected drive has a disk and its
+  motor on. DSKBYTR still reads 0; the transfer is not timed.
+- Evidence: a throwaway harness drove these registers on Disk 1 and decoded RAM as a loader
+  does (sync, header and data checksums, data against the ADF) for tracks 0, 40 and 41, after
+  20 steps: all sectors exact. No game has yet made a disk DMA; the step edge is not verified
+  against the HRM.
 
 ### trackdisk
 

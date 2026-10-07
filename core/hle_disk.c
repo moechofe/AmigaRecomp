@@ -59,6 +59,7 @@ static void hle_td_read(struct Amiga *m, uint32_t io, int drive, uint32_t off, u
 	hle_td_record(m, drive, off, len, dest);
 	m->load_reads++;
 	mem_dma_load(m, dest, img + off, len);
+	m->floppy.cyl[drive] = (uint8_t)(off / (2 * 11 * 512));
 	if(m->log)
 		amiga_logf(m, "load %d: DF%d=%s ADF 0x%06X +0x%05X -> RAM 0x%06X", m->load_reads, drive,
 			game_def.disks[role].id, off, len, dest);
@@ -176,6 +177,7 @@ void amiga_insert(struct Amiga *m, int drive, int role)
 		return;
 	}
 	m->drive_role[drive] = (int8_t)role;
+	m->floppy.changed[drive] = (uint8_t)(role < 0 || m->booted);
 	if(m->booted)
 	{
 		m->hle.change_count[drive]++;

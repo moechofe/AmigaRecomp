@@ -33,6 +33,7 @@ static void sched_line_end(struct Amiga *m)
 {
 	denise_end_line(m);
 	cia_tod_tick(m, &m->cia_b);
+	disk_line(m);
 }
 
 void sched_catch_up(struct Amiga *m, uint64_t target)

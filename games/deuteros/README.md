@@ -10,7 +10,18 @@ untagged `Disk 1 of 2` and `Disk 2 of 2` pair.
 
 ## 1. Check the machine
 
+Windows needs Python ≥ 3.11, Git and WinLibs GCC, which also brings CMake and Ninja. Install
+WinLibs once, from PowerShell, then open a new terminal so that its `PATH` entry is seen:
+
+    winget install BrechtSanders.WinLibs.POSIX.UCRT
+
+`docs/runtime.md`, "Windows toolchain", has the versions that built this game. Then, on any
+system:
+
     python tools/doctor.py
+
+Every Toolchain line must be `[ok]`. On Windows, `[--]  C compiler` right after the install
+means the terminal was opened before it.
 
 ## 2. Unpack the pair
 
@@ -59,6 +70,21 @@ Linux (`deuteros`):
 
     cmake -S games/deuteros -B games/deuteros/build/cmake-linux -G Ninja
     cmake --build games/deuteros/build/cmake-linux
+
+The first configure clones the dependencies into the root `build/deps/`, which takes minutes;
+later build trees reuse them.
+
+Check that the Windows executable needs only system DLLs (`objdump` comes with WinLibs):
+
+PowerShell:
+
+    objdump -p games\deuteros\build\cmake\deuteros.exe | Select-String "DLL Name"
+
+Git Bash:
+
+    objdump -p games/deuteros/build/cmake/deuteros.exe | grep "DLL Name"
+
+The expected list is in `docs/runtime.md`, "Windows toolchain".
 
 ## 7. Run
 

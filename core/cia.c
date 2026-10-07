@@ -20,6 +20,13 @@ void cia_reassert(struct Amiga *m)
 	cia_assert(m, &m->cia_b);
 }
 
+/* The index pulse on CIA-B's /FLAG (ICR bit 4). */
+void cia_flag(struct Amiga *m)
+{
+	m->cia_b.icr |= 0x10;
+	cia_assert(m, &m->cia_b);
+}
+
 /* Counts `ticks` down; returns how many times the timer underflowed. */
 static uint32_t cia_count(struct CiaTimer *t, uint32_t ticks)
 {
@@ -103,9 +110,9 @@ static uint8_t cia_port_a(const struct Amiga *m, const struct Cia *c)
 {
 	if(c == &m->cia_a)
 	{
-		/* /FIR1 7, /FIR0 6 (left mouse), /RDY 5, /TK0 4, /WPRO 3, /CHNG 2: a disk is in,
-		 * ready, not at track 0, not write-protected, not changed. */
-		uint8_t in = (uint8_t)(0x9C | (m->paula.lmb ? 0 : 0x40));
+		/* /FIR1 7 (right button, not wired), /FIR0 6 (left mouse); /CHNG 2, /WPRO 3, /TK0 4 and
+		 * /RDY 5 come from the selected drives (disk_status); bits 1 and 0 are outputs. */
+		uint8_t in = (uint8_t)((0xC0 & ~(m->paula.lmb ? 0x40 : 0)) | disk_status(m) | 0x03);
 		return (uint8_t)((in & ~c->ddra) | (c->pra & c->ddra));
 	}
 	return (uint8_t)((0xFF & ~c->ddra) | (c->pra & c->ddra));
@@ -153,8 +160,26 @@ static void cia_write_tod(struct Cia *c, int shift, uint8_t v)
 	*t = (*t & ~(0xFFu << shift)) | ((uint32_t)v << shift);
 }
 
+/* CIA-B PRB as the drives see it: an input pin reads high. */
+static uint8_t cia_b_pins(const struct Cia *c)
+{
+	return (uint8_t)((c->prb & c->ddrb) | (uint8_t)~c->ddrb);
+}
+
 void cia_write(struct Amiga *m, struct Cia *c, int reg, uint8_t v)
 {
+	if(c == &m->cia_b && (reg == 0x1 || reg == 0x3))
+	{
+		uint8_t old_pins = cia_b_pins(c), new_pins;
+		if(reg == 0x1)
+			c->prb = v;
+		else
+			c->ddrb = v;
+		new_pins = cia_b_pins(c);
+		if(old_pins != new_pins)
+			disk_prb_changed(m, old_pins, new_pins);
+		return;
+	}
 	switch(reg)
 	{
 	case 0x0: c->pra = v; return;

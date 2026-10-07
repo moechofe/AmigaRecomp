@@ -54,6 +54,7 @@ void state_restore(struct Amiga *m, const struct Amiga *from)
 	m->paula = from->paula;
 	m->cia_a = from->cia_a;
 	m->cia_b = from->cia_b;
+	m->floppy = from->floppy;
 	m->hle = from->hle;
 	m->load_count = from->load_count;
 	m->load_reads = from->load_reads;

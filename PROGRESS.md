@@ -19,3 +19,6 @@ A number quoted here is a verification that was observed, not a target.
   oracle.uae.in` loads clean, and `scripts/boot.dbg` takes Psygnosis and DMA Design shots that
   agree 81 920/81 920 across runs, plus the title menu. Every dump on hand has an intro; F7 is
   the Amiga's left mouse button for crossing it. docs/emulator.md, games/lemmings/docs/dumps.md.
+- **2026-10-06** — **M1 done.** Static Windows `deuteros.exe` with WinLibs GCC 16.2.0: only
+  system DLLs, and the M2 diffs reproduce exactly; `frontend/main.c` moved into the executable
+  to fix the MinGW `WinMain` link. docs/runtime.md, "Windows toolchain".

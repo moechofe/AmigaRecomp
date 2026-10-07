@@ -147,11 +147,9 @@ void custom_write(struct Amiga *m, uint32_t reg, uint16_t v, int from_copper)
 	{
 	case 0x020:
 	case 0x022:
+	case 0x024:
 	case 0x07E:
-		return;
-	case REG_DSKLEN:
-		if(v & 0x8000)
-			amiga_fatal(m, "hardware disk DMA (DSKLEN 0x%04X) is not implemented", v);
+		disk_write_reg(m, reg, v);
 		return;
 	case 0x02A:
 	case 0x02C:

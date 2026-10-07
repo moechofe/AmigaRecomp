@@ -158,6 +158,17 @@ struct Cia
 	uint32_t eclock_frac;
 };
 
+/* Floppy drives and Paula's disk DMA (core/disk.c). */
+struct Floppy
+{
+	uint32_t dskpt;
+	uint16_t dsklen, dsksync;
+	uint8_t cyl[AMIGA_DRIVES];     /* 0-79 */
+	uint8_t motor[AMIGA_DRIVES];   /* latched when /SELn falls */
+	uint8_t changed[AMIGA_DRIVES]; /* 1: /CHNG low */
+	uint64_t index_rev;            /* the last revolution number that pulsed the index */
+};
+
 /* A disk image a game role holds. rw is the same buffer as image for a writable role, else
  * NULL. */
 struct AmigaDisk
@@ -223,6 +234,7 @@ struct Amiga
 	struct Blitter blit;
 	struct Paula paula;
 	struct Cia cia_a, cia_b;
+	struct Floppy floppy;
 	struct Hle hle;
 
 	struct AmigaDisk disks[AMIGA_ROLES];
@@ -308,6 +320,13 @@ void cia_run(struct Amiga *m, uint32_t cpu_cycles);
 void cia_tod_tick(struct Amiga *m, struct Cia *c);
 void cia_frame(struct Amiga *m);
 void cia_reassert(struct Amiga *m);
+void cia_flag(struct Amiga *m);
+
+/* disk.c */
+void disk_write_reg(struct Amiga *m, uint32_t reg, uint16_t v);
+void disk_prb_changed(struct Amiga *m, uint8_t old_pins, uint8_t new_pins);
+uint8_t disk_status(const struct Amiga *m);
+void disk_line(struct Amiga *m);
 
 /* hle_*.c */
 int hle_dispatch(struct Amiga *m);

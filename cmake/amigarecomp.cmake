@@ -118,6 +118,10 @@ set(RMLUI_GL3_SOURCE "${rmlui_SOURCE_DIR}/Backends/RmlUi_Renderer_GL3.cpp")
 # without libGL.
 set_source_files_properties("${RMLUI_GL3_SOURCE}" PROPERTIES COMPILE_OPTIONS -w)
 file(GLOB AMIGA_FRONTEND_SOURCES CONFIGURE_DEPENDS "${AMIGA_ROOT}/frontend/*.c" "${AMIGA_ROOT}/frontend/*.cpp")
+# main.c is compiled into each executable: on MinGW it defines only SDL's WinMain, which nothing
+# references before libmingw32, so the linker would never pull it out of an archive.
+set(AMIGA_FRONTEND_MAIN "${AMIGA_ROOT}/frontend/main.c")
+list(REMOVE_ITEM AMIGA_FRONTEND_SOURCES "${AMIGA_FRONTEND_MAIN}")
 add_library(amiga_frontend STATIC ${AMIGA_FRONTEND_SOURCES} "${RMLUI_GL3_SOURCE}")
 target_include_directories(amiga_frontend PUBLIC
 	"${AMIGA_ROOT}/frontend"
@@ -130,7 +134,7 @@ amiga_warnings(amiga_frontend)
 
 function(amiga_add_game id)
 	file(GLOB game_sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.c")
-	add_executable(${id} ${game_sources})
+	add_executable(${id} ${game_sources} "${AMIGA_FRONTEND_MAIN}")
 	target_link_libraries(${id} PRIVATE amiga_frontend)
 	set_target_properties(${id} PROPERTIES LINKER_LANGUAGE CXX)
 	amiga_warnings(${id})

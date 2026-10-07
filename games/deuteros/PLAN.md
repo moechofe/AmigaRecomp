@@ -12,9 +12,9 @@ for this file. Paths are from the `amigarecomp/` root, and the command lines are
 | WinUAE config | `tools/emulator.py` | `[x]` |
 | References | `tools/capture.py` | `[~]` copied from `../proof` |
 | Build, Linux | `cmake … build/cmake-linux` | `[x]` M1 |
-| Build, Windows | `cmake … build/cmake` | `[ ]` M1 |
-| Run headless with a script | `deuteros --headless --script …` | `[x]` M2, Linux |
-| Compare with WinUAE | `tools/pixdiff.py` | `[x]` M2, Linux |
+| Build, Windows | `cmake … build/cmake` | `[x]` M1 |
+| Run headless with a script | `deuteros --headless --script …` | `[x]` M2, Linux and Windows |
+| Compare with WinUAE | `tools/pixdiff.py` | `[x]` M2, Linux and Windows |
 
 ## Milestones
 
@@ -32,7 +32,7 @@ for this file. Paths are from the `amigarecomp/` root, and the command lines are
 
 ### M1 — Toolchain, static link, one executable per game
 
-- `[~]`
+- `[x]`
     - `cmake/amigarecomp.cmake` is a module that each game's `CMakeLists.txt` includes. There is
       no root `CMakeLists.txt`. The module is guarded by `include_guard(GLOBAL)` and does the
       following:
@@ -82,7 +82,17 @@ for this file. Paths are from the `amigarecomp/` root, and the command lines are
           `musashi-src`, `sdl3-src`, `freetype-src`, `rmlui-src`, `miniz-src` and a `.pin` file
           for each. miniz tag `3.1.2` exists, so it is the pin.
         - `python tools/doctor.py` prints only `[ok]` and exits 0.
-        - Windows `objdump -p … deuteros.exe | grep "DLL Name"`: pending, author.
+    - *Observed:* 2026-10-06, Windows 11, from `games/deuteros/build/cmake` (Release, WinLibs
+      GCC 16.2.0, UCRT; `docs/runtime.md`, "Windows toolchain").
+        - The first link failed with `undefined reference to 'WinMain'`; `frontend/main.c` is
+          now compiled into the executable instead of `amiga_frontend`.
+        - `objdump -p … deuteros.exe | grep "DLL Name"` lists only Windows system DLLs and the
+          `api-ms-win-crt-*` UCRT forwarders: no `libstdc++-6`, `libgcc_s_*`,
+          `libwinpthread-1` or `SDL3`.
+        - Headless `menu.input`: 81 920 of 81 920, EXACT; `earth-base.input`: 81 862 of
+          81 920, every difference inside x 13–23, y 79–90; both exit 0, as on Linux.
+        - Window mode with `menu.input` opens the window, runs paced (369 frames in 9.7 s wall)
+          and its shot is 81 920 of 81 920. The window was not looked at.
 
 ### M2 — Runtime under Musashi, and the oracle
 
@@ -238,8 +248,8 @@ for this file. Paths are from the `amigarecomp/` root, and the command lines are
 
 - `[ ]`
     - Run `adf.py` and both scripts on every readable image in `games/deuteros/disks/`.
-    - Implement whatever the runtime lacks, by evidence. Examples: hardware disk DMA with MFM
-      encoding, if a loader writes `DSKLEN`; the hooked-bootblock path.
+    - Implement whatever the runtime lacks, by evidence, for example the hooked-bootblock
+      path. Hardware disk DMA is `lemmings M2`.
     - Record each dump in `dumps.txt` and `docs/dumps.md`.
     - *Done when:* every readable image has the status `verified`, `known` or `refused` (with
       its reason), and none ends in an unexplained fatal.
@@ -267,7 +277,7 @@ For the author.
 | Risk | Answer |
 | --- | --- |
 | HLE coverage for each new game | Unimplemented calls stop loudly, and the set grows by evidence |
-| A loader that uses hardware disk DMA (M5) | MFM-encode the ADF's standard sectors. An ADF can only hold standard-format tracks, so that is enough |
+| A loader that uses hardware disk DMA (lemmings M2) | MFM-encode the ADF's standard sectors. An ADF can only hold standard-format tracks, so that is enough |
 | The simplified timing model breaks | The proof measured 454 cycles a line and 313 lines a frame. If a diff shows tearing, give the blitter a duration |
 | Anchors fail on cracked dumps | The hack stays inactive and is shown as such (decision 006) |
 
