@@ -7,17 +7,86 @@
 <body data-model="menu">
 	<div id="banner" data-if="banner_on">{{banner}}</div>
 	<div id="panel" data-if="open">
-		<h1>{{title}}</h1>
-		<h2>Disks</h2>
-		<div class="disk" data-for="disk : disks">
-			<span class="label">{{disk.label}}</span>
-			<span class="state">{{disk.state}}</span>
-			<span class="source">{{disk.source}}</span>
+		<div id="head">
+			<h1>{{title}}</h1>
+			<div id="nav">
+				<button data-class-current="page == 'about'" data-event-click="show_page('about')">About</button>
+				<button data-class-current="page == 'disks'" data-event-click="show_page('disks')">Disks</button>
+				<button data-if="hacks.size > 0" data-class-current="page == 'hacks'" data-event-click="show_page('hacks')">Hacks</button>
+				<button data-class-current="page == 'settings'" data-event-click="show_page('settings')">Settings</button>
+			</div>
 		</div>
-		<p data-if="!booted">Give the missing disks with Open…, by dropping files on this window, or as paths on the command line. ADF, ADZ, GZ and ZIP are accepted.</p>
-		<p class="message" data-for="m : messages">{{m}}</p>
-		<button data-event-click="open_file">Open…</button>
-		<button data-if="booted" data-event-click="close">Close</button>
+		<div id="page">
+			<div data-if="page == 'about'">
+				<p class="lead">Your own copy of {{title}}, running natively on this computer.</p>
+				<div class="actions">
+					<button class="primary" data-event-click="open_disk">Open Disk…</button>
+					<button data-if="booted" data-event-click="close">Resume</button>
+					<button data-if="booted" data-event-click="state_save">Quick save</button>
+					<button data-if="booted" data-event-click="state_load">Quick load</button>
+					<button data-event-click="quit">Quit</button>
+				</div>
+				<p data-if="!booted">To start, choose your disk images with Open Disk…, or drop them on this window. ADF, ADZ, GZ and ZIP files are accepted, and one ZIP may hold every disk. The Disks page shows which disks are still missing.</p>
+				<p class="message" data-for="m : messages">{{m}}</p>
+				<div class="about" data-rml="about"></div>
+				<h2>AmigaRecomp</h2>
+				<p>AmigaRecomp runs Amiga games natively, one program per game. The game's own 68000 code runs on the Musashi 68000 interpreter and a recreated Amiga chipset: copper, bitplanes, sprites, blitter, CIAs and Paula audio. Kickstart 1.3 is replaced by C code, so no ROM is needed.</p>
+				<p>The project contains no game code and no game data. Everything the game needs is read from the disk images you give it, and they stay on this computer. Hacks are optional changes to small behaviours; with every hack set to original, the game behaves as the original.</p>
+				<h2>Keys</h2>
+				<div class="key"><span class="label">F1</span><span class="state">this menu; F1 or Esc closes it once the game runs</span></div>
+				<div class="key"><span class="label">F5 / F9</span><span class="state">quick save / quick load</span></div>
+				<div class="key"><span class="label">F12</span><span class="state">screenshot of the game screen</span></div>
+			</div>
+			<div data-if="page == 'disks'">
+				<h2>Game disks</h2>
+				<div class="disk" data-for="disk, i : disks">
+					<span class="label">{{disk.label}}</span>
+					<span class="state">{{disk.state}}</span>
+					<span class="source" data-if="disk.drive != ''">{{disk.drive}}</span>
+					<span class="source">{{disk.source}}</span>
+					<button data-if="disk.writable" data-event-click="import_disk(i)">Load save disk…</button>
+					<p class="hint" data-if="disk.writable">Copies the ADF you choose into this file; your file is not changed.</p>
+				</div>
+				<p data-if="!booted">Give the missing disks with Open Disk…, by dropping files on this window, or as paths on the command line. ADF, ADZ, GZ and ZIP are accepted.</p>
+				<div class="actions"><button class="primary" data-event-click="open_disk">Open Disk…</button></div>
+				<p class="message" data-for="m : messages">{{m}}</p>
+				<h2>Drives</h2>
+				<div class="drive" data-for="d, n : drives">
+					<span class="label">{{d.name}}</span>
+					<span class="state" data-if="!booted">{{d.disk}}</span>
+					<span class="toggle" data-if="booted"><button data-for="c : drive_choices" data-class-chosen="c.role == d.role" data-event-click="insert(n, c.role)">{{c.label}}</button></span>
+				</div>
+				<p class="hint" data-if="!booted">The game starts with these disks in its drives. Once it runs, choose the disk in each drive here.</p>
+				<p class="hint" data-if="booted">Choosing a disk that is in another drive swaps the two drives' disks.</p>
+				<h2>Save states</h2>
+				<p data-if="!booted">Save states can be used once the game has started.</p>
+				<div class="actions" data-if="booted">
+					<button data-event-click="state_save">Quick save</button>
+					<button data-event-click="state_load">Quick load</button>
+					<button data-event-click="state_save_as">Save state as…</button>
+					<button data-event-click="state_load_from">Load state…</button>
+				</div>
+				<p class="hint" data-if="booted">Quick save and quick load use the state file, as F5 and F9 do. A state loads only with the disks it was saved with, and loading one never rolls back the save disk.</p>
+			</div>
+			<div data-if="page == 'hacks'">
+				<p>Hacks change small behaviours of the game: original keeps the game's own behaviour, modern changes it. A change applies at once and is remembered.</p>
+				<div class="option" data-for="h, i : hacks" data-class-mismatch="h.status == 'mismatch'">
+					<span class="name">{{h.label}}</span>
+					<span class="toggle" data-if="h.type == 'bool'"><button data-class-chosen="h.value == 0" data-event-click="choose('hack', i, 0)">original</button><button data-class-chosen="h.value == 1" data-event-click="choose('hack', i, 1)">modern</button></span>
+					<span data-if="h.type == 'choice'"><button data-for="c, j : h.choices" data-class-chosen="j == h.value" data-event-click="choose('hack', i, j)">{{c}}</button></span>
+					<p class="hint">{{h.hint}}</p>
+					<p class="hint" data-if="h.status == 'mismatch'">not compatible with this dump</p>
+				</div>
+			</div>
+			<div data-if="page == 'settings'">
+				<div class="option" data-for="s, i : settings">
+					<span class="name">{{s.label}}</span>
+					<button data-if="s.type == 'bool'" data-event-click="choose('setting', i, s.value == 0 ? 1 : 0)">{{s.value == 0 ? 'off' : 'on'}}</button>
+					<span data-if="s.type == 'choice'"><button data-for="c, j : s.choices" data-class-chosen="j == s.value" data-event-click="choose('setting', i, j)">{{c}}</button></span>
+					<p class="hint">{{s.hint}}</p>
+				</div>
+			</div>
+		</div>
 	</div>
 </body>
 </rml>

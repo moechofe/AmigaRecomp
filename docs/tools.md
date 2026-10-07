@@ -185,3 +185,21 @@ An unreadable path, an unsupported extension, or a bad gzip or ZIP prints
 Exit status: 0 when everything was readable and every candidate was 901 120 bytes; 1 when a
 path could not be read or a candidate had another size; 2 for a usage error or a `dumps.txt`
 that does not parse.
+
+## `anchor.py`
+
+    python tools/anchor.py <ramdump> --addr 0x023FC6 --len 8
+    python tools/anchor.py <dump> --addr 0x0C0000 --len 4 --base 0x0C0000
+
+Read-only. It prints the `struct GameAnchor` initialiser (`docs/game.md` item 3) of one range of a
+RAM dump, such as the 512 KB chip RAM that `--dump` writes:
+
+    {0x023FC6u, 8, 0x1A2B3C4Du}
+
+The CRC is zlib's CRC-32 of `dump[addr - base : addr - base + len]`. `--addr` and `--base` take
+decimal or `0x` hex. `--base` is the guest address of the dump's first byte, default 0; use it for
+dumps of other regions, such as what `capture.py --cmd` writes. `--len` is at least 1.
+
+An unreadable dump prints `error: <path>: <reason>` and exits 1. A range outside the dump prints
+`error: 0x<addr> + <len> is outside <path> (base 0x<base>, <size> bytes)` and exits 1. A usage
+error exits 2.

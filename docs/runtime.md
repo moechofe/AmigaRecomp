@@ -35,13 +35,12 @@ once every role in `game_def.drives[]` has an image; an unknown dump runs with a
 **writable** role takes no argument: its image is `<pref><role id>.adf` if that file exists,
 else 901 120 zero bytes. After every frame, and once more at exit, each writable image the game
 changed is written back to that file (a write failure is reported and the run continues). At
-boot every drive DF0-DF3 gets the role `game_def.drives[n]` names (-1: empty).
+boot every drive DF0-DF3 gets the role `game_def.drives[n]` names (-1: empty). Once booted, the Disks page's Drives section puts any attached disk, or none, in each drive DF0-DF(`drive_count`-1); a disk taken from another drive swaps with the chosen drive's disk, and each changed drive prints `DFn: <label>` or `DFn: empty`.
 
 Headless mode rejects any image it cannot use (exit 2), and neither reads nor writes
-`settings.ini`. Window mode also takes images dropped on the window, from the Disks page's
-"Open…" button, and from `<pref>settings.ini`, whose `disk.<role>` keys remember the path of
-each read-only role's image once the game has booted; with a role missing, the Disks page opens
-and the game waits. The banner shows for 10 s after boot and is also printed to stdout, as is
+`settings.ini`; every hack is 0 until a script's `hack` line sets it. Window mode also takes images dropped on the window, from the menu's "Open Disk…" button (About and Disks pages), and from `<pref>settings.ini`, whose `disk.<role>` keys remember the path of
+each read-only role's image once the game has booted; with a role missing, the menu opens on its
+About page, which says so (the Disks page lists what is missing) and the game waits. The banner shows for 10 s after boot and is also printed to stdout, as is
 every accepted image line (`<file>: <label>, <verified|known|unknown> dump`).
 
 Window mode (no `--headless`) opens a 960 x 768 window, three times the 320 x 256 frame,
@@ -51,18 +50,30 @@ frontend takes:
 
 | Key | Action |
 | --- | --- |
-| F1 | opens the Disks page and pauses the game; F1 or Esc closes it once the game has booted. Never reaches the game |
+| F1 | opens the menu (pages About, Disks, Settings and, when the game has hacks, Hacks) and pauses the game; F1 or Esc closes it once the game has booted. Never reaches the game |
 | F5 / F9 | save / load the state file (*Save states*); failures print and the run goes on |
-| F11 | put the next role of `game_def.df0_cycle` that holds an image in DF0 and print its label |
 | F12 | write `frame-NNNNNN.png` (the frame counter, six digits) into the shot directory |
 | other keys | letters, digits, F2-F10, Space, Backspace, Tab, Return, Esc, Delete, arrows, Shift, Ctrl, Alt as Amiga raw keycodes (HRM appendix H) |
 
-The mouse is not captured: the OS cursor is hidden while the game runs (shown while the Disks
-page is open) and, every frame, the frontend gives the
+By default the mouse is not captured: the OS cursor is hidden while the game runs (shown while
+the menu is open) and, every frame, the frontend gives the
 game's pointer the whole remaining error as counts, clamped to +/-127 a frame (unit gain,
 closed loop). The error is between the OS cursor, scaled to frame pixels, and where
-`denise_pointer()` says the game's pointer sprite is. This has not been tried interactively;
-only the code exists. With `--script` in window mode the script alone moves the pointer.
+`denise_pointer()` says the game's pointer sprite is. With the setting `mouse_capture` on, the
+window grabs the mouse (SDL relative mode) and the motion, scaled to frame pixels, is given to the
+game's pointer as counts instead; opening the menu releases it. Neither mode has been tried
+interactively; only the code exists. With `--script` in window mode the script alone moves the
+pointer, and nothing is captured.
+
+### Settings and hacks
+
+The menu's Settings page lists the frontend's own settings (`frontend/settings.c`,
+`sdl_settings[]`: `mouse_capture`, bool, default off) and its Hacks page lists
+`game_def.hacks`. Each toggle is applied at once and stored in `<pref>settings.ini`, which is
+saved when a value changes: a setting under its id (`mouse_capture=1`), a hack under
+`hack.<hackid>` (`hack.keep_pointer=1`). A bool is `0` or `1`; a choice is its choice id. A missing
+key, or a value that is neither, gives the default and prints `settings.ini: ignoring
+<key>=<value>`. With `--script` in window mode the hack keys are not applied.
 
 Exit codes, from `frontend/main.c`:
 
@@ -121,6 +132,7 @@ start at once, within the same frame boundary. The grammar, from `core/script.c`
 | `click [X Y]` | with coordinates: 8 frames of motion of -100,-100 per frame (the pointer is parked in the top-left corner), then motion of at most 100 counts a frame until X, Y counts have been given, then the left button held for 3 frames, then one frame released. Bare `click`: only the hold and release, where the pointer is |
 | `mouse DX DY` | one frame of motion DX, DY counts (buttons unchanged) |
 | `disk dfN ROLE` | put the role ROLE (an id from `game_def.disks`) in drive DFN (N = 0-3); instant, takes no frame |
+| `hack ID on\|off\|CHOICE` | set the hack ID of `game_def.hacks` (`on` is 1, `off` 0; a choice hack takes one of its choice ids); instant, takes no frame. Headless runs start with every hack at 0 |
 | `sprites on\|off` | sprite rendering; any argument but `on` means off |
 | `state save` / `state load` | write or restore the state file, as F5 / F9 |
 | `shot NAME` | write `<shot-dir>/NAME.png` (the 320 x 256 frame), instant |
@@ -133,7 +145,9 @@ a timeout (exit 3); or an error (exit 2). Errors name the line and the line's te
 `line L: expected \`until colours <n> [<timeout>]\``, `unknown key`, `expected \`disk df<n>
 <role>\``, `expected \`state save|load\``, `unknown directive`; the two `disk` errors are the
 exceptions, with no line number: `disk: unknown drive <arg>` (the drive is not `df0`-`df3`)
-and `disk: unknown role <arg>`. A misspelt or incomplete `wait`, `key`, `mouse`, `sprites` or
+and `disk: unknown role <arg>`; so are the `hack` errors: `hack: unknown hack <id>`, `hack: <id>
+takes on or off`, `hack: <id> has no choice <arg>`. A `hack` with fewer than two arguments is
+`line L: expected \`hack <hackid> on|off|<choice id>\``. A misspelt or incomplete `wait`, `key`, `mouse`, `sprites` or
 `shot` is `unknown directive` (or `unknown key`). In headless mode the script is consulted
 before each frame, so a script that ends with a `wait` runs that wait to completion first.
 
@@ -437,6 +451,8 @@ What `docs/game.md`, item 3, refers to. Game code uses only these; the declarati
 - `cpu_pop16` / `cpu_pop32 (m)`: pop and return a word or longword from A7 (read, then
   increment).
 - `amiga_crc32 (p, len)`: zlib's CRC-32 of `len` host bytes; game code uses it in `identify`.
+- `game_anchor_ok (m, anchor)` (`core/game.h`): 1 when the RAM range of the `GameAnchor` has the
+  CRC; 0 for a mismatch or a range outside chip and slow RAM.
 
 ## Speed
 

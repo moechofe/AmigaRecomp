@@ -25,11 +25,11 @@ body
 #panel
 {
 	position: absolute;
-	top: 50%;
+	top: 24dp;
 	left: 50%;
 	width: 640dp;
 	margin-left: -320dp;
-	margin-top: -180dp;
+	bottom: 24dp;
 	padding: 20dp;
 	background-color: #202020f0;
 }
@@ -45,6 +45,7 @@ h2
 {
 	font-size: 18dp;
 	font-weight: bold;
+	margin-top: 16dp;
 	margin-bottom: 8dp;
 }
 
@@ -102,4 +103,188 @@ button:hover
 {
 	background-color: #505050;
 	border-color: #ffffff;
+}
+
+.option
+{
+	display: block;
+	margin-bottom: 8dp;
+}
+
+.name
+{
+	display: inline-block;
+	width: 420dp;
+	font-weight: bold;
+}
+
+.hint
+{
+	display: block;
+	font-size: 13dp;
+	color: #a0a0a0;
+}
+
+.option.mismatch
+{
+	color: #808080;
+}
+
+button.chosen
+{
+	border-color: #ffffff;
+}
+
+.toggle
+{
+	display: inline-block;
+}
+
+.toggle button
+{
+	margin-right: 0;
+	padding: 6dp 12dp;
+}
+
+.toggle button.chosen
+{
+	background-color: #e0e0e0;
+	border-color: #e0e0e0;
+	color: #181818;
+}
+
+.toggle button.chosen:hover
+{
+	background-color: #ffffff;
+	border-color: #ffffff;
+}
+
+#head
+{
+	height: 72dp;
+}
+
+#nav button
+{
+	margin-top: 0;
+	margin-right: 6dp;
+	padding: 4dp 14dp;
+	border: 1dp #606060;
+	border-radius: 14dp;
+	background-color: transparent;
+	color: #c0c0c0;
+}
+
+#nav button:hover
+{
+	border-color: #ffffff;
+	color: #ffffff;
+	background-color: transparent;
+}
+
+#nav button.current
+{
+	background-color: #e0e0e0;
+	border-color: #e0e0e0;
+	color: #181818;
+}
+
+#page
+{
+	position: absolute;
+	top: 104dp;
+	bottom: 20dp;
+	left: 20dp;
+	right: 20dp;
+	padding-right: 16dp;
+	overflow-y: auto;
+}
+
+scrollbarvertical
+{
+	width: 8dp;
+}
+
+scrollbarvertical slidertrack
+{
+	width: 8dp;
+	background-color: #ffffff14;
+	border-radius: 4dp;
+}
+
+scrollbarvertical sliderbar
+{
+	width: 8dp;
+	min-height: 24dp;
+	background-color: #ffffff60;
+	border-radius: 4dp;
+}
+
+scrollbarvertical sliderbar:hover
+{
+	background-color: #ffffffa0;
+}
+
+.lead
+{
+	font-size: 18dp;
+	margin-top: 0;
+}
+
+.actions
+{
+	display: block;
+	margin-bottom: 8dp;
+}
+
+button.primary
+{
+	background-color: #e0e0e0;
+	border-color: #e0e0e0;
+	color: #181818;
+	font-weight: bold;
+}
+
+button.primary:hover
+{
+	background-color: #ffffff;
+	border-color: #ffffff;
+}
+
+.key
+{
+	display: block;
+	margin-bottom: 4dp;
+}
+
+.disk button
+{
+	margin-left: 100dp;
+	margin-top: 6dp;
+}
+
+.disk .hint
+{
+	margin-left: 100dp;
+}
+
+.drive
+{
+	display: block;
+	margin-bottom: 8dp;
+}
+
+.drive .label
+{
+	padding-top: 7dp;
+}
+
+.drive .state
+{
+	padding-top: 7dp;
+}
+
+.drive button
+{
+	margin-top: 0;
 }

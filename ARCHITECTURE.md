@@ -16,11 +16,11 @@ Shared code sits at the root. Each game is the self-contained folder `games/<id>
 - `docs/` — agent deep-dives indexed by `CLAUDE.md`: `conventions.md`, `game.md`, `tools.md`,
   `runtime.md` and `emulator.md`.
 - `cmake/` — `amigarecomp.cmake`.
-- `core/` — the A500/OCS runtime, complete as of M2 except the hook, hack and settings parts of
-  `game.h`, which M4 adds.
-- `frontend/` — window, GL quad, audio and input; the F1 menu, disk-image loading and settings
-  come later.
-- `tools/` — `doctor.py`, `emulator.py`, `capture.py` and `pixdiff.py`.
+- `core/` — the A500/OCS runtime, with the game contract `game.h` and the hack runtime
+  (`game.c`, M4).
+- `frontend/` — window, GL quad, audio and input; the F1 menu (About, Disks, Hacks, Settings pages),
+  disk-image loading and `settings.ini`.
+- `tools/` — `doctor.py`, `emulator.py`, `capture.py`, `pixdiff.py`, `adf.py` and `anchor.py`.
 - `games/deuteros/` — the first game.
 - `games/lemmings/` — the second game; only its WinUAE oracle so far (`oracle.uae.in`,
   `scripts/boot.dbg`, `docs/dumps.md`, `README.md`, `PLAN.md`).
@@ -49,7 +49,7 @@ Each entry names its milestone in `games/deuteros/PLAN.md`.
   and the RmlUi F1 menu's skeleton, whose shared documents live in `frontend/menu/`. Game-agnostic.
 - `core/` (M2) — the A500/OCS runtime: bus, scheduler, copper, Denise, blitter, Paula, the
   CIAs, Kickstart HLE, Musashi glue, input scripts, save states, and the game contract
-  `game.h` (M4). It is C99 with no SDL, no OS headers, no file I/O and no `malloc`.
+  `game.h`, hook dispatch for hacks (M4). It is C99 with no SDL, no OS headers, no file I/O and no `malloc`.
   Game-agnostic.
 - `games/<id>/` (M1, starting with `games/deuteros`) — one supported game, self-contained
   (decision 013). `docs/game.md` owns its layout.

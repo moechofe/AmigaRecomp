@@ -34,13 +34,12 @@ These files are committed:
 
   `amiga_add_game(<id>)` compiles every `*.c` in the game folder together with the shared core
   and frontend. It also generates `game_dumps.c` from `dumps.txt` (☑) and embeds the menu
-  assets (☑ for the shared files; ☐ M4 for a game's own `menu/`). Anything else the game's
-  build needs goes after that call, in this file only.
+  assets (☑). Anything else the game's build needs goes after that call, in this file only.
 - `game.c` — defines the only exported symbol, `const struct GameDef game_def`.
 - `hack_<hackid>.c` — one file per hack. Every function in it is `static`; the file exports
   only `const struct GameHack <id>_hack_<hackid>`, which `game.c` uses.
 - `dumps.txt` — the known-dump table (item 4).
-- `menu/` (☐ M4) — this game's RmlUi assets, all embedded into the executable.
+- `menu/` (☑) — this game's RmlUi assets, all embedded into the executable.
     - The menu's file interface looks a file name up in the game's `menu/` first, then in the
       shared `frontend/menu/`. A game file therefore overrides the shared file with the same
       name.
@@ -48,6 +47,8 @@ These files are committed:
       only a comment.
     - A game restyles the menu by providing `menu/game.rcss`, and replaces the whole document
       by providing `menu/menu.rml`.
+    - A game gives its About page text, as an RML fragment, in `menu/about.rml`; the shared
+      `frontend/menu/about.rml` is the fallback.
     - Every file in it is ours: no game graphics, ever.
 - `scripts/<name>.input` — headless input scripts.
 - `scripts/<name>.dbg` — `tools/capture.py` session files that take the WinUAE references.
@@ -79,13 +80,10 @@ These are local only and never committed; `.gitignore` covers them:
 - `reference/` — WinUAE save states, RAM dumps and screenshots.
 - `build/` — the CMake trees (`cmake/`, `cmake-linux/`) and every tool's output for this game.
 
-## 3. The contract `core/game.h` (☐ M4)
+## 3. The contract `core/game.h` (☑)
 
-M2 implements the subset `GameDisk {id, label, writable}` and `GameDef {id, title, disks,
-disk_count, drives, df0_cycle, df0_cycle_count, pointer_sprite}`; M3 adds `GameDisk.identify`
-and the rest arrives in M4.
-
-The C below is the spec.
+`core/game.h` holds the C below, inside its include guard, after `<stdint.h>` and a forward
+declaration of `struct Amiga`.
 
     struct GameAnchor { uint32_t addr; uint32_t len; uint32_t crc; }; /* CRC-32 (zlib) of the original bytes */
     enum GameValueType { GameValueBool, GameValueChoice };
@@ -123,7 +121,7 @@ The C below is the spec.
     	const char *id, *title;
     	const struct GameDisk *disks; uint32_t disk_count;
     	int drives[4];               /* role index in DF0–DF3 at boot, -1 empty */
-    	const int *df0_cycle; uint32_t df0_cycle_count; /* F11 order */
+    	int drive_count;             /* DF0–DF(n-1): the drives the Disks page offers, 1–4 */
     	int pointer_sprite;          /* sprite holding the game's mouse pointer, -1 none */
     	const struct GameHack *const *hacks; uint32_t hack_count;
     };
@@ -142,6 +140,18 @@ Runtime rules:
 - The menu shows the status. A hack in `HackMismatch` is greyed out with the text "not
   compatible with this dump".
 - A `run` that skips game instructions charges their cycles.
+- `game_def.hack_count` is at most `AMIGA_HACKS` (16); the boot refuses a larger table. A hack's
+  value is set with `game_hack_set(m, index, value)`: a bool takes 0 or 1, a choice takes an
+  index into `choices`; anything else is refused (-1) and changes nothing.
+- A hook's `pc` is a canonical, even RAM address: chip RAM 0x000000–0x07FFFF or slow RAM
+  0xC00000–0xC7FFFF. Code that runs from a chip mirror never meets a hook, and any other `pc`
+  is a fatal error when the hack is switched on.
+- `guard` is checked by `game_anchor_ok`, which is also public: a hook may check further
+  anchors itself. An anchor whose range is not wholly inside chip or slow RAM never matches.
+- A `run` that returns 0 leaves the original instruction to run. A hack with only a `frame`
+  stays `HackIdle`: the status is set by hooks alone.
+- Hack values, statuses and the hook map belong to the session, not to the machine: a state
+  load leaves them as they are.
 - Hacks may call only the runtime's public memory and CPU helpers, which `docs/runtime.md`
   lists (☑).
 
@@ -164,7 +174,7 @@ Runtime rules:
 1. **Sources.** The executable takes images from four places:
     - paths on the command line;
     - files dropped on the window;
-    - the F1 menu's Disks page, through "Open…" (the SDL file dialog);
+    - the F1 menu's "Open Disk…" button on the About and Disks pages (the SDL file dialog);
     - paths remembered in `settings.ini` as `disk.<role>=<path>`.
 2. **Expansion.**
     - `.adf` is used as is.
@@ -182,10 +192,14 @@ Runtime rules:
 4. **Conflicts.**
     - When two images claim the same role, verified wins over known, and known over unknown. On
       a tie, the image given first wins.
-    - A missing role opens the Disks page, which lists what is missing.
+    - A missing role opens the menu on its About page; the Disks page lists what is missing.
     - The machine boots once every role in `drives[]` is filled.
+    - The Disks page offers DF0–DF(`drive_count`-1); a `drives[n]` beyond `drive_count` refuses
+      to start (`game_def.drives[n] is beyond drive_count N`).
 5. **Storage.** Images are held whole in memory and never written or copied. Writable roles
-   live in `<pref>/<role>.adf`.
+   live in `<pref>/<role>.adf`. The Disks page's "Load save disk…" on a writable role copies
+   an 880 KB ADF you choose into that file and into the image in memory; the chosen file is
+   never written, and a dump of one of the game's own disks is refused.
 
 ## 6. Bringing up a new game
 
@@ -218,7 +232,7 @@ An ordered checklist:
 
 1. Find the code with the WinUAE debugger and a runtime `--dump`.
 2. Write the `docs/hacks.md` entry first.
-3. Compute the anchors with `python tools/anchor.py <ramdump> --addr 0x… --len N` (☐ M4).
+3. Compute the anchors with `python tools/anchor.py <ramdump> --addr 0x… --len N`.
 4. Implement `hack_<hackid>.c` and list it in `game_def.hacks`.
 5. Add a script that turns the hack on with `hack <hackid> on` and shows its effect.
 6. Re-run the dump's verification gate with every hack off, and confirm that the figures have

@@ -44,6 +44,19 @@
 #define AMIGA_KEY_QUEUE 64
 #define AMIGA_LOG_ONCE 128
 
+/* The most hacks game_def.hack_count may be. */
+#define AMIGA_HACKS 16
+
+enum HackStatus { HackIdle, HackActive, HackMismatch };
+
+struct Hacks
+{
+	int value[AMIGA_HACKS];
+	uint8_t status[AMIGA_HACKS];   /* enum HackStatus */
+	uint32_t live;                 /* hooks set in map; 0 skips the per-instruction test */
+	uint32_t map[(AMIGA_CHIP_SIZE + AMIGA_SLOW_SIZE) / 2 / 32]; /* one bit per RAM word: chip words, then slow words */
+};
+
 /* 80 cylinders x 2 heads x 11 sectors x 512 bytes: a double-density disk, HRM "Disk
  * Resource". */
 #define AMIGA_ADF_SIZE 901120u
@@ -247,6 +260,7 @@ struct Amiga
 	uint8_t keys[AMIGA_KEY_QUEUE];
 	int key_head, key_tail;
 	int sprites_enabled;
+	struct Hacks hacks;
 
 	uint16_t frame[AMIGA_FRAME_H][AMIGA_FRAME_W];
 
@@ -335,6 +349,26 @@ void hle_build(struct Amiga *m);
 /* interp.c */
 void interp_init(struct Amiga *m);
 void interp_run(struct Amiga *m, uint32_t max_insns, uint64_t until);
+
+/* game.c */
+int game_hack_set(struct Amiga *m, uint32_t hack, int value);
+int game_hook_run(struct Amiga *m, uint32_t pc);
+void game_hacks_frame(struct Amiga *m);
+
+/* True when an enabled hack hooks pc. Cheap enough to call once per instruction. */
+static inline int game_hook_at(const struct Amiga *m, uint32_t pc)
+{
+	uint32_t w;
+	if(!m->hacks.live)
+		return 0;
+	if(pc < AMIGA_CHIP_SIZE)
+		w = pc >> 1;
+	else if(pc >= AMIGA_SLOW_BASE && pc < AMIGA_SLOW_BASE + AMIGA_SLOW_SIZE)
+		w = (AMIGA_CHIP_SIZE + pc - AMIGA_SLOW_BASE) >> 1;
+	else
+		return 0;
+	return (m->hacks.map[w >> 5] >> (w & 31)) & 1;
+}
 
 /* state.c */
 #define STATE_VERSION 1

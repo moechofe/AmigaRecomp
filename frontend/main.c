@@ -106,9 +106,21 @@ static void sdl_flush_disks(void)
 	}
 }
 
-static int sdl_state_save(const char *path)
+static void sdl_report_headless(int error, const char *text)
+{
+	if(error)
+	{
+		fprintf(stderr, "%s\n", text);
+		sdl_report_errors++;
+	}
+	else
+		sdl_log(text);
+}
+
+static int sdl_state_save(const char *path, void (*report)(int error, const char *text))
 {
 	struct StateHeader h;
+	char line[1400];
 	FILE *f;
 	int ok;
 	state_header(&machine, &h);
@@ -118,23 +130,26 @@ static int sdl_state_save(const char *path)
 		ok = 0;
 	if(!ok)
 	{
-		fprintf(stderr, "cannot write the state %s\n", path);
+		snprintf(line, sizeof line, "cannot write the state %.1000s", path);
+		report(1, line);
 		return -1;
 	}
-	printf("state saved to %s (frame %u)\n", path, machine.frame_count);
-	fflush(stdout);
+	snprintf(line, sizeof line, "state saved to %.1000s (frame %u)", path, machine.frame_count);
+	report(0, line);
 	return 0;
 }
 
 /* `machine` is untouched unless the whole state reads back and matches this build and disks. */
-static int sdl_state_load(const struct SdlOptions *o)
+static int sdl_state_load(const char *path, void (*report)(int error, const char *text))
 {
 	struct StateHeader h;
+	char line[1400];
 	const char *why;
-	FILE *f = fopen(o->state, "rb");
+	FILE *f = fopen(path, "rb");
 	if(!f)
 	{
-		fprintf(stderr, "no state at %s\n", o->state);
+		snprintf(line, sizeof line, "no state at %.1000s", path);
+		report(1, line);
 		return -1;
 	}
 	if(fread(&h, sizeof h, 1, f) != 1)
@@ -146,12 +161,13 @@ static int sdl_state_load(const struct SdlOptions *o)
 	fclose(f);
 	if(why)
 	{
-		fprintf(stderr, "%s: %s\n", o->state, why);
+		snprintf(line, sizeof line, "%.1000s: %s", path, why);
+		report(1, line);
 		return -1;
 	}
 	state_restore(&machine, &sdl_state);
-	printf("state loaded from %s (frame %u)\n", o->state, machine.frame_count);
-	fflush(stdout);
+	snprintf(line, sizeof line, "state loaded from %.1000s (frame %u)", path, machine.frame_count);
+	report(0, line);
 	return 0;
 }
 
@@ -195,11 +211,11 @@ static int sdl_script_step(const struct SdlOptions *o)
 				return 1;
 			continue;
 		case ScriptStateSave:
-			if(sdl_state_save(o->state))
+			if(sdl_state_save(o->state, sdl_report_headless))
 				return 2;
 			continue;
 		case ScriptStateLoad:
-			if(sdl_state_load(o))
+			if(sdl_state_load(o->state, sdl_report_headless))
 				return 2;
 			continue;
 		case ScriptQuit:
@@ -308,37 +324,6 @@ static void sdl_pointer_step(const struct SdlPointer *p, SDL_Window *window, int
 	*dy = sdl_clamp(ty - py, -127, 127);
 }
 
-/* F11: the next attached role in the game's DF0 order. */
-static void sdl_cycle_df0(void)
-{
-	uint32_t i, step, at = game_def.df0_cycle_count - 1;
-	for(i = 0; i < game_def.df0_cycle_count; i++)
-		if(game_def.df0_cycle[i] == machine.drive_role[0])
-			at = i;
-	for(step = 1; step <= game_def.df0_cycle_count; step++)
-	{
-		int role = game_def.df0_cycle[(at + step) % game_def.df0_cycle_count];
-		if(machine.disks[role].image && role != machine.drive_role[0])
-		{
-			amiga_insert(&machine, 0, role);
-			printf("DF0: %s\n", game_def.disks[role].label);
-			fflush(stdout);
-			return;
-		}
-	}
-}
-
-static void sdl_report_headless(int error, const char *text)
-{
-	if(error)
-	{
-		fprintf(stderr, "%s\n", text);
-		sdl_report_errors++;
-	}
-	else
-		sdl_log(text);
-}
-
 static void sdl_report_window(int error, const char *text)
 {
 	sdl_report_headless(error, text);
@@ -368,6 +353,33 @@ static int sdl_boot(void (*banner)(const char *text))
 	return 0;
 }
 
+/* One action from the menu; returns the number of roles filled. */
+static int sdl_menu_action_run(const struct SdlOptions *o, const SDL_UserEvent *u)
+{
+	const char *path = u->data1 ? (const char *)u->data1 : o->state;
+	int role, n;
+	switch((enum SdlMenuAction)u->code)
+	{
+	case SdlMenuOpenDisk:
+		return sdl_disks_offer(u->data1, SdlOfferGiven, sdl_report_window);
+	case SdlMenuImportDisk:
+		role = (int)(intptr_t)u->data2;
+		if(sdl_disks_import(role, u->data1, sdl_report_window) == 0 && sdl_roles[role].attached)
+			for(n = 0; n < AMIGA_DRIVES; n++)
+				if(machine.drive_role[n] == role)
+					amiga_insert(&machine, n, role);
+		return 0;
+	case SdlMenuStateSave:
+		sdl_state_save(path, sdl_report_window);
+		return 0;
+	case SdlMenuStateLoad:
+		if(sdl_state_load(path, sdl_report_window) == 0)
+			sdl_menu_show(0);
+		return 0;
+	}
+	return 0;
+}
+
 static int sdl_window(const struct SdlOptions *o, const char *const *paths, int path_count)
 {
 	/* 142 102 CPU cycles a frame at 7 093 790 Hz (twice the PAL colour clock). */
@@ -379,7 +391,8 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 	struct SdlPointer ptr;
 	uint64_t next;
 	uint32_t audio_read = 0;
-	int running = 1, code = 0, lmb = 0, rmb = 0, cursor_shown = -1, i;
+	int running = 1, code = 0, lmb = 0, rmb = 0, cursor_shown = -1, captured = 0, want, i;
+	float fx = 0, fy = 0;
 
 	if(!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))
 	{
@@ -410,7 +423,7 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 	SDL_GL_SetSwapInterval(0);
 	if(sdl_video_init())
 		return 1;
-	if(sdl_menu_init(window))
+	if(sdl_menu_init(window, &machine))
 		return 1;
 	ptr.inside = SDL_GetMouseFocus() == window;
 	SDL_GetMouseState(&ptr.wx, &ptr.wy);
@@ -453,9 +466,9 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 				running = 0;
 			else if(e.type == SDL_EVENT_DROP_FILE)
 				filled += sdl_disks_offer(e.drop.data, SdlOfferGiven, sdl_report_window);
-			else if(e.type == sdl_menu_path_event)
+			else if(e.type == sdl_menu_action_event)
 			{
-				filled += sdl_disks_offer(e.user.data1, SdlOfferGiven, sdl_report_window);
+				filled += sdl_menu_action_run(o, &e.user);
 				SDL_free(e.user.data1);
 			}
 			else if(e.type == SDL_EVENT_WINDOW_MOUSE_LEAVE || e.type == SDL_EVENT_MOUSE_MOTION)
@@ -464,9 +477,15 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 					ptr.inside = 0;
 				else
 				{
+					int ww = 0, wh = 0;
 					ptr.wx = e.motion.x;
 					ptr.wy = e.motion.y;
 					ptr.inside = 1;
+					if(captured && SDL_GetWindowSize(window, &ww, &wh) && ww > 0 && wh > 0)
+					{
+						fx += e.motion.xrel * AMIGA_FRAME_W / (float)ww;
+						fy += e.motion.yrel * AMIGA_FRAME_H / (float)wh;
+					}
 				}
 				if(open)
 					sdl_menu_event(&e);
@@ -495,11 +514,6 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 					if(down)
 						sdl_menu_show(1);
 				}
-				else if(e.key.scancode == SDL_SCANCODE_F11)
-				{
-					if(down)
-						sdl_cycle_df0();
-				}
 				else if(e.key.scancode == SDL_SCANCODE_F12)
 				{
 					if(down)
@@ -512,9 +526,9 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 				else if(e.key.scancode == SDL_SCANCODE_F5 || e.key.scancode == SDL_SCANCODE_F9)
 				{
 					if(down && e.key.scancode == SDL_SCANCODE_F5)
-						sdl_state_save(o->state);
+						sdl_state_save(o->state, sdl_report_headless);
 					else if(down)
-						sdl_state_load(o);
+						sdl_state_load(o->state, sdl_report_headless);
 				}
 				else if((k = sdl_amiga_key(e.key.scancode)) >= 0)
 					amiga_key(&machine, (uint8_t)k, !down);
@@ -552,10 +566,24 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 				SDL_HideCursor();
 		}
 
+		want = sdl_booted && !sdl_menu_is_open() && !o->script && sdl_setting(SdlSettingMouseCapture);
+		if(want != captured)
+		{
+			SDL_SetWindowRelativeMouseMode(window, want != 0);
+			captured = want != 0;
+			fx = fy = 0;
+		}
 		if(sdl_booted && !sdl_menu_is_open())
 		{
 			if(o->script)
 				dx = dy = 0;
+			else if(captured)
+			{
+				dx = sdl_clamp((int)fx, -127, 127);
+				dy = sdl_clamp((int)fy, -127, 127);
+				fx -= (float)dx;
+				fy -= (float)dy;
+			}
 			else
 				sdl_pointer_step(&ptr, window, &dx, &dy);
 			amiga_mouse(&machine, dx, dy, lmb, rmb);
@@ -709,6 +737,7 @@ int main(int argc, char **argv)
 		snprintf(settings_path, sizeof settings_path, "%ssettings.ini", sdl_pref);
 		if(sdl_settings_load(settings_path))
 			return 2;
+		sdl_settings_apply(&machine, o.script == 0);
 		code = sdl_window(&o, paths, path_count);
 	}
 	if(machine.fatal)

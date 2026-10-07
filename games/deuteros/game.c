@@ -17,7 +17,9 @@ static const struct GameDisk deuteros_disks[] = {
 	{"save", "Save disk", 1, 0},
 };
 
-static const int deuteros_df0_cycle[] = {0, 1, 2};
+extern const struct GameHack deuteros_hack_keep_pointer, deuteros_hack_space_advance;
+
+static const struct GameHack *const deuteros_hacks[] = {&deuteros_hack_keep_pointer, &deuteros_hack_space_advance};
 
 const struct GameDef game_def = {
 	.id = "deuteros",
@@ -25,7 +27,8 @@ const struct GameDef game_def = {
 	.disks = deuteros_disks,
 	.disk_count = 3,
 	.drives = {0, 2, -1, -1},
-	.df0_cycle = deuteros_df0_cycle,
-	.df0_cycle_count = 3,
+	.drive_count = 2,
 	.pointer_sprite = 0,
+	.hacks = deuteros_hacks,
+	.hack_count = 2,
 };

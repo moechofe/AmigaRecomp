@@ -197,6 +197,50 @@ static enum ScriptResult script_start(struct Script *s, struct Amiga *m)
 		snprintf(s->name, sizeof s->name, "%s", arg);
 		return ScriptShot;
 	}
+	if(!strcmp(word, "hack"))
+	{
+		char id[32], val[32];
+		const struct GameSetting *set;
+		uint32_t i;
+		int v = 0;
+		if(sscanf(s->line, "%*s %31s %31s", id, val) != 2)
+			return script_fail(s, "expected `hack <hackid> on|off|<choice id>`");
+		for(i = 0; i < game_def.hack_count; i++)
+			if(!strcmp(game_def.hacks[i]->setting.id, id))
+				break;
+		if(i == game_def.hack_count)
+		{
+			snprintf(s->error, sizeof s->error, "hack: unknown hack %s", id);
+			return ScriptError;
+		}
+		set = &game_def.hacks[i]->setting;
+		if(set->type == GameValueBool)
+		{
+			if(!strcmp(val, "on"))
+				v = 1;
+			else if(strcmp(val, "off"))
+			{
+				snprintf(s->error, sizeof s->error, "hack: %s takes on or off", id);
+				return ScriptError;
+			}
+		}
+		else
+		{
+			while(set->choices && set->choices[v] && strcmp(set->choices[v], val))
+				v++;
+			if(!set->choices || !set->choices[v])
+			{
+				snprintf(s->error, sizeof s->error, "hack: %s has no choice %s", id, val);
+				return ScriptError;
+			}
+		}
+		if(game_hack_set(m, i, v))
+		{
+			snprintf(s->error, sizeof s->error, "hack: cannot set %s", id);
+			return ScriptError;
+		}
+		return ScriptRunFrame;
+	}
 	if(!strcmp(word, "quit"))
 		return ScriptQuit;
 	return script_fail(s, "unknown directive");

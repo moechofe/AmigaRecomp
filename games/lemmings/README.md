@@ -40,6 +40,16 @@ PowerShell:
 Then press F7, the Amiga's left mouse button, to leave the Skid Row cracktro. F11 takes a
 screenshot.
 
+Linux (the `winuae` package puts `winuae` on `PATH`). `tools/emulator.py` only searches for the
+Kickstart under `C:\Users\Public\...`, so pass it with `--kickstart` in step 3, after unpacking
+with the Git Bash `unzip` lines of step 2:
+
+    python3 tools/emulator.py --game lemmings --kickstart "$HOME/Documents/WinUAE/Kickstarts/Kickstart v1.3 rev 34.5 (1987)(Commodore)(A500-A1000-A2000-CDTV)[!].rom" --df0 "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR].adf" --df1 "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 2 of 2)[cr SR].adf"
+    winuae -f games/lemmings/build/winuae/oracle.uae
+
+The tool then prints "WinUAE is not installed in the usual place"; ignore it, the config is
+written.
+
 ## 5. Take the reference screenshots
 
     python tools/capture.py --game lemmings --script games/lemmings/scripts/boot.dbg

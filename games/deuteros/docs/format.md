@@ -58,7 +58,7 @@ loads are is the proof's table "Every read, from the runtime's load log"; it is 
   read at the same offset.
 - DF1 holds the save disk: the save screen reads track 0 of unit 1 for the disk to format
   (observed 2026-10-03, `../../../../proof/doc.agent/recomp.md`: with Disk 2 in DF1 formatting
-  ended in "operation failed"). The runtime therefore always mounts the save disk in DF1;
+  ended in "operation failed"). The runtime therefore mounts the save disk in DF1 at boot;
   writes reach only that image.
 
 ## Display

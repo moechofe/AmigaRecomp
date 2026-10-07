@@ -1,5 +1,6 @@
 #include "amiga.h"
 
+#include "game.h"
 #include "m68k.h"
 #include "m68kcpu.h"
 
@@ -133,6 +134,8 @@ void interp_run(struct Amiga *m, uint32_t max_insns, uint64_t until)
 		int mask = (int)((m68k_get_reg(0, M68K_REG_SR) >> 8) & 7), ipl;
 		int used;
 		if(pc >= HLE_BASE && pc < HLE_END)
+			break;
+		if(n && game_hook_at(m, pc))
 			break;
 		sched_catch_up(m, m->cycles);
 		ipl = custom_ipl(m);

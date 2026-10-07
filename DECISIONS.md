@@ -161,3 +161,13 @@ a kind: `core`, `frontend`, `cmake`, `tools`, `tests`, `docs`, `games`, and, ins
 
 *Why:* they added a naming rule to learn and bought nothing that a short, flat layout does not
 already give.
+
+## 015 — The player chooses each drive's disk
+
+**2026-10-07.** Author's call.
+
+The Disks page assigns disks to DF0–DF(n-1) after boot. A disk taken from another drive swaps
+with the chosen drive's disk, and Empty ejects. F11 and `df0_cycle` are removed.
+
+*Why:* a fixed layout cannot follow a game that wants its data disk in DF0, and a single-drive
+game needs a way to change disks.

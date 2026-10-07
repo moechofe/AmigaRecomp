@@ -51,6 +51,16 @@ PowerShell:
 F11 takes a screenshot. The game asks for Disk 2 in DF0; the debugger command
 `I floppy0=<path>` swaps it (`docs/emulator.md`).
 
+Linux (the `winuae` package puts `winuae` on `PATH`). `tools/emulator.py` only searches for the
+Kickstart under `C:\Users\Public\...`, so pass it with `--kickstart` in step 3, after unpacking
+with the Git Bash `unzip` lines of step 2:
+
+    python3 tools/emulator.py --game deuteros --kickstart "$HOME/Documents/WinUAE/Kickstarts/Kickstart v1.3 rev 34.5 (1987)(Commodore)(A500-A1000-A2000-CDTV)[!].rom" --df0 "games/deuteros/build/adf/Deuteros - The Next Millennium (1991)(Activision)(M3)(Disk 1 of 2).adf" --df1 "games/deuteros/build/adf/Deuteros - The Next Millennium (1991)(Activision)(M3)(Disk 2 of 2).adf"
+    winuae -f games/deuteros/build/winuae/oracle.uae
+
+The tool then prints "WinUAE is not installed in the usual place"; ignore it, the config is
+written.
+
 ## 5. Take a reference screenshot
 
     python tools/capture.py --game deuteros --until 4 --name NAME
@@ -101,9 +111,9 @@ On Linux, use `games/deuteros/build/cmake-linux/deuteros` instead. `menu.input` 
 `lang-menu-nosprite.png` and `earth-base.input` writes `earth-base-nosprite.png`.
 
 The executable takes ADF, ADZ, GZ and ZIP images, in any order, from the command line, from files
-dropped on the window, from the Disks page's "Open…" button, and from the paths it remembers in
-`settings.ini` (`docs/game.md`, item 5). With no arguments and no remembered paths it shows the
-Disks page. Group images by CRC and check them against `dumps.txt`:
+dropped on the window, from the menu's "Open Disk…" button, and from the paths it remembers in
+`settings.ini` (`docs/game.md`, item 5). With no arguments and no remembered paths it opens the
+menu on its About page; the Disks page lists what is missing. Group images by CRC and check them against `dumps.txt`:
 
     python tools/adf.py games/deuteros/disks
 
@@ -116,7 +126,19 @@ Run both scripts from the ZIP instead of the two ADFs:
     games/deuteros/build/cmake-linux/deuteros --headless --shot-dir games/deuteros/build/shots --script games/deuteros/scripts/menu.input games/deuteros/build/pair.zip
     games/deuteros/build/cmake-linux/deuteros --headless --shot-dir games/deuteros/build/shots --script games/deuteros/scripts/earth-base.input games/deuteros/build/pair.zip
 
-Run the unit tests of the image loader:
+Run the hack scripts (`docs/hacks.md` gives the figures each one proves). Each writes the chip
+RAM with `--dump`:
+
+    games/deuteros/build/cmake-linux/deuteros --headless --script games/deuteros/scripts/keep-pointer.input --dump games/deuteros/build/kp-on.ram games/deuteros/build/pair.zip
+    games/deuteros/build/cmake-linux/deuteros --headless --script games/deuteros/scripts/space-advance-start.input --dump games/deuteros/build/sa-start.ram games/deuteros/build/pair.zip
+    games/deuteros/build/cmake-linux/deuteros --headless --script games/deuteros/scripts/space-advance.input --dump games/deuteros/build/sa.ram games/deuteros/build/pair.zip
+
+Compute an anchor for a hack from the dump that `earth-base.input` writes:
+
+    games/deuteros/build/cmake-linux/deuteros --headless --script games/deuteros/scripts/earth-base.input --dump games/deuteros/build/earth-base.ram games/deuteros/build/pair.zip
+    python tools/anchor.py games/deuteros/build/earth-base.ram --addr 0x023FC6 --len 8
+
+Run the unit tests of the image loader and of the hack runtime:
 
     ctest --test-dir games/deuteros/build/cmake-linux --output-on-failure
 

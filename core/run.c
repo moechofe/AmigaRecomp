@@ -1,5 +1,6 @@
 #include "amiga.h"
 #include "cpu_ops.h"
+#include "game.h"
 
 /* One frame: interrupts first, then the HLE, then the CPU, with the chipset caught up to the
  * CPU after every step. Returns nonzero on a fatal error; the message is in fatal_msg.
@@ -39,8 +40,15 @@ int amiga_run_frame(struct Amiga *m)
 			m->cycles = line_end;
 			continue;
 		}
+		if(game_hook_at(m, pc) && game_hook_run(m, pc))
+		{
+			m->cpu.ipl_prev = (uint8_t)ipl;
+			continue;
+		}
 		interp_run(m, 1000, line_end);
 	}
 	sched_catch_up(m, m->cycles);
+	if(!m->fatal)
+		game_hacks_frame(m);
 	return m->fatal;
 }

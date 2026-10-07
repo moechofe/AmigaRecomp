@@ -250,7 +250,7 @@ for this file. Paths are from the `amigarecomp/` root, and the command lines are
 
 ### M4 — Settings menu and hacks
 
-- `[ ]`
+- `[x]`
     - `core/game.h` is exactly as `docs/game.md` item 3 gives it.
     - Hooks and hack status:
         - Hook PCs live in a bitmap over the word addresses of chip and slow RAM. The bitmap is

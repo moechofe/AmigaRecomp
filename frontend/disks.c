@@ -39,6 +39,18 @@ static int disks_read_adf(const char *path, uint8_t *buf)
 int sdl_disks_init(const char *pref)
 {
 	uint32_t r;
+	int n;
+	if(game_def.drive_count < 1 || game_def.drive_count > AMIGA_DRIVES)
+	{
+		fprintf(stderr, "game_def.drive_count %d is not 1-%d\n", game_def.drive_count, AMIGA_DRIVES);
+		return -1;
+	}
+	for(n = game_def.drive_count; n < AMIGA_DRIVES; n++)
+		if(game_def.drives[n] >= 0)
+		{
+			fprintf(stderr, "game_def.drives[%d] is beyond drive_count %d\n", n, game_def.drive_count);
+			return -1;
+		}
 	for(r = 0; r < game_def.disk_count; r++)
 	{
 		struct SdlRole *role = &sdl_roles[r];
@@ -191,6 +203,61 @@ int sdl_disks_offer(const char *path, enum SdlOffer how, void (*report)(int erro
 	return filled;
 }
 
+int sdl_disks_import(int role, const char *path, void (*report)(int error, const char *text))
+{
+	char line[1400];
+	struct SdlIdentity id;
+	const char *base = path, *p;
+	size_t size = 0;
+	uint8_t *data;
+	FILE *f;
+	int ok;
+
+	if(role < 0 || role >= (int)game_def.disk_count || !game_def.disks[role].writable)
+		return -1;
+	for(p = path; *p; p++)
+		if(*p == '/' || *p == '\\')
+			base = p + 1;
+	data = disks_read_file(path, &size);
+	if(!data)
+	{
+		snprintf(line, sizeof line, "cannot read %.1000s", path);
+		report(1, line);
+		return -1;
+	}
+	if(size != AMIGA_ADF_SIZE)
+	{
+		snprintf(line, sizeof line, "%.255s: not an 880 KB double-density ADF", base);
+		report(1, line);
+		free(data);
+		return -1;
+	}
+	sdl_image_identify(data, &id);
+	if(id.role >= 0)
+	{
+		snprintf(line, sizeof line, "%.255s: refused, it is %s", base, game_def.disks[id.role].label);
+		report(1, line);
+		free(data);
+		return -1;
+	}
+	f = fopen(sdl_roles[role].source, "wb");
+	ok = f && fwrite(data, 1, AMIGA_ADF_SIZE, f) == AMIGA_ADF_SIZE;
+	if(f && fclose(f))
+		ok = 0;
+	if(!ok)
+	{
+		snprintf(line, sizeof line, "cannot write %.1000s", sdl_roles[role].source);
+		report(1, line);
+		free(data);
+		return -1;
+	}
+	memcpy(sdl_roles[role].adf, data, AMIGA_ADF_SIZE);
+	free(data);
+	snprintf(line, sizeof line, "%.255s: copied into %s (%.800s)", base, game_def.disks[role].label, sdl_roles[role].source);
+	report(0, line);
+	return 0;
+}
+
 void sdl_disks_offer_remembered(void (*report)(int error, const char *text))
 {
 	const char *offered[AMIGA_ROLES];
@@ -260,6 +327,34 @@ void sdl_disks_attach(struct Amiga *m, void (*banner)(const char *text))
 			banner(text);
 		}
 	}
+}
+
+static void disks_print_drive(const struct Amiga *m, int drive)
+{
+	int role = m->drive_role[drive];
+	printf("DF%d: %s\n", drive, role < 0 ? "empty" : game_def.disks[role].label);
+	fflush(stdout);
+}
+
+void sdl_disks_insert(struct Amiga *m, int drive, int role)
+{
+	int old, n, from = -1;
+	if(!m->booted || drive < 0 || drive >= game_def.drive_count || role < -1
+		|| role >= (int)game_def.disk_count || (role >= 0 && !m->disks[role].image))
+		return;
+	old = m->drive_role[drive];
+	if(role == old)
+		return;
+	for(n = 0; n < game_def.drive_count && role >= 0 && from < 0; n++)
+		if(n != drive && m->drive_role[n] == role)
+			from = n;
+	if(from >= 0)
+	{
+		amiga_insert(m, from, old);
+		disks_print_drive(m, from);
+	}
+	amiga_insert(m, drive, role);
+	disks_print_drive(m, drive);
 }
 
 void sdl_disks_remember(void)

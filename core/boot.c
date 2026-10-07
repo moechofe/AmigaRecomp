@@ -1,4 +1,5 @@
 #include "hle.h"
+#include "game.h"
 
 /* Start the bootblock in the state Kickstart 1.3 hands it: docs/runtime.md, "Kickstart
  * handoff". */
@@ -24,6 +25,11 @@ int amiga_boot(struct Amiga *m)
 	m->cpu.a[1] = HLE_BOOT_IOREQ;
 	m->cpu.a[6] = HLE_EXEC_BASE;
 
+	if(game_def.hack_count > AMIGA_HACKS)
+	{
+		amiga_fatal(m, "game_def has %u hacks; the runtime holds %d", (unsigned)game_def.hack_count, AMIGA_HACKS);
+		return -1;
+	}
 	if(role < 0 || !m->disks[role].image)
 	{
 		amiga_fatal(m, "DF0 is empty: nothing to boot");
