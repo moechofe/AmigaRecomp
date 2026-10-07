@@ -7,6 +7,7 @@
 <body data-model="menu">
 	<div id="banner" data-if="banner_on">{{banner}}</div>
 	<div id="panel" data-if="open">
+		<button id="resume" data-if="booted" data-event-click="close"><span class="cap">F1</span>Resume</button>
 		<div id="head">
 			<h1>{{title}}</h1>
 			<div id="nav">
@@ -21,13 +22,11 @@
 				<p class="lead">Your own copy of {{title}}, running natively on this computer.</p>
 				<div class="actions">
 					<button class="primary" data-event-click="open_disk">Open Disk…</button>
-					<button data-if="booted" data-event-click="close">Resume</button>
 					<button data-if="booted" data-event-click="state_save">Quick save</button>
 					<button data-if="booted" data-event-click="state_load">Quick load</button>
 					<button data-event-click="quit">Quit</button>
 				</div>
 				<p data-if="!booted">To start, choose your disk images with Open Disk…, or drop them on this window. ADF, ADZ, GZ and ZIP files are accepted, and one ZIP may hold every disk. The Disks page shows which disks are still missing.</p>
-				<p class="message" data-for="m : messages">{{m}}</p>
 				<div class="about" data-rml="about"></div>
 				<h2>AmigaRecomp</h2>
 				<p>AmigaRecomp runs Amiga games natively, one program per game. The game's own 68000 code runs on the Musashi 68000 interpreter and a recreated Amiga chipset: copper, bitplanes, sprites, blitter, CIAs and Paula audio. Kickstart 1.3 is replaced by C code, so no ROM is needed.</p>
@@ -42,7 +41,6 @@
 				<div class="disk" data-for="disk, i : disks">
 					<span class="label">{{disk.label}}</span>
 					<span class="state">{{disk.state}}</span>
-					<span class="source" data-if="disk.drive != ''">{{disk.drive}}</span>
 					<span class="source">{{disk.source}}</span>
 					<button data-if="disk.writable" data-event-click="import_disk(i)">Load save disk…</button>
 					<p class="hint" data-if="disk.writable">Copies the ADF you choose into this file; your file is not changed.</p>
@@ -57,16 +55,14 @@
 					<span class="toggle" data-if="booted"><button data-for="c : drive_choices" data-class-chosen="c.role == d.role" data-event-click="insert(n, c.role)">{{c.label}}</button></span>
 				</div>
 				<p class="hint" data-if="!booted">The game starts with these disks in its drives. Once it runs, choose the disk in each drive here.</p>
-				<p class="hint" data-if="booted">Choosing a disk that is in another drive swaps the two drives' disks.</p>
 				<h2>Save states</h2>
 				<p data-if="!booted">Save states can be used once the game has started.</p>
 				<div class="actions" data-if="booted">
-					<button data-event-click="state_save">Quick save</button>
-					<button data-event-click="state_load">Quick load</button>
+					<button data-event-click="state_save">F5 Quick save</button>
+					<button data-event-click="state_load">F9 Quick load</button>
 					<button data-event-click="state_save_as">Save state as…</button>
 					<button data-event-click="state_load_from">Load state…</button>
 				</div>
-				<p class="hint" data-if="booted">Quick save and quick load use the state file, as F5 and F9 do. A state loads only with the disks it was saved with, and loading one never rolls back the save disk.</p>
 			</div>
 			<div data-if="page == 'hacks'">
 				<p>Hacks change small behaviours of the game: original keeps the game's own behaviour, modern changes it. A change applies at once and is remembered.</p>

@@ -77,7 +77,7 @@ public:
 
 struct DiskRow
 {
-	Rml::String label, state, source, drive;
+	Rml::String label, state, source;
 	bool writable = false;
 };
 
@@ -243,17 +243,8 @@ void menu_disks_refresh()
 		}
 		else
 		{
-			const char *word = role->rank == SdlRankVerified ? "verified dump: " : role->rank == SdlRankKnown ? "known dump: " : "unknown dump: ";
-			row.state = Rml::String(word) + role->name;
+			row.state = role->rank == SdlRankVerified ? "verified dump" : role->rank == SdlRankKnown ? "known dump" : "unknown dump";
 			row.source = role->source;
-		}
-		if(booted)
-		{
-			for(n = 0; n < game_def.drive_count; n++)
-				if(menu->m->drive_role[n] == (int)r)
-					row.drive += (row.drive.empty() ? "in DF" : ", DF") + std::to_string(n);
-			if(row.drive.empty())
-				row.drive = "not in a drive";
 		}
 		row.writable = d->writable != 0;
 		rows.push_back(row);
@@ -326,7 +317,6 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 		row.RegisterMember("label", &DiskRow::label);
 		row.RegisterMember("state", &DiskRow::state);
 		row.RegisterMember("source", &DiskRow::source);
-		row.RegisterMember("drive", &DiskRow::drive);
 		row.RegisterMember("writable", &DiskRow::writable);
 	}
 	ctor.RegisterArray<std::vector<DiskRow>>();

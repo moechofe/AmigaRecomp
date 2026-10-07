@@ -371,18 +371,26 @@ static inline int game_hook_at(const struct Amiga *m, uint32_t pc)
 }
 
 /* state.c */
-#define STATE_VERSION 1
+#define STATE_VERSION 2
+#define STATE_SECTIONS 23
 
 struct StateHeader
 {
-	char magic[8];                 /* "ARSTATE" */
-	uint32_t version;              /* STATE_VERSION */
-	uint32_t size;                 /* sizeof(struct Amiga) */
+	char magic[8];                  /* "ARSTATE" */
+	uint32_t version;               /* STATE_VERSION */
 	uint32_t role_crc[AMIGA_ROLES]; /* CRC-32 of each attached read-only role, else 0 */
 };
 
-void state_header(const struct Amiga *m, struct StateHeader *h);
-const char *state_check(const struct Amiga *m, const struct StateHeader *h);
-void state_restore(struct Amiga *m, const struct Amiga *from);
+struct StateSection
+{
+	char name[12]; /* the struct Amiga member, NUL-padded */
+	uint32_t size; /* its sizeof in the writing build */
+};
+
+/* The largest state this build writes: the sections are disjoint members of struct Amiga. */
+#define STATE_MAX (sizeof(struct StateHeader) + STATE_SECTIONS * sizeof(struct StateSection) + sizeof(struct Amiga))
+
+uint32_t state_save(const struct Amiga *m, uint8_t *out);
+const char *state_load(struct Amiga *m, const uint8_t *in, uint32_t len);
 
 #endif

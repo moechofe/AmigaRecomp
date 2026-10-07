@@ -10,6 +10,7 @@ body
 	color: #e0e0e0;
 	width: 100%;
 	height: 100%;
+	word-break: break-word;
 }
 
 #banner
@@ -164,6 +165,36 @@ button.chosen
 	height: 72dp;
 }
 
+#head h1
+{
+	margin-right: 140dp;
+}
+
+#resume
+{
+	position: absolute;
+	top: 20dp;
+	right: 20dp;
+	margin: 0;
+	padding: 4dp 14dp;
+	border-radius: 14dp;
+	background-color: #e0e0e0;
+	border-color: #e0e0e0;
+	color: #181818;
+}
+
+#resume:hover
+{
+	background-color: #ffffff;
+	border-color: #ffffff;
+}
+
+#resume .cap
+{
+	font-weight: bold;
+	margin-right: 8dp;
+}
+
 #nav button
 {
 	margin-top: 0;
@@ -196,7 +227,7 @@ button.chosen
 	bottom: 20dp;
 	left: 20dp;
 	right: 20dp;
-	padding-right: 16dp;
+	padding-right: 24dp;
 	overflow-y: auto;
 }
 

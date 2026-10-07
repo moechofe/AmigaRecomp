@@ -14,7 +14,7 @@
 #include <string.h>
 
 static struct Amiga machine;
-static struct Amiga sdl_state;
+static uint8_t sdl_state_buf[STATE_MAX + 1];
 static struct Script sdl_script;
 static char sdl_script_text[1 << 16];
 static char sdl_pref[1024];
@@ -119,13 +119,12 @@ static void sdl_report_headless(int error, const char *text)
 
 static int sdl_state_save(const char *path, void (*report)(int error, const char *text))
 {
-	struct StateHeader h;
 	char line[1400];
 	FILE *f;
 	int ok;
-	state_header(&machine, &h);
+	uint32_t n = state_save(&machine, sdl_state_buf);
 	f = fopen(path, "wb");
-	ok = f && fwrite(&h, sizeof h, 1, f) == 1 && fwrite(&machine, sizeof machine, 1, f) == 1;
+	ok = f && fwrite(sdl_state_buf, 1, n, f) == n;
 	if(f && fclose(f))
 		ok = 0;
 	if(!ok)
@@ -142,9 +141,9 @@ static int sdl_state_save(const char *path, void (*report)(int error, const char
 /* `machine` is untouched unless the whole state reads back and matches this build and disks. */
 static int sdl_state_load(const char *path, void (*report)(int error, const char *text))
 {
-	struct StateHeader h;
 	char line[1400];
 	const char *why;
+	size_t n;
 	FILE *f = fopen(path, "rb");
 	if(!f)
 	{
@@ -152,20 +151,15 @@ static int sdl_state_load(const char *path, void (*report)(int error, const char
 		report(1, line);
 		return -1;
 	}
-	if(fread(&h, sizeof h, 1, f) != 1)
-		why = "not an AmigaRecomp state";
-	else
-		why = state_check(&machine, &h);
-	if(!why && (fread(&sdl_state, sizeof sdl_state, 1, f) != 1 || fgetc(f) != EOF))
-		why = "truncated or oversized";
+	n = fread(sdl_state_buf, 1, sizeof sdl_state_buf, f);
 	fclose(f);
+	why = state_load(&machine, sdl_state_buf, (uint32_t)n);
 	if(why)
 	{
 		snprintf(line, sizeof line, "%.1000s: %s", path, why);
 		report(1, line);
 		return -1;
 	}
-	state_restore(&machine, &sdl_state);
 	snprintf(line, sizeof line, "state loaded from %.1000s (frame %u)", path, machine.frame_count);
 	report(0, line);
 	return 0;
@@ -324,11 +318,14 @@ static void sdl_pointer_step(const struct SdlPointer *p, SDL_Window *window, int
 	*dy = sdl_clamp(ty - py, -127, 127);
 }
 
+/* Accepted-image and state lines go to stdout only: the Disks page already lists each disk. */
 static void sdl_report_window(int error, const char *text)
 {
 	sdl_report_headless(error, text);
+	if(!error)
+		return;
 	sdl_menu_message(text);
-	if(error && sdl_booted)
+	if(sdl_booted)
 		sdl_menu_show(1);
 }
 

@@ -41,7 +41,9 @@ Headless mode rejects any image it cannot use (exit 2), and neither reads nor wr
 `settings.ini`; every hack is 0 until a script's `hack` line sets it. Window mode also takes images dropped on the window, from the menu's "Open Disk…" button (About and Disks pages), and from `<pref>settings.ini`, whose `disk.<role>` keys remember the path of
 each read-only role's image once the game has booted; with a role missing, the menu opens on its
 About page, which says so (the Disks page lists what is missing) and the game waits. The banner shows for 10 s after boot and is also printed to stdout, as is
-every accepted image line (`<file>: <label>, <verified|known|unknown> dump`).
+every accepted image line (`<file>: <label>, <verified|known|unknown> dump`). Those lines and
+the menu's state save/load confirmations go to stdout only; the Disks page lists the last six
+errors (a rejected image, a failed state save or load) above its Drives section.
 
 Window mode (no `--headless`) opens a 960 x 768 window, three times the 320 x 256 frame,
 with an OpenGL 3.3 core context, and paces itself to one frame of 142 102 CPU cycles at
@@ -50,7 +52,7 @@ frontend takes:
 
 | Key | Action |
 | --- | --- |
-| F1 | opens the menu (pages About, Disks, Settings and, when the game has hacks, Hacks) and pauses the game; F1 or Esc closes it once the game has booted. Never reaches the game |
+| F1 | opens the menu (pages About, Disks, Settings and, when the game has hacks, Hacks) and pauses the game; F1, Esc or the menu's "F1 Resume" button, at its top right, closes it once the game has booted (the button is shown only then). Never reaches the game |
 | F5 / F9 | save / load the state file (*Save states*); failures print and the run goes on |
 | F12 | write `frame-NNNNNN.png` (the frame counter, six digits) into the shot directory |
 | other keys | letters, digits, F2-F10, Space, Backspace, Tab, Return, Esc, Delete, arrows, Shift, Ctrl, Alt as Amiga raw keycodes (HRM appendix H) |
@@ -159,32 +161,38 @@ One state file (`--state`, F5/F9, `state save|load`). Layout, from `core/amiga.h
 | Offset | Field |
 | --- | --- |
 | 0 | `magic[8]` = `ARSTATE` and a NUL |
-| 8 | `version` (`STATE_VERSION`, 1) |
-| 12 | `size` = `sizeof(struct Amiga)` of the writing build |
-| 16 | `role_crc[8]`: CRC-32 (zlib) of each attached **read-only** role's image, 0 for a writable or absent role |
-| 48 | the raw `struct Amiga`, as it stands between frames |
+| 8 | `version` (`STATE_VERSION`, 2) |
+| 12 | `role_crc[8]`: CRC-32 (zlib) of each attached **read-only** role's image, 0 for a writable or absent role |
+| 44 | 23 sections, in `struct Amiga` order |
 
-The struct is written in host layout, so a state belongs to the build that wrote it.
-`state_check` compares the header with the current one and returns `not an AmigaRecomp state`
-(magic), `written by another build` (version or size) or `state was saved with different disk
-images` (any CRC). A load reads the whole file into a scratch machine first and touches the
-live one only when the header matches and the file is exactly header plus struct; the other
-failures are `no state at <path>` and `<path>: truncated or oversized`, printed as
-`<path>: <reason>`. A save failure prints `cannot write the state <path>`. A script exits 2 on
-either failure.
+A section is a 16-byte `StateSection` (`name[12]`, NUL-padded, the `struct Amiga` member; `size`,
+its `sizeof` in the writing build) followed by `size` raw host bytes of that member. The values
+are host-layout bytes, so a state also depends on the byte order and padding of the build, but
+not on host-only fields: only the restored members are stored.
 
-`state_restore` copies the emulated machine: chip and slow RAM, the load log and its counters,
-the key queue, the frame buffer, the drive-to-role table, the CPU, the cycle, instruction and
-frame counters, copper, Denise, blitter, Paula, both CIAs and the HLE state. It deliberately
-keeps what belongs to the host and the process: the disk images (so a writable disk is never
-rolled back, and a state saved with other read-only images is refused), the per-process LVO
-call counters printed at exit, the `booted` flag, the `log` binding, the sprite switch and
-the fatal flag. Musashi's registers are copied in and out of `struct Cpu` around every run of
-the interpreter (`interp_sync_in` / `interp_sync_out`), and states are taken between frames,
-so none of its state needs saving [INFERENCE from the code; no test isolates it].
+`state_load` checks, in order: `not an AmigaRecomp state` (short file or magic), `written in
+another state format` (version), `state was saved with different disk images` (any CRC), then
+each section by name and `sizeof`: `the <name> section does not match this build`, or `truncated
+or oversized` for missing or extra bytes. Only a fully valid state is copied in, so a refused load
+leaves the live machine untouched. The frontend adds `no state at <path>`, prints failures as
+`<path>: <reason>`, and prints `cannot write the state <path>` on a failed save. A script exits 2
+on either failure.
 
-A field added to `struct Amiga` must be added to `state_restore` too, or it silently stays at
-its live value.
+The sections are the emulated machine: chip and slow RAM (`chip`, `slow`), the CPU, the cycle,
+instruction, `done` and frame counters, copper, Denise, blitter (`blit`), Paula, both CIAs, the
+floppy, the HLE state, the drive-to-role table, the load log and its counters, the key queue and
+the frame buffer. `state_load` deliberately keeps what belongs to the host and the process: the
+disk images (so a writable disk is never rolled back, and a state saved with other read-only
+images is refused), the per-process LVO call counters printed at exit, the `booted` flag, the
+`log` binding, the run options, the sprite switch and the fatal flag. Musashi's registers are
+copied in and out of `struct Cpu` around every run of the interpreter (`interp_sync_in` /
+`interp_sync_out`), and states are taken between frames, so none of its state needs saving
+[INFERENCE from the code; no test isolates it].
+
+The granularity is the section size: a same-size reorder inside a member goes undetected, so
+bump `STATE_VERSION` by hand for that. A member added to `struct Amiga` that must be restored
+needs a `STATE_FIELD` entry in `core/state.c` and `STATE_SECTIONS` raised, or it silently stays
+at its live value.
 
 Evidence for the design: `../proof/doc.agent/recomp.md`, "Save states" (the same split, and a
 state resumed in a fresh process reproducing a 300-frame run, measured 2026-10-06 in the
