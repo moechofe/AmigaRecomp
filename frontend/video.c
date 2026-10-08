@@ -1,5 +1,6 @@
 #include "video.h"
 
+#include "game.h"
 #include "settings.h"
 
 #include "RmlUi_Include_GL3.h"
@@ -50,12 +51,15 @@ int sdl_video_init(void)
 {
 	int v = gladLoadGL((GLADloadfunc)SDL_GL_GetProcAddress);
 	GLuint vs, fs;
+	struct SdlView view;
 	GLint ok = 0;
 	if(GLAD_VERSION_MAJOR(v) * 10 + GLAD_VERSION_MINOR(v) < 33)
 	{
 		fprintf(stderr, "video: OpenGL 3.3 needed, the context has %d.%d\n", GLAD_VERSION_MAJOR(v), GLAD_VERSION_MINOR(v));
 		return -1;
 	}
+	if(sdl_video_view(&view))
+		return -1;
 	vs = video_shader(GL_VERTEX_SHADER, video_vs, "vertex");
 	fs = video_shader(GL_FRAGMENT_SHADER, video_fs, "fragment");
 	if(!vs || !fs)
@@ -77,7 +81,7 @@ int sdl_video_init(void)
 	glGenVertexArrays(1, &video_vao);
 	glGenTextures(1, &video_texture);
 	glBindTexture(GL_TEXTURE_2D, video_texture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, AMIGA_FRAME_W, AMIGA_FRAME_H, 0, GL_BGRA, GL_UNSIGNED_SHORT_4_4_4_4_REV, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, view.w, view.h, 0, GL_BGRA, GL_UNSIGNED_SHORT_4_4_4_4_REV, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -90,28 +94,50 @@ int sdl_video_init(void)
 	return 0;
 }
 
+int sdl_video_view(struct SdlView *v)
+{
+	const struct GameView *g = &game_def.view;
+	if(!g->w)
+	{
+		v->x = 0;
+		v->y = 0;
+		v->w = AMIGA_FRAME_W;
+		v->h = AMIGA_FRAME_H;
+		return 0;
+	}
+	v->x = g->x - AMIGA_FRAME_DIW_X0;
+	v->y = g->y - AMIGA_FRAME_LINE0;
+	v->w = g->w;
+	v->h = g->h;
+	return v->x < 0 || v->y < 0 || v->w <= 0 || v->h <= 0 || v->x + v->w > AMIGA_FRAME_STRIDE || v->y + v->h > AMIGA_FRAME_H ? -1 : 0;
+}
+
 int sdl_video_rect(SDL_Window *window, struct SdlVideoRect *r)
 {
-	int pw = 0, ph = 0, w, h;
+	int pw = 0, ph = 0, w, h, forced = sdl_scale_forced();
+	if(sdl_video_view(&r->view))
+		return -1;
 	if(!SDL_GetWindowSizeInPixels(window, &pw, &ph) || pw <= 0 || ph <= 0)
 		return -1;
-	if(sdl_setting(SdlSettingScale) == SdlScaleInteger)
+	if(forced || sdl_setting(SdlSettingScale) == SdlScaleInteger)
 	{
-		int n = pw / AMIGA_FRAME_W < ph / AMIGA_FRAME_H ? pw / AMIGA_FRAME_W : ph / AMIGA_FRAME_H;
+		int n = pw / r->view.w < ph / r->view.h ? pw / r->view.w : ph / r->view.h;
 		if(n < 1)
 			n = 1;
-		w = AMIGA_FRAME_W * n;
-		h = AMIGA_FRAME_H * n;
+		if(forced && forced < n)
+			n = forced;
+		w = r->view.w * n;
+		h = r->view.h * n;
 	}
-	else if((long long)pw * AMIGA_FRAME_H <= (long long)ph * AMIGA_FRAME_W)
+	else if((long long)pw * r->view.h <= (long long)ph * r->view.w)
 	{
 		w = pw;
-		h = pw * AMIGA_FRAME_H / AMIGA_FRAME_W;
+		h = pw * r->view.h / r->view.w;
 	}
 	else
 	{
 		h = ph;
-		w = ph * AMIGA_FRAME_W / AMIGA_FRAME_H;
+		w = ph * r->view.w / r->view.h;
 	}
 	r->x = (pw - w) / 2;
 	r->y = (ph - h) / 2;
@@ -122,7 +148,7 @@ int sdl_video_rect(SDL_Window *window, struct SdlVideoRect *r)
 	return 0;
 }
 
-void sdl_video_draw(SDL_Window *window, const uint16_t frame[AMIGA_FRAME_H][AMIGA_FRAME_W])
+void sdl_video_draw(SDL_Window *window, const uint16_t frame[AMIGA_FRAME_H][AMIGA_FRAME_STRIDE])
 {
 	struct SdlVideoRect r;
 	if(sdl_video_rect(window, &r))
@@ -136,11 +162,12 @@ void sdl_video_draw(SDL_Window *window, const uint16_t frame[AMIGA_FRAME_H][AMIG
 	glClear(GL_COLOR_BUFFER_BIT);
 	glViewport(r.x, r.window_h - r.y - r.h, r.w, r.h);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
-	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, AMIGA_FRAME_STRIDE);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, video_texture);
 	/* $0RGB is BGRA 4444 reversed: B in bits 0-3 up to an alpha nibble the shader ignores. */
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, AMIGA_FRAME_W, AMIGA_FRAME_H, GL_BGRA, GL_UNSIGNED_SHORT_4_4_4_4_REV, frame);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r.view.w, r.view.h, GL_BGRA, GL_UNSIGNED_SHORT_4_4_4_4_REV, &frame[r.view.y][r.view.x]);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 	glUseProgram(video_program);
 	glBindVertexArray(video_vao);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);

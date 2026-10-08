@@ -1,12 +1,15 @@
-# Emulator — WinUAE as the oracle
+# Emulators — WinUAE and FS-UAE as the oracle
 
-WinUAE is this project's reference machine. Verification #1 in `docs/conventions.md` (a pixel
+WinUAE is this project's reference machine, and FS-UAE an equal one (decision 016). Verification #1 in `docs/conventions.md` (a pixel
 diff) compares a headless runtime shot against a WinUAE screenshot, and every machine-state
 measurement in the docs is a RAM dump taken there. Three tools serve it: `tools/emulator.py`
 generates the configuration, `tools/capture.py` drives WinUAE, and `tools/pixdiff.py` compares
 the shots (`docs/tools.md`). Measurements cited as "proof" with a section name come from the
 predecessor project's notes (`../proof/doc.agent/emulator.md`). This project first ran WinUAE
 itself on 2026-10-06, for the second game; see "References".
+
+Either emulator may write a reference (decision 016). Every section before "FS-UAE" is
+WinUAE's; "FS-UAE" holds what differs there, and its measurements.
 
 ## Setup
 
@@ -49,7 +52,7 @@ ignore listed below.
 
 ## Configuration
 
-The settings are version-controlled in the game's template, `games/<id>/oracle.uae.in`; the
+The settings are version-controlled in the game's template, `games/<id>/oracle.winuae.in`; the
 paths are machine-specific and are filled in at generation time. **Edit the template, never the
 generated copy:** the next run of `tools/emulator.py` overwrites `build/`.
 
@@ -65,7 +68,7 @@ given (exit 2, `<template> uses @DF1@ but --df1 was not given`), so a half-appli
 never written. Disk paths are made absolute.
 
 What the template has to fix, because each can move a pixel (proof, "Configuration to use";
-the first game's template is `games/deuteros/oracle.uae.in`):
+the first game's template is `games/deuteros/oracle.winuae.in`):
 
 - machine: A500, OCS, 68000, cycle-exact CPU, blitter and chipset, PAL at 50 Hz;
 - memory: `chipmem_size=1` and `bogomem_size=2`. The units are 512 KB and 256 KB, not
@@ -156,6 +159,10 @@ the proof does not state as a constant. Because the game's playfield is wider th
 **the capture clips the rightmost 9 pixels** of it. No other game has been measured, and the
 constants hold only while the window geometry above does.
 
+A frame row (`m->frame`) runs wider than the capture, `AMIGA_FRAME_STRIDE` = 335 columns to the last one
+Denise draws (DIW 454), so a game's `view` may reach past the capture's right edge. Columns 0–319 are the
+capture; screenshots, `until colours` and oracle diffs use only those.
+
 ## Debugger and RAM dumps
 
 WinUAE's console debugger is how `capture.py` halts a screen, reads registers and saves memory
@@ -220,7 +227,7 @@ Delivered:
   seconds between them, default 0. The machine is resumed first, as a key into a halted
   emulation goes nowhere. An injected `1` crossed the first game's language menu (proof,
   2026-09-24).
-- **The left mouse button, through a key**: `games/lemmings/oracle.uae.in` binds F7 to
+- **The left mouse button, through a key**: `games/lemmings/oracle.winuae.in` binds F7 to
   `JOY1_FIRE_BUTTON` (port 0 fire, which is the mouse's left button), because an injected click
   reaches the Amiga only while WinUAE holds the mouse capture. `!key f7 0.2` crossed Lemmings'
   cracktro in five runs out of five on 2026-10-06; `!key f7` with no hold was missed in one
@@ -289,7 +296,8 @@ A state carries no resolution: one banked from a resized window reloads to an or
 
 ## References
 
-A reference shot is a WinUAE screenshot kept for diffing. They live in
+A reference shot is a WinUAE or FS-UAE screenshot kept for diffing (decision 016); the platform
+that took it goes in the game's PLAN *Observed:*. They live in
 `games/<id>/reference/` (gitignored: they are game data, and no screenshot is ever committed).
 
 The first game's set (`menu-nosprite.png`, `earth-base-nosprite.png`, `title.png`,
@@ -324,3 +332,143 @@ Animated screens differ between shots, so a golden image must be a screen that h
 (proof, "How far the boot gets": the first game's title animates).
 
 Compare with `tools/pixdiff.py` (`docs/tools.md`).
+
+## FS-UAE
+
+FS-UAE 3.1.66 runs WinUAE's 3.3.0 core (`debug.uae` records `config_version=3.3.0`). Everything
+below was observed on **Linux (GNOME on Wayland), FS-UAE 3.1.66 as the Flatpak
+`net.fsuae.FS-UAE`, on 2026-10-08, with `--game lemmings`**, unless marked `[source]`: read from
+FS-UAE's v3.1.66 source and not exercised here.
+
+### Setup
+
+- **Binary:** `tools/emulator.py` (`fsuae_command()`) uses `fs-uae` on PATH, else
+  `flatpak run --nosocket=wayland --env=SDL_VIDEODRIVER=x11 net.fsuae.FS-UAE`. The Flatpak
+  mounts the home folder, so a path under `~` means the same thing inside it; `/tmp` does not.
+  The working directory is kept, which `capture.py` relies on.
+- **Flatpak sockets:** with the Flatseal overrides `wayland` and `fallback-x11` set, FS-UAE
+  stopped at `SDL_GetCurrentDisplayMode failed` on every X server. `--nosocket=wayland` on the
+  command line restores it; adding `--nosocket=fallback-x11` breaks it again.
+- **Kickstart:** found by content hash in `~/Documents/WinUAE/Kickstarts` and
+  `~/Documents/FS-UAE/Kickstarts`. Here the ROM is in the WinUAE folder, and FS-UAE's own
+  Kickstarts folder is empty.
+- **A private X server.** `capture.py` starts `Xvfb` (`-displayfd`, 1280 × 1024) and runs FS-UAE
+  on it, so no window opens and the user's keyboard and mouse stay free. The desktop's own
+  server is Xwayland, and XTEST keys never arrived there: neither `tools/x11.py` nor `xdotool`
+  delivered one to an `xev` window holding the X focus. On Xvfb they arrive.
+- **Window and quit under Flatpak:** `_NET_WM_PID` is the PID inside the sandbox (2), so the
+  window is found by its title, `FS-UAE · Amiga 500`. Ending `flatpak run` does not end the
+  sandbox: `capture.py` quits FS-UAE with its `End` key (`action_quit`), then `flatpak kill`.
+  To quit a hand-started FS-UAE: `End`, or `flatpak kill net.fsuae.FS-UAE`.
+- The log says `No HW OpenGL driver: llvmpipe`; the screenshots do not depend on it.
+
+### Configuration
+
+`games/<id>/oracle.fsuae.in` is the template, generated into `build/fsuae/oracle.fs-uae` with
+`@BUILD@` (the absolute `build/fsuae/`) filled in besides the usual placeholders.
+`emulator.py` also creates `base/`, `logs/`, `states/` and `shots/` there. The template's own
+comments must not contain `@NAME@`: `render()` replaces every one it finds, comments included.
+
+- A key `uae_<k> = v` is handed to the core's option parser after FS-UAE's own model setup, so
+  the machine block overrides `amiga_model` `[source: src/fs-uae/uae_config.c]`. A key the core
+  rejects is logged as `failed to set option "<k>" to "<v>"`.
+- The effective config is `logs/debug.uae` and the log is `logs/fs-uae.log.txt`, both under
+  `logs_dir`.
+- **Observed:** 0 lines `failed to set option`; of 23 machine keys (CPU, chipset, memory,
+  floppies, display), compared between `oracle.winuae.in` and `debug.uae`, all 23 are the same.
+  No key was rejected, so there is no table of them.
+- Isolation: `end_config = 1`, `joystick_port_1 = none`, and `base_dir`, `logs_dir` and
+  `state_dir` under `build/fsuae/`, so the user's `~/Documents/FS-UAE` files do not apply.
+- `log_input = 1` (appended by hand to the generated file) logs each host key and the input
+  event it became.
+
+### Capture window
+
+FS-UAE writes screenshots from its frame buffer, never from the window.
+
+- `theme_zoom = X,Y,640,512` with lores and no line doubling gives a **320 × 256** PNG: the crop
+  is the zoom rectangle halved `[source: src/fs-uae/video.c]`. The estimate `56,32` was
+  **right the first time**: the psygnosis shot was `EXACT` against WinUAE's with no offset.
+- The mask `screenshots_output_mask = 2` writes only the crop, as
+  `shots/oracle-crop-<yymmddHHMM>-<NN>.png`. `NN` restarts each minute; no counter limit was
+  met. The folder must exist `[source]`, so `emulator.py` makes it, and `capture.py` empties it
+  at launch so `newest()` sees only this run.
+- The PNG is written from another thread, so a file counts once its size is non-zero and the
+  same 0.1 s later.
+
+Measured against the WinUAE 6.0.3 references of 2026-10-06 (`pixdiff`, no offset):
+
+| Shot | Result |
+| --- | --- |
+| `psygnosis` | 81 920 / 81 920, `EXACT` |
+| `dma-design` | 81 920 / 81 920, `EXACT` |
+| `title-menu` | 81 920 / 81 920, `EXACT` (WinUAE's own two runs differed inside x 35–46, y 134–138) |
+
+### Debugger and RAM dumps
+
+`console_debugger = 1` lets `Pause` (`action_enter_debugger`) open the UAE debugger on FS-UAE's
+own stdin and stdout. `capture.py` gives it a pty with echo off, drains the pty into
+`build/fsuae/console.log`, and writes commands to it.
+
+- The prompt is `>`. `halt()` takes a log that ends in `>` as the acknowledgement; the log
+  growing is not one, because FS-UAE prints other lines. `x` resumes.
+- **A line is 99 characters.** A longer one is cut and the rest runs as a second command:
+  `S` with a 100-character line wrote `0x8000` bytes and left a `>>` prompt, and one of 110
+  answered `S-command needs more arguments!`. `FsHost.send` refuses a line over 99, and dump
+  paths (`{out}`, `Session.dump`) are made **relative to the repository root**, where FS-UAE
+  starts.
+- A quoted path fails (`Couldn't open file '"…"'`). A relative path resolves against the working
+  directory, and `S` does not create folders (`capture.py` creates the dump folder).
+- `S games/lemmings/reference/ramdump/<name>.bin 0 80000` answered
+  `Wrote 00000000 - 00080000 (524288 bytes) to '<path>'` and the file was 524 288 bytes.
+- Resuming worked: after `S` and a save, the run reached the next screen (14 colours).
+
+### Input boundary
+
+Input is X11 XTEST on the private server (`tools/x11.py`), so it needs no focus fight and no
+screensaver handling.
+
+- **Host keys:** F11 shot, F8 save, F6 restore, F5 warp, F7 the Amiga's left button, `Pause`
+  debugger, `End` quit. F12 alone opens FS-UAE's menu; F11 and F12 act only on release and never
+  reach the Amiga `[source: libfsemu/src/emu/input.c]`.
+- **Keys the game sees:** `space`, `return` and `1` each logged `key_code … = press … => input
+  event`, none `NO INPUT EVENT`. `!key f7 0.2` crossed the cracktro in every run.
+- **Clicks:** `!click` crossed the Skid Row cracktro (it waits for the button) in 3 runs of 3.
+- **Pointer motion:** `!move DX DY`, in steps of 8 so FS-UAE's per-event clamp never bites.
+  On the title menu `!move 40 0` changed 212 pixels, all in rows 2–13, x 9–57 (two 16-pixel
+  pointer positions), and `!move -40 0` returned rows 0–127 to identical. The bottom scroller
+  (y ≥ 190) keeps changing, so shots seconds apart differ there whatever the pointer did.
+- Left Alt releases the input grab `[source]`; not exercised, since nothing holds a grab on the
+  private server.
+
+### Save states
+
+F8 and F6 are `action_save_state_1` and `action_restore_state_1`, on the file
+`build/fsuae/states/Saved State 1.uss`. FS-UAE answers on stdout
+`savestate_quick slot=1 save=1` and `save=0`.
+
+- A state of the Psygnosis screen is about 67 KB. `!save PATH` and `--save` copy it out.
+- `--statefile PATH` copies the file into the slot and presses F6. **F6 right after the window
+  appears is ignored**, so it is re-sent every 3 s until `save=0` appears. The restored shot
+  was `EXACT` against `psygnosis.png` and the whole run took 5.8 s.
+- Unlike WinUAE, F8 never overwrites the state the run started from: it writes the slot, and
+  `--save` needs no `--statefile`.
+
+### Deuteros
+
+`games/deuteros/oracle.fsuae.in` is Lemmings' template with the floppy block of
+`oracle.winuae.in` and no F7 button. Observed 2026-10-08, Linux, FS-UAE 3.1.66, with
+`games/deuteros/scripts/boot.dbg`:
+
+- A cold boot shows the title (16 colours), which waits for a click, then the language menu
+  (4 colours), which waits for a key. `--until 4` alone stays on the title for 180 s.
+- **Disk swap:** WinUAE's debugger command `I floppy0=<path>` does nothing in FS-UAE: it printed
+  a disassembly line and no disk changed. The template lists both images
+  (`floppy_image_0`, `floppy_image_1`) and binds F9 to `action_drive_0_insert_floppy_1`, which
+  inserts Disk 2 into DF0 (`insert floppy (1) into drive (0)` in the log). The key after it
+  needs 3 s; with 1 s the game stayed on the prompt.
+- The language menu differs from the WinUAE `menu-nosprite.png` (sprites off) in 65 pixels, all
+  inside x 164–176, y 116–127: the pointer sprite, which the reference leaves out. The Earth
+  base differs from `earth-base-nosprite.png` in 112 pixels inside x 13–176, y 79–127: the
+  same pointer, and the x 13–25, y 79–91 animation box WinUAE's own runs show
+  (`games/deuteros/docs/format.md`, "Verification figures").

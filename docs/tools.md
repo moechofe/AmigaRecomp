@@ -65,11 +65,11 @@ imports `read_png` from this file.
 ## `emulator.py`
 
     python tools/emulator.py --game <id> --df0 <disk1.adf> --df1 <disk2.adf>
-    python tools/emulator.py --game <id> --df0 <disk1.adf> --df1 <disk2.adf> --print
+    python tools/emulator.py --game <id> --emulator fsuae --df0 <disk1.adf> --df1 <disk2.adf> --print
 
-Generates the WinUAE configuration for one game from its template `games/<id>/oracle.uae.in`.
-`docs/emulator.md` owns the setup, Kickstart identity, placeholder rules and the reasons for
-the settings.
+Generates the oracle configuration for one game from its template
+`games/<id>/oracle.<emulator>.in` (`winuae`, `fsuae`). `docs/emulator.md` owns the setup,
+Kickstart identity, placeholder rules and the reasons for the settings.
 
 | Option | Meaning |
 | --- | --- |
@@ -77,16 +77,22 @@ the settings.
 | `--df0` … `--df3` | floppy image for `@DF0@` … `@DF3@`, made absolute |
 | `--kickstart PATH` | Kickstart 1.3 ROM for `@KICKSTART@`; default: found by content hash |
 | `--print` | write nothing and print the rendered config instead |
+| `--emulator NAME` | `winuae` or `fsuae`; default `winuae` on Windows, `fsuae` elsewhere |
 
-Output: `games/<id>/build/winuae/oracle.uae`, then `wrote     <path>` and a PowerShell launch
-line when WinUAE is installed in the usual place. With `--print` it prints
-`# ---- games/<id>/build/winuae/oracle.uae ----` and the text. Exit codes: 0 on success; 2
-with `error: …` (and a `fix:` line where there is one) for a missing game folder or template,
-a missing `--kickstart` file, no Kickstart found, a placeholder the tool cannot fill, or a
-placeholder whose option was not given (`<template> uses @DF1@ but --df1 was not given`).
+Placeholders: `@KICKSTART@`, `@DF0@` … `@DF3@` and `@BUILD@`, the absolute
+`games/<id>/build/<emulator>/`, which needs no option.
 
-It runs on any platform that has Python; the Kickstart search and the launch line only find
-anything on the Windows paths listed in `docs/emulator.md`, "Setup".
+Output: `games/<id>/build/winuae/oracle.uae`, or `games/<id>/build/fsuae/oracle.fs-uae` with
+its `base/`, `logs/`, `states/` and `shots/` folders; then `wrote     <path>` and a launch line:
+PowerShell for WinUAE, `fs-uae` or `flatpak run … net.fsuae.FS-UAE` for FS-UAE, when installed.
+With `--print` it prints `# ---- games/<id>/build/<emulator>/oracle.<ext> ----` and the text.
+Exit codes: 0 on success; 2 with `error: …` (and a `fix:` line where there is one) for a
+missing game folder or template, a missing `--kickstart` file, no Kickstart found, a
+placeholder the tool cannot fill, or a placeholder whose option was not given
+(`<template> uses @DF1@ but --df1 was not given`).
+
+It runs on any platform that has Python. The Kickstart search covers the Windows WinUAE folder,
+`~/Documents/WinUAE/Kickstarts` and `~/Documents/FS-UAE/Kickstarts`.
 
 ## `capture.py`
 
@@ -94,12 +100,14 @@ anything on the Windows paths listed in `docs/emulator.md`, "Setup".
     python tools/capture.py --game <id> --until N --name NAME
     python tools/capture.py --game <id> --until N --cmd e --cmd "S {out}/ram.bin 0 80000"
 
-Drives WinUAE through the Win32 API, so it runs only on Windows: elsewhere `main()` prints a
-message and exits 2 (`--help` works everywhere). It needs the generated
-`games/<id>/build/winuae/oracle.uae` (run `tools/emulator.py` first) and WinUAE installed at
-one of the paths in `docs/emulator.md`, "Setup". What a live run has been observed to do is in
-`docs/emulator.md`, "Input boundary". `docs/emulator.md` owns how it halts WinUAE,
-what input it can deliver ("Input boundary") and the reasons behind each step.
+Drives the oracle emulator. `--emulator winuae` drives WinUAE through the Win32 API and runs
+only on Windows: elsewhere `main()` prints a message and exits 2 (`--help` works everywhere).
+`--emulator fsuae` runs FS-UAE on a private `Xvfb` server and needs `Xvfb` and FS-UAE (on PATH,
+or the Flatpak); it also needs `tools/x11.py` and its `libX11` and `libXtst`, so no window
+opens and the user's keyboard and mouse stay free. It needs the generated
+`games/<id>/build/<emulator>/oracle.*` (run `tools/emulator.py` first). `docs/emulator.md` owns
+how it halts the emulator, what input it can deliver ("Input boundary", "FS-UAE") and the
+reasons behind each step.
 
 | Option | Meaning |
 | --- | --- |
@@ -115,10 +123,12 @@ what input it can deliver ("Input boundary") and the reasons behind each step.
 | `--script FILE` | a session file, run after `--cmd`, see below |
 | `--key NAME` | press a key the game sees, first of all; repeatable; names below |
 | `--settle S` | seconds to wait for the log after each command (default 0.4) |
-| `--save PATH` | bank a save state here at the end; needs `--statefile` |
-| `--keep` | leave WinUAE running at the end |
+| `--save PATH` | bank a save state here at the end; WinUAE needs `--statefile` |
+| `--emulator NAME` | `winuae` or `fsuae`; default `winuae` on Windows, `fsuae` elsewhere |
+| `--keep` | leave the emulator running at the end |
 
-Key names: `1 2 3 end esc f7 f11 f12 prtsc return shift space`. The default `--out` is
+Key names: `1 2 3 end esc f7 f9 f11 f12 prtsc return shift space`. `f9` is bound only in
+`games/deuteros/oracle.fsuae.in`, where it swaps Disk 2 into DF0. The default `--out` is
 relative to `games/<id>/`.
 
 Order of a run: `--key`s, `--until`, `--dumps`, then the commands and script, then `--save`.
@@ -131,23 +141,30 @@ printed. Every directive except `!settle` first resumes the machine.
 | --- | --- |
 | `!until N` | wait for a screenshot with N distinct colours |
 | `!sleep S` | wait S seconds |
-| `!shot [NAME]` | keep a screenshot as `reference/NAME.png` (WinUAE's own name if omitted) |
+| `!shot [NAME]` | keep a screenshot as `reference/NAME.png` (the emulator's own name if omitted) |
 | `!settle S` | change the seconds waited for the log after each later command |
 | `!key NAME [HOLD]` | press a key; the same set as `--key`; HOLD seconds between press and release (default 0) |
 | `!click` | click where the pointer is (takes no arguments) |
-| `!save PATH` | bank a save state at PATH; needs `--statefile` |
+| `!save PATH` | bank a save state at PATH; WinUAE needs `--statefile` |
 | `!press` | the same click, printed as having no acknowledgement |
+| `!move DX DY` | relative pointer motion in host pixels; FS-UAE only |
 
 Substitutions in script lines (and `--cmd` lines): `{out}` is the dump folder (the parent of
-`--out`, by default `games/<id>/reference/ramdump`) and `{df0}` … `{df3}` are the floppy paths
-from the `floppyN=` lines of the generated `oracle.uae`. A debugger `S` path must not contain
-spaces.
+`--out`, by default `games/<id>/reference/ramdump`; under FS-UAE written relative to the
+repository root, because its debugger line is 99 characters) and `{df0}` … `{df3}` are the
+floppy paths from the `floppyN=` lines of the generated `oracle.uae`, or the
+`floppy_drive_N =` lines of `oracle.fs-uae`. A debugger `S` path must not contain spaces.
+
+Under FS-UAE, `f12` is FS-UAE's menu and not a key the game sees; the debugger is on `Pause`
+and `End` quits.
 
 Outputs: dumps under `games/<id>/reference/ramdump/`, kept screenshots in
-`games/<id>/reference/`, the debugger log in `games/<id>/build/winuae/condebug.log`; all are
-gitignored. Exit 0 on a completed run, 2 for an unknown game or a non-Windows system; other
-failures (no WinUAE, no config, a debugger that never opened, no screenshot, a timeout) stop
-with a message. Unless `--keep` is given, WinUAE is closed at the end.
+`games/<id>/reference/`, the debugger log in `games/<id>/build/winuae/condebug.log` or
+`games/<id>/build/fsuae/console.log` (FS-UAE's screenshot scratch is
+`games/<id>/build/fsuae/shots/`, emptied at each launch); all are gitignored. Exit 0 on a
+completed run, 2 for an unknown game, WinUAE off Windows, or FS-UAE without `Xvfb`; other
+failures (no emulator, no config, a debugger that never opened, no screenshot, a timeout) stop
+with a message. Unless `--keep` is given, the emulator is closed at the end.
 
 ## `adf.py`
 

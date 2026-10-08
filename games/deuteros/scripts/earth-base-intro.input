@@ -1,0 +1,21 @@
+# For dumps that open on a cracker's intro or trainer screen that waits for the left button
+# (docs/dumps.md). Same as earth-base.input after the first two directives; the shot name is the same.
+wait 200
+click
+until colours 16
+wait 50
+click
+until colours 4
+wait 20
+key 1
+# The data-disk prompt prints a character at a time; a key before it finishes is ignored.
+wait 400
+disk df0 disk2
+wait 20
+key space
+until colours 18 6000
+wait 100
+sprites off
+wait 2
+shot earth-base-nosprite
+quit

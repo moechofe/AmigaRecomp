@@ -9,13 +9,12 @@ to tick. What happens next for a game is in `games/<id>/PLAN.md`, and `ARCHITECT
 the games.
 
 Milestone numbers cited without a game (M0–M6) in the shared docs and in `PROGRESS.md` are
-Deuteros's, in `games/deuteros/PLAN.md`. That plan also builds the shared root, and it still
-owns the shared work it has not finished: the disk-image loading (M3) and the settings menu
-and hacks (M4).
+Deuteros's, in `games/deuteros/PLAN.md`. That plan built the shared root through M4: the
+disk-image loading (M3) and the settings menu and hacks (M4).
 
 ## Method
 
-- Build the oracle early: WinUAE is the reference every diff is taken against (decision 010).
+- Build the oracle early: WinUAE (Windows) or FS-UAE (Linux) is the reference every diff is taken against (decision 016). Shots from either go into the same `reference/`.
 - Every runtime constant cites its source (`docs/conventions.md`).
 - The shared code stays game-agnostic (decision 012).
 
@@ -74,24 +73,25 @@ Paths are from the `amigarecomp/` root, and the command lines are in `README.md`
 
 | Step | Command | Status |
 | --- | --- | --- |
-| WinUAE config | `tools/emulator.py` | `[ ]` |
+| Oracle config | `tools/emulator.py` | `[ ]` |
 | References | `tools/capture.py` | `[ ]` |
 | Build, Linux | `cmake … build/cmake-linux` | `[ ]` |
 | Build, Windows | `cmake … build/cmake` | `[ ]` |
 | Run headless with a script | `<id> --headless --script …` | `[ ]` |
-| Compare with WinUAE | `tools/pixdiff.py` | `[ ]` |
+| Compare with the oracle | `tools/pixdiff.py` | `[ ]` |
 
 ## Milestones
 
 ### M1 — The oracle
 
 - `[ ]`
-    - Put the images in `games/<id>/disks/` and choose the pair WinUAE boots; the evidence goes
+    - Put the images in `games/<id>/disks/` and choose the pair the oracle boots; the evidence goes
       in `docs/dumps.md`.
-    - Write `oracle.uae.in` and a `scripts/<name>.dbg` that reaches the first screen.
-    - *Done when:* `emulator.py` writes the config, WinUAE loads it with no `unknown` or
-      `obsolete` line, and two `capture.py` runs write first-screen shots into `reference/`
-      that agree on every pixel.
+    - Write `oracle.winuae.in` and/or `oracle.fsuae.in` and a `scripts/<name>.dbg` that reaches the first screen.
+    - *Done when:* `emulator.py` writes the config, and the emulator loads it clean (WinUAE: no
+      `unknown` or `obsolete` line; FS-UAE: no `failed to set option` line in
+      `build/fsuae/logs/fs-uae.log.txt`); two `capture.py` runs write first-screen shots into
+      `reference/` that agree on every pixel; and *Observed:* names the emulator.
     - *Observed:*
 
 ### M2 — Build and the first screen

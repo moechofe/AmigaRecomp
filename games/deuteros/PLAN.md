@@ -122,7 +122,7 @@ for this file. Paths are from the `amigarecomp/` root, and the command lines are
       `disk df<n> <role>`.
     - Port `tools/emulator.py`, `tools/capture.py` and `tools/pixdiff.py` from the proof, made
       per-game with `--game <id>`:
-        - `emulator.py` fills in `games/<id>/oracle.uae.in` and writes the result under
+        - `emulator.py` fills in `games/<id>/oracle.winuae.in` and writes the result under
           `games/<id>/build/winuae/`;
         - `capture.py` writes into `games/<id>/reference/`;
         - `pixdiff.py` writes its diff images under `games/<id>/build/pixdiff/`.
@@ -132,7 +132,7 @@ for this file. Paths are from the `amigarecomp/` root, and the command lines are
         - the DF0 cycle `{disk1, disk2, save}`;
         - `pointer_sprite 0`;
         - `scripts/menu.input` and `scripts/earth-base.input`;
-        - `oracle.uae.in`;
+        - `oracle.winuae.in`;
         - `docs/format.md`.
     - Create `docs/runtime.md` and `docs/emulator.md`.
     - *Done when:*
@@ -287,18 +287,67 @@ for this file. Paths are from the `amigarecomp/` root, and the command lines are
         - the Deuteros menu panel shows navy `#101c3cf0`, which comes from
           `games/deuteros/menu/game.rcss`;
         - `ctest --test-dir games/deuteros/build/cmake-linux` passes.
-    - *Observed:*
+    - *Observed:* 2026-10-08, Linux (Ubuntu), Release (-O3), tree rebuilt at HEAD (after `6a1c9d7`
+      and the `core/state.c` change). The window checks ran on a private `Xvfb :5` (1280x1024,
+      no window manager, 960x768 game window) driven by `xdotool`, not on the GNOME session.
+        - `ctest --test-dir games/deuteros/build/cmake-linux`: `100% tests passed, 0 tests
+          failed out of 3` (`test_image`, `test_hack`, `test_state`).
+        - Hacks off (headless, from `pair.zip`, both exit 0, no `fatal:`): `menu.input` gave
+          81 920 of 81 920 EXACT, and `earth-base.input` gave 81 862 of 81 920, differences
+          inside x 13-23, y 79-90. These are the M2 figures.
+        - `keep_pointer`: `keep-pointer.input` dump, words at 0x1FFC8, 0x1FFCE, 0x1EE10,
+          0x1EE12 = `28 19 0 0`. The same script without the `hack keep_pointer on` line =
+          `102 29 28 10`.
+        - `space_advance`: byte 0x1FFD9 and word 0x1EED6 = `1 0` after `space-advance-start.input`
+          (started), `0 0` for the same script without the `hack` line (Space ignored), and
+          `0 0` after `space-advance.input` (stopped by the second Space).
+        - Panel: F1 on a fresh `--pref` showed the navy panel at x 180-780; the pixel at
+          (190, 384) was `#0F1A38` (R 15, G 26, B 56, B-R 41). `Failed to load style sheet
+          game.rcss` appeared 0 times in the log, in both launches.
+        - Setting survives a restart: a fresh `--pref` has no `hack.*` key and both hacks show
+          "modern" chosen, so "modern" is the default and clicking it proves nothing. Clicking
+          "original" on Keep pointer wrote `hack.keep_pointer=0`; "modern" wrote
+          `hack.keep_pointer=1`; "original" again wrote `0`. After closing the window and
+          relaunching with the same `--pref` and no image arguments, the game booted with the
+          title drawn, and F1 > Hacks showed "original" chosen for Keep pointer; `settings.ini`
+          still held `hack.keep_pointer=0` with `disk.disk1=` and `disk.disk2=`.
+        - Not observed: Windows; the GNOME session (the old `DISPLAY=:1` is a dead Xvfb that
+          hangs every X client, and `xdotool` input to the Xwayland `:0` did not reach the
+          compositor); a display scale other than 1.
 
 ### M5 — Every Deuteros dump on hand
 
-- `[ ]`
+- `[x]`
     - Run `adf.py` and both scripts on every readable image in `games/deuteros/disks/`.
     - Implement whatever the runtime lacks, by evidence, for example the hooked-bootblock
       path. Hardware disk DMA is `lemmings M2`.
     - Record each dump in `dumps.txt` and `docs/dumps.md`.
     - *Done when:* every readable image has the status `verified`, `known` or `refused` (with
       its reason), and none ends in an unexplained fatal.
-    - *Observed:*
+    - *Observed:* 2026-10-08, Linux (Ubuntu), GCC 15.2 Release build `games/deuteros/build/cmake-linux`
+      at `6a1c9d7` plus the uncommitted tree. 28 ZIPs, 19 CRCs: 7 `verified` Disk 1 and 4 Disk 2,
+      6 `known` (the Spanish SKN pair, two Disk 1 and one Disk 2, and the three Black Monks Disk 1), 2 `refused` (the save
+      disks, `MSCF` cabinets). Every run exits 0 with no `fatal:`.
+        - `ctest` 3/3; `adf.py games/deuteros/disks` exits 0 and names all 28 images, none "not in
+          any dumps.txt"; a save-disk ZIP exits 2 with its message; an `[a2]` and an SKN ADF with
+          the last byte changed print `unknown dump` and the banner line.
+        - Family A, C and D, English: `menu` or `menu-intro` 81 920/81 920 EXACT for all seven.
+          Earth base: untagged 81 862/81 920 (x 13-23, y 79-90, as M2); the six others 81 405 or
+          81 429/81 920, differences inside x 9-231, y 19-90 (the version-string line and the
+          icon slot). The Skid Row dumps cross a 229-colour cracktro, the SKN `+5` one a
+          23-colour trainer screen.
+        - Spanish SKN (`f1c4eed4`, `d6fd242b`): menu 81 425/81 920, x 121-207, y 95-116 (the
+          translated credit line); Earth base 81 270/81 920, x 9-311, y 19-90.
+        - Black Monks (`7dbf36e9`, `4d1b0183`, `3f8f1030`): the FS-UAE oracle gets past the
+          "Cracked by Black Monks!" prompt with Return and reaches the Earth base. The runtime
+          did not, because of two gaps found by tracing a jump into garbage: `input.device`
+          `CMD_RESET` (now accepted and ignored) and `InitRastPort` clearing 0x64 bytes where
+          Kickstart 1.3 clears 0x4E (now 0x4E, read from the oracle's ROM). With them,
+          `earth-base-black-monks.input` reaches the Earth base, 81 450/81 920, x 9-215, y 19-89.
+          They have no language menu, so there is no menu shot and they are `known`, not
+          `verified`. `menu-black-monks.input` was not written for that reason.
+        - `identify` accepts the stage 2 CRCs `0fa5e766`, `a2fb4c87`, `36063ce7` and `db749c89`.
+        - Not observed: Windows; the hacks on non-reference dumps; a Spanish reference.
 
 ### M6 — Distributable executables
 

@@ -23,6 +23,7 @@ static int sdl_report_errors;
 static int sdl_fatal_shown;
 
 #define SDL_MAX_PATHS 16
+#define SDL_MAX_SCALE 32  /* --scale: 32 x 320 = 10 240 pixels wide, beyond any display */
 
 struct SdlOptions
 {
@@ -33,6 +34,7 @@ struct SdlOptions
 	const char *state;
 	const char *dump;
 	int no_sprites;
+	int scale;
 };
 
 static void sdl_log(const char *text)
@@ -45,7 +47,7 @@ static int sdl_usage(void)
 {
 	fprintf(stderr,
 		"usage: %s [--headless] [--frames N] [--script FILE] [--shot-dir DIR] [--state PATH]\n"
-		"          [--pref DIR] [--dump FILE] [--no-sprites] <image>...\n"
+		"          [--pref DIR] [--dump FILE] [--no-sprites] [--scale N] <image>...\n"
 		"images: .adf .adz .gz .zip\n",
 		game_def.id);
 	return 2;
@@ -314,8 +316,8 @@ static void sdl_pointer_step(const struct SdlPointer *p, SDL_Window *window, int
 	if(!p->inside || !denise_pointer(&machine, &px, &py) || !SDL_GetWindowSize(window, &ww, &wh) || ww <= 0 || wh <= 0
 		|| sdl_video_rect(window, &r))
 		return;
-	tx = sdl_clamp((int)SDL_floorf((p->wx * r.window_w / ww - r.x) * AMIGA_FRAME_W / r.w), 0, AMIGA_FRAME_W - 1);
-	ty = sdl_clamp((int)SDL_floorf((p->wy * r.window_h / wh - r.y) * AMIGA_FRAME_H / r.h), 0, AMIGA_FRAME_H - 1);
+	tx = sdl_clamp(r.view.x + (int)SDL_floorf((p->wx * r.window_w / ww - r.x) * r.view.w / r.w), r.view.x, r.view.x + r.view.w - 1);
+	ty = sdl_clamp(r.view.y + (int)SDL_floorf((p->wy * r.window_h / wh - r.y) * r.view.h / r.h), r.view.y, r.view.y + r.view.h - 1);
 	*dx = sdl_clamp(tx - px, -127, 127);
 	*dy = sdl_clamp(ty - py, -127, 127);
 }
@@ -392,6 +394,7 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 	uint32_t audio_read = 0;
 	int running = 1, code = 0, lmb = 0, rmb = 0, cursor_shown = -1, captured = 0, want, i;
 	float fx = 0, fy = 0;
+	struct SdlView view;
 
 	if(!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))
 	{
@@ -402,13 +405,19 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-	window = SDL_CreateWindow(game_def.title, AMIGA_FRAME_W * 3, AMIGA_FRAME_H * 3, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+	i = o->scale ? o->scale : 3;
+	if(sdl_video_view(&view))
+	{
+		fprintf(stderr, "video: game_def.view %d,%d %dx%d lies outside the frame buffer\n", game_def.view.x, game_def.view.y, game_def.view.w, game_def.view.h);
+		return 1;
+	}
+	window = SDL_CreateWindow(game_def.title, view.w * i, view.h * i, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 	if(!window)
 	{
 		fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
 		return 1;
 	}
-	SDL_SetWindowMinimumSize(window, AMIGA_FRAME_W, AMIGA_FRAME_H);
+	SDL_SetWindowMinimumSize(window, view.w, view.h);
 	gl = SDL_GL_CreateContext(window);
 	if(!gl)
 	{
@@ -484,8 +493,8 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 					ptr.inside = 1;
 					if(captured && SDL_GetWindowSize(window, &ww, &wh) && ww > 0 && wh > 0 && !sdl_video_rect(window, &r))
 					{
-						fx += e.motion.xrel * r.window_w / (float)ww * AMIGA_FRAME_W / (float)r.w;
-						fy += e.motion.yrel * r.window_h / (float)wh * AMIGA_FRAME_H / (float)r.h;
+						fx += e.motion.xrel * r.window_w / (float)ww * r.view.w / (float)r.w;
+						fy += e.motion.yrel * r.window_h / (float)wh * r.view.h / (float)r.h;
 					}
 				}
 				if(open)
@@ -657,6 +666,14 @@ int main(int argc, char **argv)
 		}
 		else if(!strcmp(a, "--headless")) o.headless = 1;
 		else if(!strcmp(a, "--no-sprites")) o.no_sprites = 1;
+		else if(!strcmp(a, "--scale") && v)
+		{
+			char *end;
+			o.scale = (int)strtol(v, &end, 10);
+			if(end == v || *end || o.scale < 1 || o.scale > SDL_MAX_SCALE)
+				return sdl_usage();
+			i++;
+		}
 		else if(!strcmp(a, "--frames") && v) { o.frames = strtol(v, 0, 10); i++; }
 		else if(!strcmp(a, "--script") && v) { o.script = v; i++; }
 		else if(!strcmp(a, "--shot-dir") && v) { o.shot_dir = v; i++; }
@@ -739,6 +756,8 @@ int main(int argc, char **argv)
 		if(sdl_settings_load(settings_path))
 			return 2;
 		sdl_settings_apply(&machine, o.script == 0);
+		if(o.scale)
+			sdl_scale_force(o.scale);
 		code = sdl_window(&o, paths, path_count);
 	}
 	if(machine.fatal)

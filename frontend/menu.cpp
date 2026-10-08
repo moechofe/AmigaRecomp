@@ -213,7 +213,10 @@ void menu_options_refresh()
 	menu->model.settings.clear();
 	menu->model.hacks.clear();
 	for(int i = 0; i < SdlSettingCount; i++)
-		menu->model.settings.push_back(option_row(sdl_settings[i], sdl_setting((SdlSetting)i), ""));
+	{
+		const bool unchosen = i == SdlSettingScale && sdl_scale_forced();
+		menu->model.settings.push_back(option_row(sdl_settings[i], unchosen ? -1 : sdl_setting((SdlSetting)i), ""));
+	}
 	for(uint32_t i = 0; i < game_def.hack_count; i++)
 		menu->model.hacks.push_back(option_row(game_def.hacks[i]->setting, sdl_hack_value(menu->m, i), status[menu->m->hacks.status[i]]));
 	menu->handle.DirtyVariable("settings");

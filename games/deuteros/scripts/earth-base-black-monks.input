@@ -1,0 +1,15 @@
+# For the Black Monks dumps, whose loader has no language menu or data-disk prompt: the title,
+# a click, a text prompt that takes Return, then the first game screen (docs/dumps.md, "Black
+# Monks"). Sprites off, one shot with the same name as earth-base.input's.
+until colours 16
+wait 50
+click
+until colours 5
+wait 50
+key return
+until colours 18 6000
+wait 100
+sprites off
+wait 2
+shot earth-base-nosprite
+quit

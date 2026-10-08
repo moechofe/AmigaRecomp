@@ -1,7 +1,7 @@
 # capture.py session: the Lemmings oracle's reference shots, from a cold boot.
 #   python tools/capture.py --game lemmings --script games/lemmings/scripts/boot.dbg
 # The Skid Row cracktro waits for the left mouse button forever, so a fixed sleep cannot race
-# it; F7 is that button (oracle.uae.in). A press with no hold is missed now and then.
+# it; F7 is that button (oracle.winuae.in, oracle.fsuae.in). A press with no hold is missed now and then.
 !sleep 12
 !key f7 0.2
 # Psygnosis owl: 32 colours, unchanged for about 7 s.

@@ -1,0 +1,21 @@
+# capture.py session: Deuteros from a cold boot to the first game screen, two shots.
+#   python tools/capture.py --game deuteros --script games/deuteros/scripts/boot.dbg
+# Colour counts are those of docs/format.md, "Screens". The title waits for a click and the
+# language menu for a key. The data-disk prompt prints a character at a time, so the key and
+# the swap come after a long wait. F9 inserts Disk 2 into DF0 (oracle.fsuae.in). WinUAE swaps
+# with the debugger command `I floppy0=<Disk 2 path>` instead, which this script has not been
+# run with. A key sent less than 3 s after the swap is missed.
+!until 16
+!sleep 3
+!click
+!until 4
+!sleep 1
+!shot language-menu
+!key 1 0.2
+!sleep 12
+!key f9 0.2
+!sleep 3
+!key space 0.2
+!until 18
+!sleep 1
+!shot earth-base

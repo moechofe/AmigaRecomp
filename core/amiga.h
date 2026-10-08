@@ -9,6 +9,9 @@
 #define AMIGA_FRAME_H 256
 #define AMIGA_FRAME_LINE0 42
 #define AMIGA_FRAME_DIW_X0 120
+/* A frame row runs on past the capture window to the last column Denise draws, DIW x
+ * 2 × AMIGA_CCK_PER_LINE (denise_render_to), so a picture the capture clips stays whole. */
+#define AMIGA_FRAME_STRIDE (AMIGA_CCK_PER_LINE * 2 + 1 - AMIGA_FRAME_DIW_X0)
 
 /* 512 KB chip RAM at 0x000000 and 512 KB slow RAM at 0xC00000: the A500 memory map, HRM
  * "Memory Map". */
@@ -262,7 +265,7 @@ struct Amiga
 	int sprites_enabled;
 	struct Hacks hacks;
 
-	uint16_t frame[AMIGA_FRAME_H][AMIGA_FRAME_W];
+	uint16_t frame[AMIGA_FRAME_H][AMIGA_FRAME_STRIDE];
 
 	int fatal;
 	char fatal_msg[AMIGA_FATAL_LEN];

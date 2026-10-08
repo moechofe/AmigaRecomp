@@ -21,6 +21,10 @@ enum SdlScale { SdlScaleInteger, SdlScaleFloat };  /* the choice indices of `sca
 extern const struct GameSetting sdl_settings[SdlSettingCount];
 
 int sdl_setting(enum SdlSetting s);
+/* `--scale N`: a fixed multiple for this run, 0 for none; settings.ini is not changed. The menu
+ * shows no `scale` choice as chosen while it holds; choosing one (sdl_settings_choose) clears it. */
+void sdl_scale_force(int n);
+int sdl_scale_forced(void);
 /* Reads every frontend setting and, when `hacks` is set, every hack of game_def from the table into
  * the values and the machine. A missing or bad key gives the default. */
 void sdl_settings_apply(struct Amiga *m, int hacks);

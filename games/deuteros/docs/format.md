@@ -68,6 +68,11 @@ contiguous plane layout and two buffers, measured 2026-08-15 (proof, `doc.format
 "The screen"). Only three screens have been measured and all three have this shape; that it
 holds for every screen is unknown.
 
+The picture sits at DIW x 129–448, scanlines 56–255 (`game_def.view`, `game.c`): `DDFSTRT` 0x38
+puts the first pixel at DIW 0x81 = 129 and 20 words are 320 pixels, and `BPLCON0` is switched
+on at copper `WAIT` line 0x38 = 56 for 200 rows (proof, `screen.md`, "The screen"). In the
+320x256 capture window that is x 9, y 14, with DIW 440–448 clipped.
+
 The game's mouse pointer is hardware sprite 0; the other seven sprites point at one common
 empty sprite (proof, screen.md; the runtime's `game_def.pointer_sprite = 0`, `game.c`). The
 menu's yellow marker is a sprite pixel, which is why sprites add colours to a capture that the
@@ -110,10 +115,15 @@ What causes the 58 differing pixels in that rectangle is not established here: u
 CRCs and addresses, no bytes). A throwaway read of every image in `disks/` on 2026-10-07 gave
 these figures:
 
-- Disk 1, stage 2 (ADF 0x002C00-0x0041FF, 0x1600 bytes), CRC `0fa5e766`:
-    - held by the untagged Disk 1, `[a]`, `[cr SKR]`, `[cr SR]`, `[f AGA Access]`,
+- Disk 1, stage 2 (ADF 0x002C00-0x0041FF, 0x1600 bytes), four CRCs identify, one for each loader
+  family that reaches the Earth base:
+    - `0fa5e766` (A): the untagged Disk 1, `[a]`, `[cr SKR]`, `[cr SR]`, `[f AGA Access]`,
       `[f IMG][a cracktro disabled]`, `[f crack IMG]` and `[f crack L.A.]`;
-    - other stage-2 CRCs do not identify: `db749c89` (Black Monks), `a2fb4c87` (`[a2]` and
-      `(1991-09)`) and `36063ce7` (SKN). M5 decides whether they should.
+    - `a2fb4c87` (C): `[a2]` and `(1991-09)`;
+    - `36063ce7` (D): the SKN dumps;
+    - `db749c89` (B): the Black Monks dumps.
+
+  Decision 007: an unknown dump runs. M5 widened `deuteros_identify_disk1` to all four, because
+  every dump on hand with one of them reaches the Earth base (`docs/dumps.md`).
 - Disk 2, bootblock (ADF 0x000000-0x0003FF), CRC `e58d146a`: all 8 Disk 2 images on hand, which
   start `DEU\0`.

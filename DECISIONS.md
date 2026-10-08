@@ -114,6 +114,8 @@ gets trusted without being checked.
 second emulator adds nothing. AROS cannot boot Deuteros (the proof's finding), and FS-UAE runs
 an older UAE core that cannot be cited.
 
+*Reversed by 016 (2026-10-08).*
+
 ## 011 — Fidelity first; hacks are opt-in layers
 
 **2026-10-06.**
@@ -136,7 +138,7 @@ and "DF1 is the save disk" in `hle_disk.c`. A second game would have forked the 
 
 **2026-10-06.** Author's call.
 
-`games/<id>/` holds the game's images (`disks/`), its WinUAE references (`reference/`), its
+`games/<id>/` holds the game's images (`disks/`), its oracle references (`reference/`), its
 definition, settings and hacks, its RmlUi assets (`menu/`), its own CMake project
 (`CMakeLists.txt`) and its own build tree (`build/`).
 
@@ -171,3 +173,23 @@ with the chosen drive's disk, and Empty ejects. F11 and `df0_cycle` are removed.
 
 *Why:* a fixed layout cannot follow a game that wants its data disk in DF0, and a single-drive
 game needs a way to change disks.
+
+## 016 — WinUAE and FS-UAE are both oracle emulators
+
+**2026-10-08.** Author's call.
+
+Either emulator may write `games/<id>/reference/<name>.png`. The platform that took a shot is
+recorded in the game's PLAN *Observed:*.
+
+*What changed:* the Linux machine has FS-UAE 3.1.66 (a Flatpak) and no WinUAE. FS-UAE runs
+WinUAE's 3.3.0 core, and its shots matched WinUAE 6.0.3's Lemmings references on every pixel:
+`psygnosis`, `dma-design` and `title-menu` all 81 920 / 81 920 (2026-10-08, Linux, FS-UAE
+3.1.66). `docs/emulator.md`, "FS-UAE", has the measurements.
+
+*Considered:* WinUAE only (010); FS-UAE shots in `reference/fsuae/`; FS-UAE for exploration
+only.
+
+*Why:* one `reference/` keeps every diff one-to-one, and the match is the evidence that either
+emulator's shot is the same measurement.
+
+*What would reverse this:* an FS-UAE shot that differs from WinUAE's of the same screen.

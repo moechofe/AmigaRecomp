@@ -30,8 +30,8 @@ This table owns the roster; `docs/tools.md` explains how to run them.
 | Tool | Milestone | Job |
 | --- | --- | --- |
 | `tools/doctor.py` | M1 | what is installed; git hygiene |
-| `tools/emulator.py` | M2 | the WinUAE config for a game |
-| `tools/capture.py` | M2 | drive WinUAE: shots, RAM dumps |
+| `tools/emulator.py` | M2 | the oracle config (WinUAE or FS-UAE) for a game |
+| `tools/capture.py` | M2 | drive the oracle (WinUAE or FS-UAE): shots, RAM dumps |
 | `tools/pixdiff.py` | M2 | pixel diff |
 | `tools/adf.py` | M3 | identify images against `dumps.txt` |
 | `tools/anchor.py` | M4 | a CRC-32 anchor from a RAM dump |

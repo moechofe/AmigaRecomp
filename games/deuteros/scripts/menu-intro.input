@@ -1,0 +1,12 @@
+# For dumps that open on a cracker's intro or trainer screen that waits for the left button
+# (docs/dumps.md). Same as menu.input after the first two directives; the shot name is the same.
+wait 200
+click
+until colours 16
+wait 50
+click
+until colours 4
+sprites off
+wait 2
+shot lang-menu-nosprite
+quit

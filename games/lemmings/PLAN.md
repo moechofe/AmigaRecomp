@@ -19,7 +19,7 @@ file. Paths are from the `amigarecomp/` root, and the command lines are in `READ
 ### M1 — The oracle
 
 - `[x]`
-    - `oracle.uae.in`, `scripts/boot.dbg`, and the choice of the oracle's pair in
+    - `oracle.winuae.in`, `scripts/boot.dbg`, and the choice of the oracle's pair in
       `docs/dumps.md`.
     - *Done when:* `emulator.py` writes the config, WinUAE loads it with no `unknown` or
       `obsolete` line, and two `capture.py` runs write first-screen shots into `reference/`

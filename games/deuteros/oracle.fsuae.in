@@ -1,0 +1,87 @@
+# AmigaRecomp oracle: FS-UAE configuration template for deuteros.
+# The machine of oracle.winuae.in, key for key: A500, Kickstart 1.3 (34.5), PAL,
+# 512 KB chip + 512 KB slow, two floppy drives.
+#
+# Generated into games/deuteros/build/fsuae/oracle.fs-uae by
+#   python tools/emulator.py --game deuteros --emulator fsuae --df0 <Disk 1 adf> --df1 <Disk 2 adf>
+# which fills the Kickstart, the two disks and the build folder. Edit this template, never the generated copy.
+# FS-UAE 3.1.66 runs WinUAE's 3.3.0 core. A uae_<key> line hands <key> to that core after
+# FS-UAE's own model setup, so the machine block overrides amiga_model.
+
+[fs-uae]
+end_config = 1
+amiga_model = A500
+kickstart_file = @KICKSTART@
+
+# --- CPU and chipset: period-correct unexpanded A500 ---
+uae_cpu_type = 68000
+uae_cpu_model = 68000
+uae_cpu_speed = real
+uae_cpu_compatible = true
+uae_cpu_cycle_exact = true
+uae_cpu_24bit_addressing = true
+uae_blitter_cycle_exact = true
+uae_cycle_exact = true
+uae_chipset = ocs
+uae_chipset_compatible = A500
+uae_chipset_refreshrate = 50.000000
+uae_ntsc = false
+uae_immediate_blits = false
+uae_fastmem_size = 0
+uae_z3mem_size = 0
+uae_rtc = none
+
+# --- Memory: chipmem_size in 512 KB units, bogomem_size in 256 KB units ---
+uae_chipmem_size = 1
+uae_bogomem_size = 2
+
+# --- Floppies: DF0 boots, DF1 is along for the ride ---
+# The loader only opens unit 0, so the game asks for the data disk in DF0 and never reads
+# DF1; it stays loaded so every dump stays comparable to oracle.winuae.in. The swap that
+# WinUAE does with the debugger command `I floppy0=<path>` is F9 here: it inserts the second
+# image of the list into DF0.
+floppy_drive_count = 2
+floppy_drive_speed = 100
+floppy_drive_0 = @DF0@
+floppy_drive_1 = @DF1@
+floppy_image_0 = @DF0@
+floppy_image_1 = @DF1@
+
+# --- Display: lores, no line doubling, no centring ---
+uae_gfx_resolution = lores
+uae_gfx_linemode = none
+uae_gfx_center_horizontal = none
+uae_gfx_center_vertical = none
+video_format = bgra
+fullscreen = 0
+window_width = 640
+window_height = 512
+
+# --- Screenshots: the crop is theme_zoom in hires interlaced units, halved, so
+# 640x512 is 320x256 lores. X,Y place it where WinUAE's capture window sits. ---
+theme_zoom = 56,32,640,512
+screenshots_output_dir = @BUILD@/shots
+screenshots_output_prefix = oracle
+screenshots_output_mask = 2
+
+# --- Input: capture.py injects X events on a private X server, so nothing else competes.
+# Same host keys as oracle.winuae.in: F11 shot, F8 save, F6 restore, F5 warp.
+# F12 is FS-UAE's menu, so the debugger is on Pause and End quits. No F7 button, as in
+# oracle.winuae.in. ---
+joystick_port_0 = mouse
+joystick_port_1 = none
+initial_input_grab = 1
+keyboard_input_grab = 1
+console_debugger = 1
+keyboard_key_f11 = action_screenshot
+keyboard_key_f8 = action_save_state_1
+keyboard_key_f6 = action_restore_state_1
+keyboard_key_f5 = action_warp
+keyboard_key_pause = action_enter_debugger
+keyboard_key_end = action_quit
+keyboard_key_f9 = action_drive_0_insert_floppy_1
+
+# --- Host folders, all under build/fsuae/, so no file of the user's FS-UAE applies ---
+base_dir = @BUILD@/base
+logs_dir = @BUILD@/logs
+state_dir = @BUILD@/states

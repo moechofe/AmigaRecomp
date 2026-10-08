@@ -112,6 +112,8 @@ void hle_input_io(struct Amiga *m, uint32_t io)
 	uint16_t cmd = hle_r16(m, io + IO_COMMAND);
 	uint32_t data = hle_r32(m, io + IO_DATA);
 	hle_w8(m, io + IO_ERROR, 0);
+	/* The HLE queues no requests and has no stopped state, so CMD_RESET, which aborts queued
+	 * requests and restarts a stopped device, has nothing to undo. */
 	switch(cmd)
 	{
 	case 9: /* IND_ADDHANDLER */
@@ -120,6 +122,7 @@ void hle_input_io(struct Amiga *m, uint32_t io)
 	case 10: /* IND_REMHANDLER */
 		hle_remove(m, data);
 		return;
+	case 1: /* CMD_RESET */
 	case 12: /* IND_SETTHRESH */
 	case 13: /* IND_SETPERIOD */
 	case 14: /* IND_SETMPORT */

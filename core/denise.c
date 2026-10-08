@@ -258,7 +258,7 @@ void denise_end_line(struct Amiga *m)
 	denise_render_to(m, AMIGA_CCK_PER_LINE);
 	if(row < 0 || row >= AMIGA_FRAME_H)
 		return;
-	for(x = 0; x < AMIGA_FRAME_W; x++)
+	for(x = 0; x < AMIGA_FRAME_STRIDE; x++)
 		m->frame[row][x] = d->linebuf[AMIGA_FRAME_DIW_X0 + x];
 }
 

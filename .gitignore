@@ -16,7 +16,7 @@
 *.gz
 
 # ROMs and emulator state
-# (committed templates are *.uae.in, which these patterns miss on purpose)
+# (committed templates are games/*/oracle.*.in, which these patterns miss on purpose)
 *.rom
 *.key
 *.uss

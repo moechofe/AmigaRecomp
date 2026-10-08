@@ -51,15 +51,17 @@ These files are committed:
       `frontend/menu/about.rml` is the fallback.
     - Every file in it is ours: no game graphics, ever.
 - `scripts/<name>.input` — headless input scripts.
-- `scripts/<name>.dbg` — `tools/capture.py` session files that take the WinUAE references.
+- `scripts/<name>.dbg` — `tools/capture.py` session files that take the oracle's references.
 - `README.md` — every command line for this game, in the order they are used: unpack the
-  images, generate the WinUAE config, take the references, build, run, and compare. The README
+  images, generate the oracle config, take the references, build, run, and compare. The README
   owns the command lines, and `docs/tools.md` owns the tools' options. A command whose result
   changes updates the README in the same change.
 - `PLAN.md` — what happens next for this game, written from the template in the root
   `PLAN.md`.
-- `oracle.uae.in` — the WinUAE config template for this game, filled in by
+- `oracle.winuae.in` — the WinUAE config template for this game, filled in by
   `tools/emulator.py`.
+- `oracle.fsuae.in` — the FS-UAE config template, the same machine; optional, filled in the
+  same way.
 - `docs/format.md` — the game's boot chain and disk facts, each citing an ADF name and a byte
   offset.
 - `docs/dumps.md` — every dump seen, with:
@@ -77,7 +79,7 @@ These files are committed:
 These are local only and never committed; `.gitignore` covers them:
 
 - `disks/` — the developer's copies of the game's ADF/ZIP/ADZ/GZ images, kept as they arrived.
-- `reference/` — WinUAE save states, RAM dumps and screenshots.
+- `reference/` — oracle save states, RAM dumps and screenshots.
 - `build/` — the CMake trees (`cmake/`, `cmake-linux/`) and every tool's output for this game.
 
 ## 3. The contract `core/game.h` (☑)
@@ -116,6 +118,7 @@ declaration of `struct Amiga`.
     	int writable;      /* 1: our file <pref>/<id>.adf, zero-filled when absent */
     	int (*identify)(const uint8_t *adf, uint32_t size); /* unknown dumps: 1 = this role; NULL for writable roles */
     };
+    struct GameView { int x, y, w, h; }; /* the game's picture: DIW x (lores) of its first column, its first scanline, its size */
     struct GameDef
     {
     	const char *id, *title;
@@ -123,6 +126,7 @@ declaration of `struct Amiga`.
     	int drives[4];               /* role index in DF0–DF3 at boot, -1 empty */
     	int drive_count;             /* DF0–DF(n-1): the drives the Disks page offers, 1–4 */
     	int pointer_sprite;          /* sprite holding the game's mouse pointer, -1 none */
+    	struct GameView view;        /* what the window shows; w 0: the capture window */
     	const struct GameHack *const *hacks; uint32_t hack_count;
     };
     extern const struct GameDef game_def;
@@ -207,10 +211,10 @@ An ordered checklist:
 
 1. Put the images in `games/<id>/disks/`.
 2. Run `python tools/adf.py games/<id>/disks/*` (☑) to group the images by CRC and
-   bootblock. Pick the reference dump that WinUAE will boot.
+   bootblock. Pick the reference dump that the oracle will boot.
 3. Create `games/<id>/CMakeLists.txt` (item 2), a minimal `game.c` (roles and drives, no
    hacks), and `dumps.txt` listing the reference dump as `known`. Configure and build.
-4. Write `oracle.uae.in`, then take reference shots and states into `games/<id>/reference/`
+4. Write `oracle.winuae.in` and/or `oracle.fsuae.in`, then take reference shots and states into `games/<id>/reference/`
    with `tools/capture.py --game <id>` (☐ M2).
 5. Run the game headless, repeatedly, until the first fatal error:
 

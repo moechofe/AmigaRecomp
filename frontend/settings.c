@@ -133,6 +133,18 @@ int sdl_setting(enum SdlSetting s)
 	return sdl_setting_values[s];
 }
 
+static int sdl_scale_n;
+
+void sdl_scale_force(int n)
+{
+	sdl_scale_n = n;
+}
+
+int sdl_scale_forced(void)
+{
+	return sdl_scale_n;
+}
+
 /* The text a value has in settings.ini, or NULL when the value is out of range. */
 static const char *setting_text(const struct GameSetting *s, int v)
 {
@@ -214,6 +226,8 @@ void sdl_settings_choose(struct Amiga *m, int hack, uint32_t index, int value)
 	else
 	{
 		sdl_setting_values[index] = value;
+		if(index == SdlSettingScale)
+			sdl_scale_n = 0;
 	}
 	setting_key(key, sizeof key, hack, s);
 	if(sdl_settings_set(key, text))

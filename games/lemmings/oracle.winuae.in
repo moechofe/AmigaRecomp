@@ -2,7 +2,7 @@
 ; A500, Kickstart 1.3 (34.5), PAL, 512 KB chip + 512 KB slow, two floppy drives.
 ;
 ; Generated into games/lemmings/build/winuae/oracle.uae by
-;   python tools/emulator.py --game lemmings --df0 <Disk 1 adf> --df1 <Disk 2 adf>
+;   python tools/emulator.py --game lemmings --emulator winuae --df0 <Disk 1 adf> --df1 <Disk 2 adf>
 ; which fills @KICKSTART@, @DF0@ and @DF1@. Edit this template, never the generated copy.
 ; Every setting that can move a pixel is the reference machine's, as in docs/emulator.md,
 ; "Configuration", so shots taken here diff against the runtime's 320x256 frame.

@@ -23,6 +23,9 @@ system:
 Every Toolchain line must be `[ok]`. On Windows, `[--]  C compiler` right after the install
 means the terminal was opened before it.
 
+Linux, to use FS-UAE as the oracle, it needs FS-UAE and `Xvfb`: see step 1 of
+`games/lemmings/README.md`.
+
 ## 2. Unpack the pair
 
 PowerShell:
@@ -35,14 +38,23 @@ Git Bash:
     unzip -o "games/deuteros/disks/Deuteros - The Next Millennium (1991)(Activision)(M3)(Disk 1 of 2).zip" -d games/deuteros/build/adf
     unzip -o "games/deuteros/disks/Deuteros - The Next Millennium (1991)(Activision)(M3)(Disk 2 of 2).zip" -d games/deuteros/build/adf
 
-## 3. Generate the WinUAE config
+## 3. Generate the oracle config
 
-    python tools/emulator.py --game deuteros --df0 "games/deuteros/build/adf/Deuteros - The Next Millennium (1991)(Activision)(M3)(Disk 1 of 2).adf" --df1 "games/deuteros/build/adf/Deuteros - The Next Millennium (1991)(Activision)(M3)(Disk 2 of 2).adf"
+WinUAE (Windows):
 
-This writes `games/deuteros/build/winuae/oracle.uae` from `oracle.uae.in`. Edit the template,
-never the generated file. Add `--print` to see the result without writing it.
+    python tools/emulator.py --game deuteros --emulator winuae --df0 "games/deuteros/build/adf/Deuteros - The Next Millennium (1991)(Activision)(M3)(Disk 1 of 2).adf" --df1 "games/deuteros/build/adf/Deuteros - The Next Millennium (1991)(Activision)(M3)(Disk 2 of 2).adf"
 
-## 4. Run WinUAE by hand
+FS-UAE (Linux):
+
+    python3 tools/emulator.py --game deuteros --emulator fsuae --df0 "games/deuteros/build/adf/Deuteros - The Next Millennium (1991)(Activision)(M3)(Disk 1 of 2).adf" --df1 "games/deuteros/build/adf/Deuteros - The Next Millennium (1991)(Activision)(M3)(Disk 2 of 2).adf"
+
+These write `games/deuteros/build/winuae/oracle.uae` from `oracle.winuae.in` and
+`games/deuteros/build/fsuae/oracle.fs-uae` from `oracle.fsuae.in`. Edit the templates, never
+the generated files. Add `--print` to see the result without writing it. `--emulator` defaults
+to `winuae` on Windows and `fsuae` elsewhere. FS-UAE needs FS-UAE and `Xvfb`; the install
+lines are in `games/lemmings/README.md`, step 1.
+
+## 4. Run the oracle by hand
 
 PowerShell:
 
@@ -51,23 +63,38 @@ PowerShell:
 F11 takes a screenshot. The game asks for Disk 2 in DF0; the debugger command
 `I floppy0=<path>` swaps it (`docs/emulator.md`).
 
-Linux (the `winuae` package puts `winuae` on `PATH`). `tools/emulator.py` only searches for the
-Kickstart under `C:\Users\Public\...`, so pass it with `--kickstart` in step 3, after unpacking
-with the Git Bash `unzip` lines of step 2:
+Linux, WinUAE (the `winuae` package puts `winuae` on `PATH`), after unpacking with the Git Bash
+`unzip` lines of step 2 and generating the config with `--emulator winuae`:
 
-    python3 tools/emulator.py --game deuteros --kickstart "$HOME/Documents/WinUAE/Kickstarts/Kickstart v1.3 rev 34.5 (1987)(Commodore)(A500-A1000-A2000-CDTV)[!].rom" --df0 "games/deuteros/build/adf/Deuteros - The Next Millennium (1991)(Activision)(M3)(Disk 1 of 2).adf" --df1 "games/deuteros/build/adf/Deuteros - The Next Millennium (1991)(Activision)(M3)(Disk 2 of 2).adf"
     winuae -f games/deuteros/build/winuae/oracle.uae
 
-The tool then prints "WinUAE is not installed in the usual place"; ignore it, the config is
-written.
+The generator then prints "WinUAE is not installed in the usual place"; ignore it, the config
+is written.
 
-## 5. Take a reference screenshot
+Linux, FS-UAE (for the Flatpak; with `fs-uae` on `PATH` use `fs-uae <config>`):
 
-    python tools/capture.py --game deuteros --until 4 --name NAME
+    flatpak run --nosocket=wayland net.fsuae.FS-UAE games/deuteros/build/fsuae/oracle.fs-uae
 
-This polls screenshots until one has 4 colours (the language menu) and keeps it as
-`games/deuteros/reference/NAME.png`. The current references were copied from `../proof`
-(`docs/emulator.md`, "References").
+F11 takes a screenshot into `games/deuteros/build/fsuae/shots/`, F9 inserts Disk 2 into DF0
+(the swap the game asks for), F8 and F6 save and restore a state, Pause opens the debugger in
+the terminal, and End quits (from another terminal: `flatpak kill net.fsuae.FS-UAE`). The
+title waits for a click, the language menu for `1`, `2` or `3`.
+
+## 5. Take the reference screenshots
+
+    python tools/capture.py --game deuteros --script games/deuteros/scripts/boot.dbg
+
+Under FS-UAE this runs from a cold boot through the language menu and the data-disk prompt to
+the Earth base, and keeps `language-menu.png` and `earth-base.png` in
+`games/deuteros/reference/`, about 90 s. It has not been run under WinUAE, where the swap is
+the `I` command (`docs/emulator.md`). FS-UAE runs on its own `Xvfb` server, so no window
+opens.
+
+    python tools/capture.py --game deuteros --until 16 --name NAME
+
+keeps the title, the first screen with 16 colours. `--until 4` alone never reaches the language
+menu from a cold boot under FS-UAE, because the title waits for a click. The current references
+were copied from `../proof` (`docs/emulator.md`, "References").
 
 ## 6. Build
 
@@ -150,3 +177,17 @@ Run the unit tests of the image loader and of the hack runtime:
 The expected figures are in this folder's `PLAN.md`, M2: 81 920 of 81 920 for the menu, and for
 the Earth base every difference inside x 13–23, y 79–90. The runs from `pair.zip` give the same
 figures as the runs from the two ADFs.
+
+## 9. Every dump on hand
+
+Run one pair of ZIPs from `games/deuteros/disks/` into its own shot folder, with a separate
+preferences folder so that the real one is untouched (the placeholders are the Disk 1 CRC, a
+script name and the two ZIP names):
+
+    games/deuteros/build/cmake-linux/deuteros --headless --pref games/deuteros/build/m5-pref --shot-dir games/deuteros/build/shots/m5/<disk1crc>-<script>/ --script games/deuteros/scripts/<script>.input "games/deuteros/disks/<Disk 1>.zip" "games/deuteros/disks/<Disk 2>.zip"
+
+Use `menu.input` and `earth-base.input` for a dump that opens on the title, `menu-intro.input`
+and `earth-base-intro.input` for one that opens on a cracker's intro or trainer screen that waits
+for the left button, and `earth-base-black-monks.input` for the Black Monks dumps, which have no
+language menu. Compare the shots as in section 8. `docs/dumps.md` lists the pairs, the script
+for each, and the figures.

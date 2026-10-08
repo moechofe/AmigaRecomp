@@ -12,6 +12,15 @@ why, is in `docs/dumps.md`.
 
     python tools/doctor.py
 
+Linux, to use FS-UAE as the oracle: it needs FS-UAE (the `fs-uae` binary on `PATH`, or the
+Flatpak) and `Xvfb`, and `doctor.py` does not check them:
+
+    flatpak install flathub net.fsuae.FS-UAE
+    sudo apt install xvfb
+
+A Kickstart 1.3 rev 34.5 ROM is found by its content hash in `~/Documents/WinUAE/Kickstarts`
+or `~/Documents/FS-UAE/Kickstarts`.
+
 ## 2. Unpack the oracle's pair
 
 PowerShell:
@@ -24,14 +33,22 @@ Git Bash:
     unzip -o "games/lemmings/disks/Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR].zip" -d games/lemmings/build/adf
     unzip -o "games/lemmings/disks/Lemmings (1991)(Psygnosis)(Disk 2 of 2)[cr SR].zip" -d games/lemmings/build/adf
 
-## 3. Generate the WinUAE config
+## 3. Generate the oracle config
 
-    python tools/emulator.py --game lemmings --df0 "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR].adf" --df1 "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 2 of 2)[cr SR].adf"
+WinUAE (Windows):
 
-This writes `games/lemmings/build/winuae/oracle.uae` from `oracle.uae.in`. Edit the template,
-never the generated file. Add `--print` to see the result without writing it.
+    python tools/emulator.py --game lemmings --emulator winuae --df0 "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR].adf" --df1 "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 2 of 2)[cr SR].adf"
 
-## 4. Run WinUAE by hand
+FS-UAE (Linux):
+
+    python3 tools/emulator.py --game lemmings --emulator fsuae --df0 "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR].adf" --df1 "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 2 of 2)[cr SR].adf"
+
+These write `games/lemmings/build/winuae/oracle.uae` from `oracle.winuae.in` and
+`games/lemmings/build/fsuae/oracle.fs-uae` from `oracle.fsuae.in`. Edit the templates, never
+the generated files. Add `--print` to see the result without writing it. `--emulator` defaults
+to `winuae` on Windows and `fsuae` elsewhere.
+
+## 4. Run the oracle by hand
 
 PowerShell:
 
@@ -40,25 +57,44 @@ PowerShell:
 Then press F7, the Amiga's left mouse button, to leave the Skid Row cracktro. F11 takes a
 screenshot.
 
-Linux (the `winuae` package puts `winuae` on `PATH`). `tools/emulator.py` only searches for the
-Kickstart under `C:\Users\Public\...`, so pass it with `--kickstart` in step 3, after unpacking
-with the Git Bash `unzip` lines of step 2:
+Linux, FS-UAE (the command is the "launch:" line `emulator.py` printed; for the Flatpak):
 
-    python3 tools/emulator.py --game lemmings --kickstart "$HOME/Documents/WinUAE/Kickstarts/Kickstart v1.3 rev 34.5 (1987)(Commodore)(A500-A1000-A2000-CDTV)[!].rom" --df0 "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR].adf" --df1 "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 2 of 2)[cr SR].adf"
-    winuae -f games/lemmings/build/winuae/oracle.uae
+    flatpak run --nosocket=wayland net.fsuae.FS-UAE games/lemmings/build/fsuae/oracle.fs-uae
 
-The tool then prints "WinUAE is not installed in the usual place"; ignore it, the config is
-written.
+or `fs-uae games/lemmings/build/fsuae/oracle.fs-uae` when it is on `PATH`. F7 is the left mouse
+button, F11 takes a screenshot into `games/lemmings/build/fsuae/shots/`, Pause opens the
+debugger in the terminal, and End quits (from another terminal:
+`flatpak kill net.fsuae.FS-UAE`). Left Alt releases the input grab.
 
 ## 5. Take the reference screenshots
 
     python tools/capture.py --game lemmings --script games/lemmings/scripts/boot.dbg
 
 The script runs from a cold boot to the title menu in about 2 minutes. It writes
-`psygnosis.png`, `dma-design.png` and `title-menu.png` into `games/lemmings/reference/`. It
-needs the interactive desktop: do not touch the keyboard or the mouse while it runs.
+`psygnosis.png`, `dma-design.png` and `title-menu.png` into `games/lemmings/reference/`.
+`--emulator` defaults to the platform's emulator. WinUAE needs the interactive desktop: do not
+touch the keyboard or the mouse while it runs. FS-UAE runs on its own `Xvfb` server, so no
+window opens and the desktop stays free.
 `expansion-ram.png` is not in the script, because that screen lasts about 1.5 s
 (`docs/emulator.md`, "References").
+
+Other runs, with the same options on either emulator (`python3` on Linux):
+
+    python tools/capture.py --game lemmings --until 32 --name NAME
+    python tools/capture.py --game lemmings --script games/lemmings/build/my.dbg
+    python tools/capture.py --game lemmings --statefile games/lemmings/build/my.uss --until 32 --name NAME
+
+`my.dbg` is a session file, for example:
+
+    !sleep 12
+    !key f7 0.2
+    !until 32
+    S {out}/owl.bin 0 80000
+    !save games/lemmings/build/owl.uss
+
+It crosses the cracktro, dumps the 512 KB of chip RAM into `games/lemmings/reference/ramdump/`
+and banks a save state that `--statefile` restores later. FS-UAE only: `!move DX DY` moves the
+pointer. `docs/tools.md` lists every directive.
 
 ## 6. Check and compare screenshots
 

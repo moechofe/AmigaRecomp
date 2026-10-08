@@ -22,13 +22,13 @@ Shared code sits at the root. Each game is the self-contained folder `games/<id>
   disk-image loading and `settings.ini`.
 - `tools/` — `doctor.py`, `emulator.py`, `capture.py`, `pixdiff.py`, `adf.py` and `anchor.py`.
 - `games/deuteros/` — the first game.
-- `games/lemmings/` — the second game; only its WinUAE oracle so far (`oracle.uae.in`,
+- `games/lemmings/` — the second game; only its oracle so far (`oracle.winuae.in`, `oracle.fsuae.in`,
   `scripts/boot.dbg`, `docs/dumps.md`, `README.md`, `PLAN.md`).
 
 ## Local only, gitignored
 
 - `games/<id>/disks/` — the developer's own copies of that game's images, kept as they arrived.
-- `games/<id>/reference/` — WinUAE save states, RAM dumps and screenshots for that game. All of
+- `games/<id>/reference/` — oracle save states, RAM dumps and screenshots for that game. All of
   it is game data.
 - `games/<id>/build/` — that game's CMake trees (`cmake/` on Windows, `cmake-linux/` on Linux),
   plus its tool output, screenshots and diff images.

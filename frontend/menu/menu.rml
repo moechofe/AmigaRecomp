@@ -78,7 +78,7 @@
 				<div class="option" data-for="s, i : settings">
 					<span class="name">{{s.label}}</span>
 					<button data-if="s.type == 'bool'" data-event-click="choose('setting', i, s.value == 0 ? 1 : 0)">{{s.value == 0 ? 'off' : 'on'}}</button>
-					<span data-if="s.type == 'choice'"><button data-for="c, j : s.choices" data-class-chosen="j == s.value" data-event-click="choose('setting', i, j)">{{c}}</button></span>
+					<span class="toggle" data-if="s.type == 'choice'"><button data-for="c, j : s.choices" data-class-chosen="j == s.value" data-event-click="choose('setting', i, j)">{{c}}</button></span>
 					<p class="hint">{{s.hint}}</p>
 				</div>
 			</div>

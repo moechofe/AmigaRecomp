@@ -371,9 +371,11 @@ int hle_gfx_call(struct Amiga *m, uint32_t lvo)
 	case 288: /* SetRGB4(a0 vp, d0 index, d1 red, d2 green, d3 blue), 4 bits a gun */
 		gfx_set_color(m, A0, D0 & 31, (uint16_t)(((D1 & 15) << 8) | ((D2 & 15) << 4) | (m->cpu.d[3] & 15)));
 		return 0;
-	case 198: /* InitRastPort(a1 rp): zero, then Mask, FgPen, AOlPen and LinePtrn all ones and
-	           * DrawMode JAM2 (graphics autodoc); there is no ROM font to point Font at */
-		for(i = 0; i < 0x64; i += 2)
+	case 198: /* InitRastPort(a1 rp): zero the first 0x4E bytes, then Mask, FgPen, AOlPen and
+	           * LinePtrn all ones and DrawMode JAM2 (graphics autodoc); the last 0x16 bytes of
+	           * the structure stay as they were (docs/runtime.md, "Observed"); there is no ROM
+	           * font to point Font at */
+		for(i = 0; i < 0x4E; i += 2)
 			hle_w16(m, A1 + i, 0);
 		hle_w8(m, A1 + 0x18, 0xFF);
 		hle_w8(m, A1 + 0x19, 0xFF);

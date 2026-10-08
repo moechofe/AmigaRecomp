@@ -36,6 +36,7 @@ struct GameDisk
 	int writable;      /* 1: our file <pref>/<id>.adf, zero-filled when absent */
 	int (*identify)(const uint8_t *adf, uint32_t size); /* unknown dumps: 1 = this role; NULL for writable roles */
 };
+struct GameView { int x, y, w, h; }; /* the game's picture: DIW x (lores) of its first column, its first scanline, its size */
 struct GameDef
 {
 	const char *id, *title;
@@ -43,6 +44,7 @@ struct GameDef
 	int drives[4];               /* role index in DF0–DF3 at boot, -1 empty */
 	int drive_count;             /* DF0–DF(n-1): the drives the Disks page offers, 1–4 */
 	int pointer_sprite;          /* sprite holding the game's mouse pointer, -1 none */
+	struct GameView view;        /* what the window shows; w 0: the capture window */
 	const struct GameHack *const *hacks; uint32_t hack_count;
 };
 extern const struct GameDef game_def;

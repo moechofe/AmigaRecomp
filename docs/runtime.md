@@ -15,7 +15,7 @@ Build a game with the commands of `docs/game.md`, item 1; they are not repeated 
 executable is named `<id>` (`<id>.exe`) and is written to the game's build directory.
 
     <id> [--headless] [--frames N] [--script FILE] [--shot-dir DIR] [--state PATH]
-         [--pref DIR] [--dump FILE] [--no-sprites] <image>...
+         [--pref DIR] [--dump FILE] [--no-sprites] [--scale N] <image>...
 
 | Option | Effect |
 | --- | --- |
@@ -27,6 +27,7 @@ executable is named `<id>` (`<id>.exe`) and is written to the game's build direc
 | `--pref DIR` | the pref directory; default `SDL_GetPrefPath("AmigaRecomp", "<id>")`; a missing trailing `/` is added and the directory is created |
 | `--dump FILE` | write the 512 KB of chip RAM to FILE at exit (failure is reported; the exit code is unchanged) |
 | `--no-sprites` | start with sprite rendering off (a script's `sprites on` turns it back on) |
+| `--scale N` | window only: N is a whole number 1 to 32 (anything else is a usage error). The window opens at N times the game's view (`game_def.view`; 320 x 256 when the game sets none) and the view is drawn N times its size, or the largest whole multiple that fits a smaller window, whatever the setting `scale` says. While it holds, neither `integer` nor `float` shows as chosen on the menu's Settings page; choosing either ends this for the run and stores that choice in `settings.ini`, which changes only then |
 
 Positional arguments are image paths, at most 16, accepted in any order: `.adf`, `.adz`, `.gz`
 and `.zip` (`docs/game.md`, item 5). Each image is identified by its CRC-32 against `dumps.txt`
@@ -45,8 +46,10 @@ every accepted image line (`<file>: <label>, <verified|known|unknown> dump`). Th
 the menu's state save/load confirmations go to stdout only; the Disks page lists the last six
 errors (a rejected image, a failed state save or load) above its Drives section.
 
-Window mode (no `--headless`) opens a resizable window, 960 x 768 at first (three times the
-320 x 256 frame; at least 320 x 256), with an OpenGL 3.3 core context. The frame is drawn centred
+Window mode (no `--headless`) opens a resizable window the size of the game's view times three
+(or N times with `--scale N`; at least the view's size), with an OpenGL 3.3 core context. The view is
+`game_def.view`, the raster rectangle of the game's picture, or the 320 x 256 capture window when the game
+sets none; the window shows only it, so black appears only where the window's shape leaves bars. It is drawn centred
 on black: with the setting `scale` `integer`, the largest whole multiple that fits the window;
 with `float`, the largest size that fits and keeps square pixels. It paces itself to one frame of 142 102 CPU cycles at
 7 093 790 Hz (about 20.03 ms; *Timing*). Audio is 48 kHz 16-bit stereo from Paula. Keys the
@@ -370,8 +373,11 @@ Unit n is drive DFn (the unit pointers are those of the layout table). The unit'
 ### input.device
 
 `IND_ADDHANDLER` (9) and `IND_REMHANDLER` (10) keep a priority-ordered handler list;
-`IND_SETTHRESH`, `SETPERIOD`, `SETMPORT`, `SETMTYPE`, `SETMTRIG` (12-16) are accepted and
-ignored (logged once); anything else is fatal. Events go to the handlers at the end of the
+`CMD_RESET` (1) and `IND_SETTHRESH`, `SETPERIOD`, `SETMPORT`, `SETMTYPE`, `SETMTRIG` (12-16) are
+accepted and ignored (logged once). `CMD_RESET` "resets the input port to its initialized state:
+all active and queued I/O requests are aborted and a stopped device restarts" (RKRM Devices,
+"Input Device"); the HLE queues no requests and has no stopped state (`CMD_STOP` is fatal), so
+there is nothing to reset. Anything else is fatal. Events go to the handlers at the end of the
 interrupt that produced them. A key from CIA-A's serial register becomes a `RAWKEY` event (the
 PORTS server plays keyboard.device); the mouse counters and buttons are sampled once a
 vertical blank and become `RAWMOUSE` events (graphics' VERTB server plays gameport.device).
@@ -390,6 +396,7 @@ each lives:
 | `InitView` leaves `DyOffset` 0x2C and `DxOffset` 0x81 | LVO -360 in `hle_gfx.c` |
 | graphics' vertical-blank server has priority 10; cia.resource's PORTS and EXTER servers have priority 0 | `hle_build` in `hle.c` |
 | `VPOSR` reads 0x8000 (long-frame bit set, PAL OCS Agnus ID 0), plus bit 8 of the line | `custom_read` in `custom.c` |
+| `InitRastPort` clears the first 0x4E bytes of the RastPort and leaves the last 0x16 | LVO -198 in `hle_gfx.c` |
 
 Evidence. The display-window values: the first game leaves the window wide open, `DIWSTRT`
 0x0581 and `DIWSTOP` 0x40C1, `../proof/doc.format/screen.md`, "The screen". The copper-list
@@ -400,6 +407,14 @@ proof's code comments carry `SpritePriorities`, `DyOffset`/`DxOffset` ("as obser
 game's ViewPorts / Views") and the `VPOSR` read ("at the bootblock call"); no dated log of
 those four readings is in the proof's docs, so their measurement date is unknown. Nothing in
 the proof's documents contradicts them.
+
+`InitRastPort`, measured 2026-10-08 under FS-UAE with the Kickstart 1.3 ROM (graphics.library
+34, `ExecBase` version 34): the oracle's debugger read the library's LVO -198 routine, which
+clears 0x4E bytes at A1 and then sets Mask, FgPen, AOlPen, LinePtrn and DrawMode. The Black
+Monks dump's loader places a ColorMap at RastPort + 0x56, inside the 100-byte structure's
+last 0x16 bytes, and builds it before it calls `InitRastPort`; clearing all 0x64 bytes zeroed
+its ColorTable pointer, so `LoadRGB4` then wrote the palette over the vector table at
+address 0, including `ExecBase` at 4 (`games/deuteros/docs/dumps.md`, "Black Monks").
 
 ## Kickstart handoff
 
