@@ -125,6 +125,7 @@ once the run reaches the owl):
 
     games/lemmings/build/cmake/lemmings.exe --headless --shot-dir games/lemmings/build/shots --script games/lemmings/scripts/psygnosis.input "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR].adf" "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 2 of 2)[cr SR].adf"
 
-On Linux, use `games/lemmings/build/cmake-linux/lemmings`. Today the run stops at the
-cracktro's exit: `fatal: OpenLibrary("intuition.library") is not implemented`. This folder's
+On Linux, use `games/lemmings/build/cmake-linux/lemmings`. Today the run passes the cracktro's
+exit (`OpenLibrary("intuition.library")`, `RethinkDisplay`) and ends with `script timeout: line
+6: 8 colours never reached in 3000 frames (1 on screen)`, with no shot. This folder's
 `PLAN.md`, M2, has the state.

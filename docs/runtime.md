@@ -284,6 +284,7 @@ Guest-memory layout, from `core/hle.h`:
 | 0xC02E00 | input.device's jump table (0x24 bytes); the base is 0xC02E24 |
 | 0xC02E70 | the input handler list |
 | 0xC02F00 | the input event queue: 16 events of 0x16 bytes |
+| 0xC03100 | intuition.library's jump table (0x1D4 bytes, the V34 table); the base is 0xC032D4 |
 
 Units 2 and 3 sit in the gap after the server lists (which end at 0xC02B50) and before the
 strings; nothing else in `core/` writes 0xC02B50-0xC02BFF (checked by searching `core/` for
@@ -306,7 +307,9 @@ DoIO, -462 SendIO, -468 CheckIO, -474 WaitIO, -480 AbortIO. Limits, each a fatal
 exceeded: `FindTask` accepts only a NULL name; `Wait` is fatal unless a requested signal is
 already set (there is no scheduler); `WaitPort` on an empty port is fatal; `Add/RemIntServer`
 need an interrupt that has a server list; `Cause` holds at most 16 software interrupts;
-`OpenLibrary` knows only `graphics.library`; `OpenDevice` knows `trackdisk.device` units 0-3
+`OpenLibrary` knows `graphics.library` and `intuition.library`, and gives any other name a stub
+library (up to 10, in `hle_alloc`'d memory; a second open returns the same base): opening
+succeeds, the first call to any of its LVOs is fatal and names the library; `OpenDevice` knows `trackdisk.device` units 0-3
 and `input.device` unit 0; `FreeMem` outside every MemHeader is fatal. Memory is two
 MemHeaders (chip, slow) with real free lists, kept by `hle_alloc` / `hle_free`.
 
@@ -317,6 +320,9 @@ WaitTOF (parks until the next vertical blank), -288 SetRGB4, -360 InitView, -384
 -390 InitBitMap, -408 GetSprite, -414 FreeSprite, -420 ChangeSprite, -426 MoveSprite, -456
 OwnBlitter, -462 DisownBlitter. `MakeVPort` and `MrgCop` build the copper list for one
 non-interlaced lores ViewPort; other modes or a horizontal RxOffset are fatal.
+
+**intuition** (`core/hle_intuition.c`): -390 RethinkDisplay, a no-op that logs once; there are
+no Intuition screens. Every other LVO is fatal.
 
 **trackdisk.device** (`core/hle_disk.c`): the device's own vectors -30 BeginIO and -36 AbortIO,
 plus the commands below, reached through `DoIO` / `SendIO`.

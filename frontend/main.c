@@ -169,11 +169,11 @@ static int sdl_state_load(const char *path, void (*report)(int error, const char
 
 static void sdl_stats(void)
 {
-	static const char *libs[4] = {"exec", "graphics", "trackdisk", "input"};
+	static const char *libs[HLE_CALL_LIBS] = {"exec", "graphics", "trackdisk", "input", "intuition"};
 	int lib, i;
 	printf("frames %u, instructions %llu, cycles %llu, reads %d, loads %d\n", machine.frame_count,
 		(unsigned long long)machine.insns, (unsigned long long)machine.cycles, machine.load_reads, machine.load_count);
-	for(lib = 0; lib < 4; lib++)
+	for(lib = 0; lib < HLE_CALL_LIBS; lib++)
 		for(i = 0; i < 256; i++)
 			if(machine.hle.calls[lib][i])
 				printf("  %s -%d: %u calls\n", libs[lib], i * 6, machine.hle.calls[lib][i]);

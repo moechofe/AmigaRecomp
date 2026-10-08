@@ -35,6 +35,10 @@
 #define HLE_IN_BASE (HLE_IN_TABLE + HLE_IN_NEGSIZE)
 #define HLE_INPUT_HANDLERS 0xC02E70u
 #define HLE_INPUT_EVENTS_AT 0xC02F00u
+#define HLE_INT_TABLE 0xC03100u
+#define HLE_INT_NEGSIZE 0x1D4u
+#define HLE_INT_BASE (HLE_INT_TABLE + HLE_INT_NEGSIZE)
+#define HLE_STUB_NEGSIZE 0xFFCu
 
 /* Internal entries in the HLE region, library 15. */
 #define HLE_EXCEPTION(n) HLE_ADDR(HLE_LIB_INTERNAL, (n) * 4)
@@ -112,6 +116,7 @@
 #define LIB_VERSION 0x14
 #define LIB_REVISION 0x16
 #define LIB_OPENCNT 0x20
+#define LIB_SIZE 0x22
 #define EB_CHKBASE 0x26
 #define EB_SYSSTKUPPER 0x36
 #define EB_SYSSTKLOWER 0x3A
@@ -198,6 +203,9 @@ void hle_remove(struct Amiga *m, uint32_t node);
 uint32_t hle_rem_head(struct Amiga *m, uint32_t list);
 void hle_enqueue(struct Amiga *m, uint32_t list, uint32_t node);
 void hle_put_msg(struct Amiga *m, uint32_t port, uint32_t msg);
+void hle_jump_table(struct Amiga *m, uint32_t base, uint32_t negsize, int lib);
+uint32_t hle_string(struct Amiga *m, uint32_t at, const char *s);
+void hle_name(struct Amiga *m, uint32_t a, char out[64]);
 
 /* hle_exec.c */
 int hle_exec_call(struct Amiga *m, uint32_t lvo);
@@ -225,5 +233,8 @@ void hle_input_vblank(struct Amiga *m);
 int hle_input_pending(struct Amiga *m);
 void hle_input_take(struct Amiga *m);
 int hle_in_call(struct Amiga *m, uint32_t lvo);
+
+/* hle_intuition.c */
+int hle_int_call(struct Amiga *m, uint32_t lvo);
 
 #endif

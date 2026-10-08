@@ -70,7 +70,7 @@ const char *state_load(struct Amiga *m, const uint8_t *in, uint32_t len)
 {
 	struct StateHeader h;
 	uint32_t want[AMIGA_ROLES];
-	uint32_t calls[4][256];
+	uint32_t calls[HLE_CALL_LIBS][256];
 	uint32_t pos;
 	size_t i;
 

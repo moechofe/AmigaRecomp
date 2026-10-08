@@ -213,6 +213,41 @@ static uint32_t hle_io_error(struct Amiga *m, uint32_t io)
 
 /* --- exec ---------------------------------------------------------------------------------- */
 
+/* A library the HLE does not emulate: opening it succeeds, and the first call into it is fatal
+ * and names it. Returns the library base, or 0 after a fatal. */
+static uint32_t hle_stub_library(struct Amiga *m, uint32_t name_at)
+{
+	char name[64];
+	uint32_t p, base;
+	int k, lib;
+	hle_name(m, name_at, name);
+	for(k = 0; k < m->hle.stub_count; k++)
+		if(!hle_strcmp(m, hle_r32(m, m->hle.stub_base[k] + LN_NAME), name))
+			return m->hle.stub_base[k];
+	if(m->hle.stub_count == HLE_STUBS)
+	{
+		amiga_fatal(m, "OpenLibrary(\"%s\"): all %d stub libraries are in use", name, HLE_STUBS);
+		return 0;
+	}
+	p = hle_alloc(m, HLE_STUB_NEGSIZE + LIB_SIZE + 64, MEMF_PUBLIC | MEMF_CLEAR, 0);
+	if(!p)
+	{
+		amiga_fatal(m, "OpenLibrary(\"%s\"): no memory for a stub library", name);
+		return 0;
+	}
+	base = p + HLE_STUB_NEGSIZE;
+	lib = HLE_LIB_STUB + m->hle.stub_count;
+	hle_jump_table(m, base, HLE_STUB_NEGSIZE, lib);
+	hle_w8(m, base + LN_TYPE, NT_LIBRARY);
+	hle_w32(m, base + LN_NAME, hle_string(m, base + LIB_SIZE, name));
+	hle_w16(m, base + LIB_NEGSIZE, HLE_STUB_NEGSIZE);
+	hle_w16(m, base + LIB_POSSIZE, LIB_SIZE);
+	hle_add_tail(m, HLE_EXEC_BASE + EB_LIBLIST, base);
+	amiga_logf(m, "OpenLibrary(\"%s\"): not emulated; stub library %d, every call is fatal", name, lib);
+	m->hle.stub_base[m->hle.stub_count++] = base;
+	return base;
+}
+
 int hle_exec_call(struct Amiga *m, uint32_t lvo)
 {
 	uint32_t eb = HLE_EXEC_BASE, t;
@@ -397,21 +432,20 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo)
 		return 0;
 	case 408: /* OldOpenLibrary(a1 name) */
 	case 552: /* OpenLibrary(a1 name, d0 version) */
+	{
+		uint32_t lib;
 		if(!hle_strcmp(m, A1, "graphics.library"))
-		{
-			hle_w16(m, HLE_GFX_BASE + LIB_OPENCNT, (uint16_t)(hle_r16(m, HLE_GFX_BASE + LIB_OPENCNT) + 1));
-			D0 = HLE_GFX_BASE;
+			lib = HLE_GFX_BASE;
+		else if(!hle_strcmp(m, A1, "intuition.library"))
+			lib = HLE_INT_BASE;
+		else
+			lib = hle_stub_library(m, A1);
+		if(!lib)
 			return 0;
-		}
-		{
-			char name[64];
-			int i;
-			for(i = 0; i < 63 && (name[i] = (char)hle_r8(m, A1 + (uint32_t)i)) != 0; i++)
-				;
-			name[i] = 0;
-			amiga_fatal(m, "OpenLibrary(\"%s\") is not implemented", name);
-		}
+		hle_w16(m, lib + LIB_OPENCNT, (uint16_t)(hle_r16(m, lib + LIB_OPENCNT) + 1));
+		D0 = lib;
 		return 0;
+	}
 	case 414: /* CloseLibrary(a1 library) */
 		if(A1)
 			hle_w16(m, A1 + LIB_OPENCNT, (uint16_t)(hle_r16(m, A1 + LIB_OPENCNT) - 1));
@@ -436,10 +470,7 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo)
 		if(!dev)
 		{
 			char name[64];
-			int i;
-			for(i = 0; i < 63 && (name[i] = (char)hle_r8(m, A0 + (uint32_t)i)) != 0; i++)
-				;
-			name[i] = 0;
+			hle_name(m, A0, name);
 			amiga_fatal(m, "OpenDevice(\"%s\", unit %u) is not implemented", name, D0);
 			return 0;
 		}

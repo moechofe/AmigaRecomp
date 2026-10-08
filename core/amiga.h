@@ -39,6 +39,10 @@
 #define HLE_LIB_GFX 1
 #define HLE_LIB_TRACKDISK 2
 #define HLE_LIB_INPUT 3
+#define HLE_LIB_INTUITION 4
+#define HLE_LIB_STUB 5
+#define HLE_STUBS 10
+#define HLE_CALL_LIBS 5
 #define HLE_LIB_INTERNAL 15
 #define HLE_INPUT_EVENTS 16
 
@@ -228,7 +232,9 @@ struct Hle
 	uint32_t softint_pending[16];
 	int softint_count;
 	uint8_t motor;
-	uint32_t calls[4][256];
+	uint32_t calls[HLE_CALL_LIBS][256];
+	uint32_t stub_base[HLE_STUBS];
+	int stub_count;
 	struct HleInput input;
 };
 

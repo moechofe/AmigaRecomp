@@ -26,13 +26,21 @@ int hle_strcmp(struct Amiga *m, uint32_t a, const char *s)
 	}
 }
 
-static uint32_t hle_string(struct Amiga *m, uint32_t at, const char *s)
+uint32_t hle_string(struct Amiga *m, uint32_t at, const char *s)
 {
 	uint32_t i;
 	for(i = 0; s[i]; i++)
 		hle_w8(m, at + i, (uint8_t)s[i]);
 	hle_w8(m, at + i, 0);
 	return at;
+}
+
+void hle_name(struct Amiga *m, uint32_t a, char out[64])
+{
+	int i;
+	for(i = 0; i < 63 && (out[i] = (char)hle_r8(m, a + (uint32_t)i)) != 0; i++)
+		;
+	out[i] = 0;
 }
 
 void hle_new_list(struct Amiga *m, uint32_t list, uint8_t type)
@@ -93,7 +101,7 @@ void hle_put_msg(struct Amiga *m, uint32_t port, uint32_t msg)
 	}
 }
 
-static void hle_jump_table(struct Amiga *m, uint32_t base, uint32_t negsize, int lib)
+void hle_jump_table(struct Amiga *m, uint32_t base, uint32_t negsize, int lib)
 {
 	uint32_t off;
 	for(off = 6; off <= negsize; off += 6)
@@ -130,6 +138,7 @@ void hle_build(struct Amiga *m)
 	uint32_t s_gfx = hle_string(m, HLE_STRINGS + 0x20, "graphics.library");
 	uint32_t s_td = hle_string(m, HLE_STRINGS + 0x40, "trackdisk.device");
 	uint32_t s_in = hle_string(m, HLE_STRINGS + 0x60, "input.device");
+	uint32_t s_int = hle_string(m, HLE_STRINGS + 0x80, "intuition.library");
 	int i;
 
 	for(n = 2; n < 64; n++)
@@ -240,6 +249,15 @@ void hle_build(struct Amiga *m)
 		hle_w8(m, hle_td_units[i] + LN_TYPE, NT_MSGPORT);
 		hle_new_list(m, hle_td_units[i] + MP_MSGLIST, NT_MESSAGE);
 	}
+
+	/* intuition.library */
+	hle_jump_table(m, HLE_INT_BASE, HLE_INT_NEGSIZE, HLE_LIB_INTUITION);
+	hle_w8(m, HLE_INT_BASE + LN_TYPE, NT_LIBRARY);
+	hle_w32(m, HLE_INT_BASE + LN_NAME, s_int);
+	hle_w16(m, HLE_INT_BASE + LIB_NEGSIZE, HLE_INT_NEGSIZE);
+	hle_w16(m, HLE_INT_BASE + LIB_POSSIZE, LIB_SIZE);
+	hle_w16(m, HLE_INT_BASE + LIB_VERSION, 34);
+	hle_add_tail(m, eb + EB_LIBLIST, HLE_INT_BASE);
 
 	/* The ROM's IORequest, opened on unit 0, and its reply port. */
 	hle_w8(m, HLE_BOOT_PORT + LN_TYPE, NT_MSGPORT);
@@ -508,7 +526,7 @@ int hle_dispatch(struct Amiga *m)
 	int done;
 	if(lib == HLE_LIB_INTERNAL)
 		return hle_internal(m, off);
-	if(lib <= HLE_LIB_INPUT && off / 6 < 256)
+	if(lib < HLE_CALL_LIBS && off / 6 < 256)
 		m->hle.calls[lib][off / 6]++;
 	switch(lib)
 	{
@@ -516,13 +534,23 @@ int hle_dispatch(struct Amiga *m)
 	case HLE_LIB_GFX: done = hle_gfx_call(m, off); break;
 	case HLE_LIB_TRACKDISK: done = hle_td_call(m, off); break;
 	case HLE_LIB_INPUT: done = hle_in_call(m, off); break;
+	case HLE_LIB_INTUITION: done = hle_int_call(m, off); break;
 	default: done = -1; break;
 	}
 	if(done < 0)
 	{
-		static const char *names[4] = {"exec.library", "graphics.library", "trackdisk.device", "input.device"};
+		static const char *names[HLE_CALL_LIBS] = {"exec.library", "graphics.library", "trackdisk.device", "input.device", "intuition.library"};
+		char buf[64];
+		const char *who = "unknown library";
+		if(lib < HLE_CALL_LIBS)
+			who = names[lib];
+		else if(lib >= HLE_LIB_STUB && lib - HLE_LIB_STUB < m->hle.stub_count)
+		{
+			hle_name(m, hle_r32(m, m->hle.stub_base[lib - HLE_LIB_STUB] + LN_NAME), buf);
+			who = buf;
+		}
 		amiga_fatal(m, "%s LVO -%u (0x%03X) is not implemented, called from 0x%06X",
-			lib <= HLE_LIB_INPUT ? names[lib] : "unknown library", (unsigned)off, (unsigned)off, caller);
+			who, (unsigned)off, (unsigned)off, caller);
 		return 0;
 	}
 	if(done == 0)
