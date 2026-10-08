@@ -137,6 +137,9 @@ Headless, with a script, writing the script's shot into `games/deuteros/build/sh
 On Linux, use `games/deuteros/build/cmake-linux/deuteros` instead. `menu.input` writes
 `lang-menu-nosprite.png` and `earth-base.input` writes `earth-base-nosprite.png`.
 
+On Windows the executable is a GUI-subsystem program, so PowerShell does not wait for it: add
+`| Out-Host` to a headless command to wait and to get `$LASTEXITCODE`.
+
 The executable takes ADF, ADZ, GZ and ZIP images, in any order, from the command line, from files
 dropped on the window, from the menu's "Open Disk…" button, and from the paths it remembers in
 `settings.ini` (`docs/game.md`, item 5). With no arguments and no remembered paths it opens the
@@ -191,3 +194,36 @@ and `earth-base-intro.input` for one that opens on a cracker's intro or trainer 
 for the left button, and `earth-base-black-monks.input` for the Black Monks dumps, which have no
 language menu. Compare the shots as in section 8. `docs/dumps.md` lists the pairs, the script
 for each, and the figures.
+
+## 10. Distributable build
+
+The executable is built from a fresh clone, which holds no disks and fetches its own
+`build/deps`, and the result is copied to `games/deuteros/build/dist/<os>/`.
+
+Windows (PowerShell, with WinLibs on `PATH` as in section 1):
+
+    git clone --no-hardlinks . $env:TEMP\ar-m6
+    cmake -S $env:TEMP\ar-m6\games\deuteros -B $env:TEMP\ar-m6\games\deuteros\build\cmake -G Ninja
+    cmake --build $env:TEMP\ar-m6\games\deuteros\build\cmake
+    ctest --test-dir $env:TEMP\ar-m6\games\deuteros\build\cmake --output-on-failure
+    objdump -p $env:TEMP\ar-m6\games\deuteros\build\cmake\deuteros.exe | Select-String "DLL Name"
+    New-Item -ItemType Directory -Force games\deuteros\build\dist\windows
+    Copy-Item $env:TEMP\ar-m6\games\deuteros\build\cmake\deuteros.exe games\deuteros\build\dist\windows\deuteros.exe
+
+The expected DLL list is in `docs/runtime.md`, "Windows toolchain". `ctest` reports 3 of 3.
+
+Run it in isolation: a folder that holds only the executable, the two ZIPs and the two scripts,
+and a `PATH` that holds only Windows. In a new PowerShell process:
+
+    New-Item -ItemType Directory $env:TEMP\ar-m6-run, $env:TEMP\ar-m6-run\shots
+    Copy-Item games\deuteros\build\dist\windows\deuteros.exe, games\deuteros\scripts\menu.input, games\deuteros\scripts\earth-base.input, "games\deuteros\disks\<Disk 1>.zip", "games\deuteros\disks\<Disk 2>.zip" $env:TEMP\ar-m6-run
+    Set-Location $env:TEMP\ar-m6-run
+    $env:PATH = "C:\Windows\System32;C:\Windows"
+    .\deuteros.exe --headless --pref .\pref --shot-dir .\shots --script menu.input "<Disk 1>.zip" "<Disk 2>.zip" | Out-Host
+    .\deuteros.exe --headless --pref .\pref --shot-dir .\shots --script earth-base.input "<Disk 1>.zip" "<Disk 2>.zip" | Out-Host
+
+The Windows executable is a GUI-subsystem program, so `| Out-Host` makes PowerShell wait for it;
+see `docs/runtime.md`, "Windows toolchain".
+
+Compare `$env:TEMP\ar-m6-run\shots` with the references as in section 8; the figures to expect
+are there.

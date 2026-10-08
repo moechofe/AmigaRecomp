@@ -118,8 +118,12 @@ its bundled CMake 4.4.2 and Ninja 1.13.2, Python 3.14 and Git. Only GCC has buil
   does not see it, and `tools/doctor.py` then reports `[--]  C compiler`.
 - The first configure cloned the five dependencies into the root `build/deps/` (182 MB) in
   170 s; the first build ran 555 steps in about 140 s; the build tree is 234 MB.
-- The executable is linked `-static` and is a console-subsystem program, so its stdout and
-  stderr reach the terminal. `objdump -p <id>.exe` lists only these DLLs: ADVAPI32, GDI32,
+- The executable is linked `-static -mwindows`: a GUI-subsystem program, so a double click opens
+  no console. `main` attaches to the parent console when there is one and points stdout and
+  stderr at it unless they were redirected. A terminal does not wait for such a program:
+  PowerShell and `cmd` return at once unless the output is piped (`| Out-Host`) or the program
+  is started with `Start-Process -Wait -PassThru`, whose `ExitCode` is the exit code.
+  `objdump -p <id>.exe` lists only these DLLs: ADVAPI32, GDI32,
   IMM32, KERNEL32, ole32, OLEAUT32, SETUPAPI, SHELL32, USER32, VERSION, WINMM, and the
   `api-ms-win-crt-*` forwarders of the Universal CRT, which is part of Windows 10 and later.
 - `frontend/main.c` is compiled into each executable instead of `amiga_frontend`. Kept in the

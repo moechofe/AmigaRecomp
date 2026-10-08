@@ -13,6 +13,24 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+/* The executable is a GUI-subsystem program, so a double click opens no console. Started from a
+   terminal, it attaches to that terminal and points stdout and stderr at it unless they were
+   redirected. */
+static void sdl_attach_console(void)
+{
+	if(!AttachConsole(ATTACH_PARENT_PROCESS))
+		return;
+	if(!GetStdHandle(STD_OUTPUT_HANDLE))
+		freopen("CONOUT$", "w", stdout);
+	if(!GetStdHandle(STD_ERROR_HANDLE))
+		freopen("CONOUT$", "w", stderr);
+}
+#endif
+
 static struct Amiga machine;
 static uint8_t sdl_state_buf[STATE_MAX + 1];
 static struct Script sdl_script;
@@ -653,6 +671,9 @@ int main(int argc, char **argv)
 	int i, n, code, path_count = 0;
 	char *pref = 0;
 
+#ifdef _WIN32
+	sdl_attach_console();
+#endif
 	memset(&o, 0, sizeof o);
 	for(i = 1; i < argc; i++)
 	{
