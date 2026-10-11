@@ -138,6 +138,7 @@ static enum ScriptResult script_start(struct Script *s, struct Amiga *m)
 	if(!strcmp(word, "click"))
 	{
 		s->active = OpClick;
+		s->arg[2] = 0;
 		if(sscanf(s->line, "%*s %d %d", &a, &b) == 2)
 		{
 			s->arg[0] = a;
@@ -147,6 +148,13 @@ static enum ScriptResult script_start(struct Script *s, struct Amiga *m)
 		{
 			s->phase = 2;
 		}
+		return ScriptRunFrame;
+	}
+	if(!strcmp(word, "rclick") && n == 1)
+	{
+		s->active = OpClick;
+		s->arg[2] = 1;
+		s->phase = 2;
 		return ScriptRunFrame;
 	}
 	if(!strcmp(word, "mouse") && sscanf(s->line, "%*s %d %d", &a, &b) == 2)
@@ -276,7 +284,7 @@ static int script_continue(struct Script *s, struct Amiga *m, enum ScriptResult 
 		return 1;
 	case OpClick:
 		/* Park in the top-left corner for 8 frames, move at most 100 counts a frame, hold
-		 * the left button 3 frames, release. */
+		 * the button (arg[2]: 0 left, 1 right) 3 frames, release. */
 		if(s->phase == 0)
 		{
 			amiga_mouse(m, -100, -100, 0, 0);
@@ -300,7 +308,7 @@ static int script_continue(struct Script *s, struct Amiga *m, enum ScriptResult 
 		}
 		if(s->phase == 2)
 		{
-			amiga_mouse(m, 0, 0, 1, 0);
+			amiga_mouse(m, 0, 0, !s->arg[2], s->arg[2]);
 			if(++s->frames == 3)
 				s->phase = 3;
 			return 1;

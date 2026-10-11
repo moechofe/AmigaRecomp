@@ -139,6 +139,7 @@ void hle_build(struct Amiga *m)
 	uint32_t s_td = hle_string(m, HLE_STRINGS + 0x40, "trackdisk.device");
 	uint32_t s_in = hle_string(m, HLE_STRINGS + 0x60, "input.device");
 	uint32_t s_int = hle_string(m, HLE_STRINGS + 0x80, "intuition.library");
+	uint32_t s_exp = hle_string(m, HLE_STRINGS + 0xA0, "expansion.library");
 	int i;
 
 	for(n = 2; n < 64; n++)
@@ -182,6 +183,20 @@ void hle_build(struct Amiga *m)
 	hle_new_list(m, eb + 0x214, 15);
 	hle_add_tail(m, eb + EB_LIBLIST, eb);
 
+	/* expansion.library sits between exec and graphics in Kickstart 1.3's library list
+	 * (docs/runtime.md, "Kickstart handoff"). It is stub library 0: OpenLibrary returns it and
+	 * its first call is fatal. */
+	hle_jump_table(m, HLE_EXP_BASE, HLE_EXP_NEGSIZE, HLE_LIB_STUB);
+	hle_w8(m, HLE_EXP_BASE + LN_TYPE, NT_LIBRARY);
+	hle_w32(m, HLE_EXP_BASE + LN_NAME, s_exp);
+	hle_w16(m, HLE_EXP_BASE + LIB_NEGSIZE, HLE_EXP_NEGSIZE);
+	hle_w16(m, HLE_EXP_BASE + LIB_POSSIZE, 0x1C8);
+	hle_w16(m, HLE_EXP_BASE + LIB_VERSION, 34);
+	hle_w16(m, HLE_EXP_BASE + LIB_REVISION, 1);
+	hle_add_tail(m, eb + EB_LIBLIST, HLE_EXP_BASE);
+	m->hle.stub_base[0] = HLE_EXP_BASE;
+	m->hle.stub_count = 1;
+
 	for(i = 0; i < 5; i++)
 	{
 		uint32_t list = HLE_SERVER_LISTS + (uint32_t)i * 16;
@@ -219,6 +234,9 @@ void hle_build(struct Amiga *m)
 	hle_w32(m, HLE_GFX_BASE + GB_VBSRV + IS_DATA, HLE_GFX_BASE);
 	hle_w32(m, HLE_GFX_BASE + GB_VBSRV + IS_CODE, HLE_GFX_VBLANK);
 	hle_enqueue(m, HLE_SERVER_LISTS + 2 * 16, HLE_GFX_BASE + GB_VBSRV);
+	/* graphics' blitter interrupt handler: iv_Data is GfxBase at the bootblock call
+	 * (docs/runtime.md, "Kickstart handoff"). */
+	hle_w32(m, eb + EB_INTVECTS + 6 * IV_SIZE + IV_DATA, HLE_GFX_BASE);
 
 	/* cia.resource's PORTS and EXTER servers, priority 0 as observed under WinUAE, docs/runtime.md, "HLE". */
 	hle_w8(m, HLE_CIAA_NODE + LN_TYPE, NT_INTERRUPT);

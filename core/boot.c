@@ -61,7 +61,8 @@ int amiga_boot(struct Amiga *m)
 		amiga_fatal(m, "DF0 is empty: nothing to boot");
 		return -1;
 	}
-	/* Kickstart's read of the bootblock, logged like every other load. */
+	/* Kickstart's read of the bootblock, logged like every other load. Its IORequest still holds
+	 * that read at the bootblock call. */
 	m->loads[0].drive = 0;
 	m->loads[0].offset = 0;
 	m->loads[0].length = 0x400;
@@ -69,6 +70,11 @@ int amiga_boot(struct Amiga *m)
 	m->load_count = 1;
 	m->load_reads = 1;
 	mem_dma_load(m, BOOT_BUFFER, m->disks[role].image, 0x400);
+	mem_write16(m, HLE_BOOT_IOREQ + IO_COMMAND, 2);
+	mem_write32(m, HLE_BOOT_IOREQ + IO_ACTUAL, 0x400);
+	mem_write32(m, HLE_BOOT_IOREQ + IO_LENGTH, 0x400);
+	mem_write32(m, HLE_BOOT_IOREQ + IO_DATA, BOOT_BUFFER);
+	mem_write32(m, HLE_BOOT_IOREQ + IO_OFFSET, 0);
 
 	/* The JSR into the block has already pushed its return address at the A7 Kickstart left it with. */
 	mem_write32(m, HLE_BOOT_USP, HLE_BOOT_RETURN);

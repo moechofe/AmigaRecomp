@@ -38,6 +38,9 @@
 #define HLE_INT_TABLE 0xC03100u
 #define HLE_INT_NEGSIZE 0x1D4u
 #define HLE_INT_BASE (HLE_INT_TABLE + HLE_INT_NEGSIZE)
+#define HLE_EXP_TABLE 0xC03400u
+#define HLE_EXP_NEGSIZE 0x96u
+#define HLE_EXP_BASE (HLE_EXP_TABLE + HLE_EXP_NEGSIZE)
 #define HLE_STUB_NEGSIZE 0xFFCu
 
 /* Internal entries in the HLE region, library 15. */
