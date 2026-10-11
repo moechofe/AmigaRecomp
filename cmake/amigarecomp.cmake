@@ -13,6 +13,11 @@ if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
 	set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()
 
+# windres compiles the Windows executable's icon resource (amiga_add_game).
+if(WIN32)
+	enable_language(RC)
+endif()
+
 function(amiga_warnings target)
 	target_compile_options(${target} PRIVATE -Wall -Wextra)
 endfunction()
@@ -148,6 +153,14 @@ function(amiga_add_game id)
 	file(GLOB game_menu CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/menu/*")
 	amiga_embed("${CMAKE_CURRENT_BINARY_DIR}/game_menu.c" sdl_menu_game ${game_menu})
 	file(GLOB game_sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.c")
+	# Windows shows the first icon resource in Explorer, and SDL gives it to the window.
+	set(game_icon "${CMAKE_CURRENT_SOURCE_DIR}/packaging/${id}.ico")
+	if(WIN32 AND EXISTS "${game_icon}")
+		set(game_rc "${CMAKE_CURRENT_BINARY_DIR}/game_icon.rc")
+		file(CONFIGURE OUTPUT "${game_rc}" CONTENT "1 ICON \"${game_icon}\"\n")
+		set_source_files_properties("${game_rc}" PROPERTIES OBJECT_DEPENDS "${game_icon}")
+		list(APPEND game_sources "${game_rc}")
+	endif()
 	add_executable(${id} ${game_sources} "${AMIGA_FRONTEND_MAIN}"
 		"${CMAKE_CURRENT_BINARY_DIR}/game_dumps.c" "${CMAKE_CURRENT_BINARY_DIR}/game_menu.c")
 	target_link_libraries(${id} PRIVATE amiga_frontend)
