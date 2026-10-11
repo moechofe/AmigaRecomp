@@ -6,3 +6,4 @@ Exec=lemmings %F
 Icon=lemmings
 Terminal=false
 Categories=Game;LogicGame;
+StartupWMClass=lemmings

@@ -161,6 +161,14 @@ function(amiga_add_game id)
 		set_source_files_properties("${game_rc}" PROPERTIES OBJECT_DEPENDS "${game_icon}")
 		list(APPEND game_sources "${game_rc}")
 	endif()
+	# Elsewhere the PNG becomes the window icon, and with the .desktop file it makes the
+	# applications-menu entry (frontend/desktop.c).
+	if(NOT WIN32)
+		file(GLOB game_packaging CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/packaging/${id}.png"
+			"${CMAKE_CURRENT_SOURCE_DIR}/packaging/${id}.desktop")
+		amiga_embed("${CMAKE_CURRENT_BINARY_DIR}/game_packaging.c" sdl_packaging ${game_packaging})
+		list(APPEND game_sources "${CMAKE_CURRENT_BINARY_DIR}/game_packaging.c")
+	endif()
 	add_executable(${id} ${game_sources} "${AMIGA_FRONTEND_MAIN}"
 		"${CMAKE_CURRENT_BINARY_DIR}/game_dumps.c" "${CMAKE_CURRENT_BINARY_DIR}/game_menu.c")
 	target_link_libraries(${id} PRIVATE amiga_frontend)

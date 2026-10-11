@@ -6,3 +6,4 @@ Exec=deuteros %F
 Icon=deuteros
 Terminal=false
 Categories=Game;StrategyGame;
+StartupWMClass=deuteros

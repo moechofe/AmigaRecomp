@@ -26,6 +26,11 @@
 					<button data-if="booted" data-event-click="state_load">Quick load</button>
 					<button data-event-click="quit">Quit</button>
 				</div>
+				<div class="actions" data-if="desktop_offered">
+					<button data-if="!desktop_installed" data-event-click="desktop('add')">Add to applications menu</button>
+					<button data-if="desktop_installed" data-event-click="desktop('remove')">Remove from applications menu</button>
+					<p class="hint" data-if="desktop_note != ''">{{desktop_note}}</p>
+				</div>
 				<p data-if="!booted">To start, choose your disk images with Open Disk…, or drop them on this window. ADF, ADZ, GZ and ZIP files are accepted, and one ZIP may hold every disk. The Disks page shows which disks are still missing.</p>
 				<div class="about" data-rml="about"></div>
 				<h2>AmigaRecomp</h2>

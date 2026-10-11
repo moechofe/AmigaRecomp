@@ -1,5 +1,6 @@
 #include "amiga.h"
 #include "disks.h"
+#include "desktop.h"
 #include "game.h"
 #include "menu.h"
 #include "png.h"
@@ -439,6 +440,7 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 		return 1;
 	}
 	SDL_SetWindowMinimumSize(window, view.w, view.h);
+	sdl_desktop_window_icon(window);
 	gl = SDL_GL_CreateContext(window);
 	if(!gl)
 	{
@@ -684,6 +686,8 @@ int main(int argc, char **argv)
 	sdl_attach_console();
 #endif
 	memset(&o, 0, sizeof o);
+	/* The app id names the window to the desktop, which matches it with games/<id>/packaging/<id>.desktop. */
+	SDL_SetAppMetadata(game_def.title, 0, game_def.id);
 	for(i = 1; i < argc; i++)
 	{
 		const char *a = argv[i];

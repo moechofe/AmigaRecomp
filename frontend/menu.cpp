@@ -1,6 +1,7 @@
 #include "menu.h"
 
 #include "amiga.h"
+#include "desktop.h"
 #include "disks.h"
 #include "game.h"
 #include "settings.h"
@@ -115,6 +116,9 @@ struct MenuModel
 	std::vector<OptionRow> settings, hacks;
 	std::vector<DriveRow> drives;
 	std::vector<DriveChoice> drive_choices;
+	bool desktop_offered = false;
+	bool desktop_installed = false;
+	Rml::String desktop_note;
 };
 
 struct Menu
@@ -361,6 +365,22 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 	ctor.Bind("hacks", &menu->model.hacks);
 	ctor.Bind("drives", &menu->model.drives);
 	ctor.Bind("drive_choices", &menu->model.drive_choices);
+	ctor.Bind("desktop_offered", &menu->model.desktop_offered);
+	ctor.Bind("desktop_installed", &menu->model.desktop_installed);
+	ctor.Bind("desktop_note", &menu->model.desktop_note);
+	ctor.BindEventCallback("desktop", [](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &args) {
+		char msg[1200];
+		if(args.size() != 1)
+			return;
+		if(args[0].Get<Rml::String>() == "add")
+			sdl_desktop_install(msg, sizeof msg);
+		else
+			sdl_desktop_remove(msg, sizeof msg);
+		menu->model.desktop_installed = sdl_desktop_installed() != 0;
+		menu->model.desktop_note = msg;
+		menu->handle.DirtyVariable("desktop_installed");
+		menu->handle.DirtyVariable("desktop_note");
+	});
 	ctor.BindEventCallback("open_disk", [](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) { menu_dialog(SdlMenuOpenDisk, -1); });
 	ctor.BindEventCallback("import_disk", [](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &args) {
 		if(args.size() == 1)
@@ -401,6 +421,8 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 	});
 	menu->handle = ctor.GetModelHandle();
 	menu->model.title = game_def.title;
+	menu->model.desktop_offered = sdl_desktop_offered() != 0;
+	menu->model.desktop_installed = sdl_desktop_installed() != 0;
 	if(const SdlAsset *a = menu_asset("about.rml"))
 		menu->model.about.assign((const char *)a->data, a->size);
 
