@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Lemmings
+Comment=Amiga game running natively from your own disks
+Exec=lemmings %F
+Icon=lemmings
+Terminal=false
+Categories=Game;LogicGame;

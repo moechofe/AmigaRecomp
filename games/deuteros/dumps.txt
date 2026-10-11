@@ -1,0 +1,20 @@
+# docs/game.md, item 4.
+e55363d8 disk1 verified Deuteros - The Next Millennium (1991)(Activision)(M3)(Disk 1 of 2)
+2aac7cc2 disk1 verified Deuteros - The Next Millennium (1991)(Activision)(M3)(Disk 1 of 2)[cr SKR]
+e70eaab9 disk1 verified Deuteros - The Next Millennium v1 (1991)(Activision)(M3)(Disk 1 of 2)[cr SR][f crack IMG]
+909a6899 disk1 verified Deuteros - The Next Millennium v1 (1991)(Activision)(M3)(Disk 1 of 2)[cr SR][f crack L.A.]
+8cf442c6 disk1 verified Deuteros - The Next Millennium (1991)(Activision)(M3)[a](Disk 1 of 2)
+d5e00a83 disk1 verified Deuteros - The Next Millennium (1991)(Activision)(M3)[a2](Disk 1 of 2)
+fa95b328 disk1 verified Deuteros - The Next Millennium v1 (1991)(Activision)(M3)(Disk 1 of 2)[cr SR][f crack SKN][t +5 SKN]
+f1c4eed4 disk1 known Deuteros - The Next Millennium v1 (1991)(Activision)(M3)(Disk 1 of 2)[cr SR][f crack SKN][t +6 SKN][tr es SKN]
+d6fd242b disk1 known Deuteros - The Next Millennium v1 (1991)(Activision)(M3)(Disk 1 of 2)[cr SR][f crack SKN][t +6 SKN][tr es SKN][b doscopy]
+7dbf36e9 disk1 known Deuteros - The Next Millennium (1991)(Activision)[cr Black Monks]
+4d1b0183 disk1 known Deuteros - The Next Millennium (1991)(Activision)[cr Black Monks][b doscopy]
+3f8f1030 disk1 known Deuteros - The Next Millennium (1991)(Activision)[cr Black Monks][m baddump][b doscopy]
+56f55f5b disk2 verified Deuteros - The Next Millennium (1991)(Activision)(M3)(Disk 2 of 2)
+03c1f83a disk2 verified Deuteros - The Next Millennium (1991)(Activision)(M3)[a2](Disk 2 of 2)
+c137ff44 disk2 verified Deuteros - The Next Millennium (1991)(Activision)(M3)[a](Disk 2 of 2)
+ab32e237 disk2 verified Deuteros - The Next Millennium v1 (1991)(Activision)(M3)(Disk 2 of 2)(Data Disk)[f crack L.A.]
+d34d9626 disk2 known Deuteros - The Next Millennium v1 (1991)(Activision)(M3)(Disk 2 of 2)(Data Disk)[t +6 SKN][tr es SKN]
+7c78a8c4 save refused This "save disk" image holds a Microsoft Cabinet file, not an Amiga disk
+48fd1979 save refused This "save disk" image holds a Microsoft Cabinet file, not an Amiga disk

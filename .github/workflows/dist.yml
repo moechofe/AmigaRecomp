@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros]
+        game: [deuteros, lemmings]
     defaults:
       run:
         shell: bash
@@ -82,7 +82,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros]
+        game: [deuteros, lemmings]
     defaults:
       run:
         shell: bash
@@ -116,7 +116,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros]
+        game: [deuteros, lemmings]
     defaults:
       run:
         shell: msys2 {0}
@@ -183,7 +183,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros]
+        game: [deuteros, lemmings]
     env:
       GAME: ${{ matrix.game }}
     steps:

@@ -1,0 +1,18 @@
+# docs/game.md, item 4.
+074bc441 disk1 known Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR]
+1a8d5a98 disk1 known Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR][f AGA Ministry]
+c38c41e1 disk1 known Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR][f AGA Ministry][t +10 PNS - BTL]
+944dfccf disk1 known Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR][f mem configs SR]
+73256a54 disk1 known Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR][f mem configs SR][t +10 PNS - BTL]
+b188739a disk1 known Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR][f mem configs SR][t +28 Defjam]
+e02352da disk1 known Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR][t +10 PNS - BTL]
+228e4b14 disk1 known Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR][t +28 Defjam]
+52ca2320 disk1 known Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr][h Semtex][t +10 Goonies]
+85ac8c46 disk1 known Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr][t +10 Goonies]
+8b28e9b7 disk1 refused This Lemmings Disk 1 is a damaged dump: it crashes during the intro on an Amiga too
+0f34b0b1 disk1 refused This Lemmings trainer prints its menu in Kickstart's ROM font, which this runtime does not have
+0199897b disk1 refused This is the NTSC Lemmings: it stops at a black screen on a PAL Amiga, and this runtime is a PAL Amiga
+6a322665 disk2 known Lemmings (1991)(Psygnosis)(Disk 2 of 2)[cr SR]
+206cadfc disk2 known Lemmings (1991)(Psygnosis)(Disk 2 of 2)[cr SR][b errdms]
+db1d8ad5 disk2 known Lemmings (1991)(Psygnosis)(Disk 2 of 2)[cr SR][v Lamer Exterminator 2]
+e6a68967 disk2 refused This is the NTSC Lemmings Disk 2: it works only with the NTSC Disk 1, which stops on a PAL Amiga
