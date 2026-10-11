@@ -29,6 +29,13 @@ jobs:
     steps:
       - name: Install the toolchain and SDL's build dependencies
         run: |
+          # Debian 11 is past its LTS end; its packages are served from archive.debian.org.
+          printf '%s\n' \
+            'deb http://archive.debian.org/debian bullseye main' \
+            'deb http://archive.debian.org/debian bullseye-updates main' \
+            'deb http://archive.debian.org/debian-security bullseye-security main' \
+            > /etc/apt/sources.list
+          rm -f /etc/apt/sources.list.d/*
           apt-get update
           apt-get install -y --no-install-recommends \
             ca-certificates git build-essential binutils ninja-build pkg-config python3-pip \
