@@ -49,7 +49,7 @@ errors (a rejected image, a failed state save or load) above its Drives section.
 Window mode (no `--headless`) opens a resizable window the size of the game's view times three
 (or N times with `--scale N`; at least the view's size), with an OpenGL 3.3 core context. The view is
 `game_def.view`, the raster rectangle of the game's picture, or the 320 x 256 capture window when the game
-sets none; the window shows only it, so black appears only where the window's shape leaves bars. It is drawn centred
+sets none, which shifts a standard picture 9 pixels right and cuts it off (`docs/game.md`, item 6, step 8); the window shows only it, so black appears only where the window's shape leaves bars. It is drawn centred
 on black: with the setting `scale` `integer`, the largest whole multiple that fits the window;
 with `float`, the largest size that fits and keeps square pixels. It paces itself to one frame of 142 102 CPU cycles at
 7 093 790 Hz (about 20.03 ms; *Timing*). Audio is 48 kHz 16-bit stereo from Paula. Keys the
@@ -60,6 +60,7 @@ frontend takes:
 | F1 | opens the menu (pages About, Disks, Settings and, when the game has hacks, Hacks) and pauses the game; F1, Esc or the menu's "F1 Resume" button, at its top right, closes it once the game has booted (the button is shown only then). Never reaches the game |
 | F5 / F9 | save / load the state file (*Save states*); failures print and the run goes on |
 | F12 | write `frame-NNNNNN.png` (the frame counter, six digits) into the shot directory |
+| Alt+Enter | toggles borderless fullscreen on the current display (no video mode change); works with the menu open. Never reaches the game; the Alt press itself does |
 | other keys | letters, digits, F2-F10, Space, Backspace, Tab, Return, Esc, Delete, arrows, Shift, Ctrl, Alt as Amiga raw keycodes (HRM appendix H) |
 
 By default the mouse is not captured: the OS cursor is hidden while the game runs (shown while
@@ -67,11 +68,14 @@ the menu is open) and, every frame, the frontend gives the
 game's pointer the whole remaining error as counts, clamped to +/-127 a frame (unit gain,
 closed loop). The error is between the OS cursor, mapped into the drawn frame (a cursor over a
 border counts as the nearest frame edge), and where
-`denise_pointer()` says the game's pointer sprite is. With the setting `mouse_capture` on, the
+`denise_pointer()` says the game's pointer sprite is: the centre of its image's pixels on the
+lines the display window shows. A VSTOP below VSTART is never met, so the image runs on to the
+end of the frame, as sprite DMA fetches it; Lemmings' menu pointer writes such a VSTOP (bit 8
+missing) whenever its 31 lines cross line 256. With the setting `mouse_capture` on, the
 window grabs the mouse (SDL relative mode) and the motion, scaled to frame pixels, is given to the
-game's pointer as counts instead; opening the menu releases it. Neither mode has been tried
-interactively; only the code exists. With `--script` in window mode the script alone moves the
-pointer, and nothing is captured.
+game's pointer as counts instead; opening the menu releases it. Both modes have been tried by
+hand only on Lemmings' title menu (2026-10-10). With `--script` in window mode the script alone
+moves the pointer, and nothing is captured.
 
 ### Settings and hacks
 
@@ -129,6 +133,52 @@ its bundled CMake 4.4.2 and Ninja 1.13.2, Python 3.14 and Git. Only GCC has buil
 - `frontend/main.c` is compiled into each executable instead of `amiga_frontend`. Kept in the
   archive, it is never pulled in on MinGW and the link fails with `undefined reference to
   'WinMain'`; the comment in `cmake/amigarecomp.cmake` says why.
+
+### Linux toolchain
+
+Observed 2026-10-09 on Ubuntu 26.04.1 LTS (x86-64), building `games/deuteros` from a fresh clone:
+GCC 15.2.0, CMake 4.2.3, Ninja 1.13.2, glibc 2.43.
+
+- The first configure cloned the five dependencies into the clone's `build/deps/` (182 MB) in
+  39 s; the first build ran 680 steps in 145 s; the build tree is 191 MB.
+- `ldd <id>` lists only `linux-vdso`, `libm`, `libc` and `ld-linux-x86-64`. The newest symbol
+  version in `objdump -T <id>` is `GLIBC_2.43` (`acosf`, `asinf`, `atan2f`, `log10f`, `sqrtf`),
+  so the glibc floor is 2.43: the executable runs on any x86-64 distro with glibc 2.43 or newer,
+  plus libGL and the X11 or Wayland client libraries that SDL loads at run time. An older
+  distro needs a build made on one with that distro's glibc or older.
+
+### Distributable builds in CI
+
+`.github/workflows/dist.yml` builds each game in its `game` matrix from a fresh checkout. Only
+`deuteros` is listed; another game is added to the `game` list of every job that has one. It has
+not run yet: GitHub is not connected.
+
+- `linux` builds in a `debian:11` container, so the glibc floor is that distro's 2.31. CMake
+  comes from pip because Debian 11's is older than 3.24. It runs `ctest`, fails when `ldd` lists
+  anything beyond the list above (plus `libdl` and `libpthread`) or when `objdump -T` finds a
+  symbol version newer than `GLIBC_MAX`. Its executable is kept one day as the artifact
+  `<id>-linux-build`, only for `appimage`; it is never released.
+- `appimage` validates `games/<id>/packaging/<id>.desktop`, runs `tools/appimage.py` on that
+  executable and uploads `<id>-linux-x86_64.AppImage`, the only Linux file a player gets. The
+  AppImage uses the host's glibc, so the floor above still applies. `appimagetool` and the
+  AppImage runtime are the `continuous` releases, not pinned.
+- `linux-run` downloads the AppImage into `ubuntu:20.04`, which has no compiler and no Python,
+  and starts it headless with no disks under `env -i` and `APPIMAGE_EXTRACT_AND_RUN=1`: it must
+  exit 2 with `<title> is missing:`.
+- `windows` builds with MSYS2's UCRT64 GCC rather than WinLibs, runs `ctest`, fails on any DLL
+  outside the "Windows toolchain" list, and runs the same no-disk start with a `PATH` that holds
+  only Windows. It uploads `<id>-windows-x86_64.exe`.
+- `release` runs on a `v*` tag, once `appimage`, `linux-run` and `windows` pass. It publishes
+  both files of every game as assets of one GitHub release, which is where Quiver Launcher
+  installs from.
+
+No job reaches a game screen: that needs a player's disks, which never enter git.
+
+Quiver Launcher picks its Linux download by file name: it accepts `linux` or `appimage` and
+rejects `windows`, `win` and `.exe`, and on Linux it also lists Windows assets for Wine, so a
+catalog entry for a repository that ships several games or both platforms sets
+`releaseAssetFilter` (for example `deuteros-linux`). `[source]`: read from Quiver Launcher's
+`PlatformAssetMatcher.cs` and `DownloadAssetSelection.cs`, not run here.
 
 ## Input scripts
 
@@ -243,10 +293,26 @@ PAL, derived from the CPU cycle counter (`core/sched.c`):
   position is `amiga_now / 227 % 6250` words, so a WORDSYNC scan starts there). No DMA
   contention: the CPU never waits for bitplane, copper, sprite or blitter DMA.
 - The copper runs at colour-clock granularity.
-- **Lores only.** Hires, HAM and dual playfield are logged once and drawn as lores.
+- **Reads of write-only registers.** On OCS a read writes the last chip-bus value into the
+  register (WinUAE `custom.cpp`, `custom_wget_1`). There is no bus latch here: a read of
+  `COPJMP1` or `COPJMP2` restarts the copper, because the strobe ignores the data; every other
+  write-only read returns 0 and is logged once.
+- **Hires at lores width.** A hires line fetches (DDFSTOP − DDFSTRT) / 4 + 2 words per plane,
+  and its first pixel is at DIW DDFSTRT × 2 + 9 (lores: / 8 + 1 words, × 2 + 17; HRM). BPLCON1
+  delays in lores pixels. The frame stays lores, so each lores pixel shows the first hires
+  pixel of its pair (`DENISE_HIRES_PIXEL`, `core/denise.c`), as the WinUAE oracle's lores
+  capture (`gfx_resolution=lores`) does. Evidence, 2026-10-10: the Lemmings DMA Design screen
+  (BPLCON0 0xC200, DDF 0x3C–0xD4) at 81 920/81 920 against `reference/dma-design.png` in 12
+  shots from frame 1079 to 1354, and 77 869/81 920 with the second pixel. HAM and dual
+  playfield are logged once and drawn as a single playfield.
 - **Unmeasured: the first line of sprite DMA.** `DENISE_SPRITE_LINE` (`core/denise.c`) is 25,
-  the line after the PAL vertical blank; every sprite's control-word fetch restarts on it. No
-  observation of it exists; the oracle shots of the proof were taken with sprites off
+  the line after the PAL vertical blank; every sprite's control-word fetch restarts on it, and
+  no sprite fetches anything on the lines before it. That follows WinUAE's `custom.cpp`, which
+  generates sprite DMA only outside vertical blank and ends PAL vertical blank at line 25. A
+  sprite whose VSTOP is never met therefore stops at the end of the frame instead of running on
+  through the vertical blank: in Lemmings' title menu that run-on moved its pointer's first
+  fetch 14 longwords past the copper's SPR0PT, drawing the pointer in the wrong colours. No
+  observation of the line exists; the oracle shots of the proof were taken with sprites off
   (`../proof/doc.agent/recomp.md`, "Timing model and its simplifications").
 
 ## HLE
@@ -453,6 +519,13 @@ several of them that the bootblock does not read. ExecBase's scalar fields, the 
 bounds, the boot task and the copper start-up list are the measured ones (same section of
 `loader.md`); the free lists are discussed under *Findings*.
 
+The CIAs are set as well (`boot_cias`): the values listed under `boot_return` below, with times
+of day 0x64 (CIA-A) and 0x6B (CIA-B). CIA-B DDRB 0xFF makes the drive-select, motor, step,
+direction and side lines outputs, so a bootblock that never returns and drives the floppy
+itself, as Lemmings' does, reaches the drives. Evidence: `games/lemmings/scripts/handoff.dbg`
+(`r`, `c`), WinUAE 6.0.3 on Kickstart 1.3 rev 34.5, cold boot of the Lemmings `[cr SR]` pair,
+2026-10-10, one run; its registers match the table above.
+
 `boot_return` (`core/boot.c`) is the bootblock's return, and replays the strap's effect.
 Evidence: `../proof/doc.format/loader.md`, "Machine state at stage 2's entry" (measured
 2026-10-03, WinUAE 6.0.3).
@@ -467,7 +540,8 @@ Evidence: `../proof/doc.format/loader.md`, "Machine state at stage 2's entry" (m
   (timer B, serial port), CRB 0x08, timer A latch and counter 0xFFFF, timer B 0x02CB, DDRA
   0x03, PRA 0xC0, SDR 0x3E, time of day 0x7A. CIA-B: mask 0x04 (TOD alarm), ICR 0x10 pending,
   CRB 0x80, timer A and B 0xFFFF, PRA and PRB 0xFF, DDRA 0xC0, DDRB 0xFF, time of day 0x3E.
-  The measured CRA of both is 0, which is what the HLE already holds.
+  The measured CRA of both is 0, which is what the HLE already holds. Only the times of day
+  differ from the bootblock call.
 
 ## Public helpers for hacks
 

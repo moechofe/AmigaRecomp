@@ -227,3 +227,32 @@ see `docs/runtime.md`, "Windows toolchain".
 
 Compare `$env:TEMP\ar-m6-run\shots` with the references as in section 8; the figures to expect
 are there.
+
+Linux (bash):
+
+    rm -rf /tmp/ar-m6 && git clone --no-hardlinks . /tmp/ar-m6
+    cmake -S /tmp/ar-m6/games/deuteros -B /tmp/ar-m6/games/deuteros/build/cmake-linux -G Ninja
+    cmake --build /tmp/ar-m6/games/deuteros/build/cmake-linux
+    ctest --test-dir /tmp/ar-m6/games/deuteros/build/cmake-linux --output-on-failure
+    ldd /tmp/ar-m6/games/deuteros/build/cmake-linux/deuteros
+    objdump -T /tmp/ar-m6/games/deuteros/build/cmake-linux/deuteros | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -n1
+    mkdir -p games/deuteros/build/dist/linux
+    cp /tmp/ar-m6/games/deuteros/build/cmake-linux/deuteros games/deuteros/build/dist/linux/deuteros
+
+`ctest` reports 3 of 3. The expected `ldd` list and glibc floor are in `docs/runtime.md`, "Linux
+toolchain".
+
+Run it in isolation, with an environment that holds only `PATH`, `HOME` and, for the window, the
+display variables:
+
+    rm -rf /tmp/ar-m6-run && mkdir -p /tmp/ar-m6-run/shots /tmp/ar-m6-run/shots-win
+    cp games/deuteros/build/dist/linux/deuteros games/deuteros/scripts/menu.input games/deuteros/scripts/earth-base.input "games/deuteros/disks/<Disk 1>.zip" "games/deuteros/disks/<Disk 2>.zip" /tmp/ar-m6-run
+    cd /tmp/ar-m6-run
+    env -i PATH=/usr/bin:/bin HOME="$HOME" ./deuteros --headless --pref ./pref --shot-dir ./shots --script menu.input "<Disk 1>.zip" "<Disk 2>.zip"
+    env -i PATH=/usr/bin:/bin HOME="$HOME" ./deuteros --headless --pref ./pref --shot-dir ./shots --script earth-base.input "<Disk 1>.zip" "<Disk 2>.zip"
+    env -i PATH=/usr/bin:/bin HOME="$HOME" DISPLAY="$DISPLAY" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" ./deuteros --pref ./pref-win --shot-dir ./shots-win --script earth-base.input "<Disk 1>.zip" "<Disk 2>.zip"
+
+The last one opens a window, runs paced for about 20 s and exits by itself. Add
+`WAYLAND_DISPLAY="$WAYLAND_DISPLAY"` to run it under Wayland instead of X11. Compare
+`/tmp/ar-m6-run/shots` and `shots-win` with the references as in section 8; the figures to
+expect are there.

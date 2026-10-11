@@ -193,3 +193,33 @@ only.
 emulator's shot is the same measurement.
 
 *What would reverse this:* an FS-UAE shot that differs from WinUAE's of the same screen.
+
+## 017 — stdout carries four events and nothing else, on every game
+
+**2026-10-11.** Author's call.
+
+stdout reports only:
+
+- a disk put into or taken out of a drive;
+- a state saved or loaded;
+- a setting changed.
+
+Everything else the runtime prints today leaves stdout: the `load N:` line of every trackdisk
+read, the `disk DMA:` line of every hardware track read, the per-library call counts and the
+`frames F, instructions I, …` block at the end of a run, and the logged-once notes of `core/`
+(`amiga_log_once`: ignored registers, unmapped accesses, "copper stopped", `RethinkDisplay`,
+and the rest). Errors are not logs and do not move: `fatal:` and its registers, usage and image
+errors, and `script error` / `script timeout` stay on stderr.
+
+*Considered:* the status quo, where what a game prints depends on how it loads. Deuteros goes
+through trackdisk and prints 81 `load` lines and about 27 call counts; Lemmings drives the
+floppy hardware itself, prints 157 `disk DMA` lines once it is past its cracktro and 4 call
+counts, and before the click prints 4 lines in all (observed 2026-10-11, Windows).
+
+*Why:* those lines were evidence while the runtime was being brought up. With it running, they
+tell a player nothing, and the amount printed measures the game's loader, not anything the
+player did. The four events are the ones a player causes. No tool, test or workflow reads the
+runtime's stdout (searched `tools/`, `tests/`, `.github/`), so only prose docs describe it.
+
+*What would reverse this:* bringing up a game whose faults cannot be found without the load or
+call trail.

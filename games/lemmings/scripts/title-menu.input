@@ -1,0 +1,11 @@
+# Lemmings: cross the Skid Row cracktro, sit through the intro, shoot the title menu.
+# The balloon intro also shows 30 colours, so the menu's waits start inside it (frame 3600):
+# the black loading screen (3 colours), then the menu (30; reference/title-menu.png). The menu
+# animates; 150 frames on, its scroller and lemmings are where the reference has them.
+wait 600
+click
+wait 3000
+until colours 3
+until colours 30
+wait 150
+shot title-menu

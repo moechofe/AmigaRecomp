@@ -1,6 +1,7 @@
 # Conventions — style, verification, commits
 
-There is no formatter, no linter and no CI. These rules are kept by reading them.
+There is no formatter and no linter. The only CI is `.github/workflows/dist.yml`
+(`docs/runtime.md`, "Distributable builds in CI"). These rules are kept by reading them.
 
 ## Formatting
 

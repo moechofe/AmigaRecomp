@@ -220,3 +220,29 @@ dumps of other regions, such as what `capture.py --cmd` writes. `--len` is at le
 An unreadable dump prints `error: <path>: <reason>` and exits 1. A range outside the dump prints
 `error: 0x<addr> + <len> is outside <path> (base 0x<base>, <size> bytes)` and exits 1. A usage
 error exits 2.
+
+## `appimage.py`
+
+    python tools/appimage.py --game <id>
+    python tools/appimage.py --game <id> --exe <path> --tool <appimagetool>
+
+Packs the Linux executable into `games/<id>/build/dist/linux/<id>-linux-x86_64.AppImage`. It
+builds `games/<id>/build/appimage/<id>.AppDir` from the executable,
+`games/<id>/packaging/<id>.desktop` and the icon `games/<id>/packaging/<id>.png` (or `.svg`),
+then runs `appimagetool`. `AppRun` is a two-line shell script and `.DirIcon` a copy of the
+icon, so the AppDir holds no symlinks (the shared folder this repository was developed on does
+not allow them).
+
+| Option | Meaning |
+| --- | --- |
+| `--game ID` | required; the folder under `games/` |
+| `--exe PATH` | the executable; default `games/<id>/build/cmake-linux/<id>` |
+| `--tool PATH` | `appimagetool`; default the one on `PATH` |
+
+`appimagetool` is not part of the repository: download an `appimagetool-x86_64.AppImage` from
+its releases. It also downloads the AppImage runtime. A missing desktop entry, icon, executable
+or tool prints `error: <reason>` and exits 2; `appimagetool` failing exits 2 too.
+
+Observed 2026-10-09, Ubuntu 26.04, appimagetool continuous build 313, with a stand-in icon: the
+result for `deuteros` was 4.8 MB, and `--headless` with no disks exited 2 with `… is missing:
+Disk 1`, with and without `APPIMAGE_EXTRACT_AND_RUN`, on a machine with no `libfuse.so.2`.

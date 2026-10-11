@@ -16,17 +16,20 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <io.h>
 
 /* The executable is a GUI-subsystem program, so a double click opens no console. Started from a
    terminal, it attaches to that terminal and points stdout and stderr at it unless they were
-   redirected. */
+   redirected. The C runtime checks its standard handles at startup, before the console is
+   attached, so a console handle passed by the shell leaves the stream without a descriptor even
+   though GetStdHandle still returns it. */
 static void sdl_attach_console(void)
 {
 	if(!AttachConsole(ATTACH_PARENT_PROCESS))
 		return;
-	if(!GetStdHandle(STD_OUTPUT_HANDLE))
+	if(_fileno(stdout) < 0 || _get_osfhandle(_fileno(stdout)) < 0)
 		freopen("CONOUT$", "w", stdout);
-	if(!GetStdHandle(STD_ERROR_HANDLE))
+	if(_fileno(stderr) < 0 || _get_osfhandle(_fileno(stderr)) < 0)
 		freopen("CONOUT$", "w", stderr);
 }
 #endif
@@ -517,6 +520,12 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 				}
 				if(open)
 					sdl_menu_event(&e);
+			}
+			else if((e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP) && (e.key.mod & SDL_KMOD_ALT)
+				&& (e.key.scancode == SDL_SCANCODE_RETURN || e.key.scancode == SDL_SCANCODE_KP_ENTER))
+			{
+				if(e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat)
+					SDL_SetWindowFullscreen(window, !(SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN));
 			}
 			else if(open)
 			{

@@ -96,6 +96,11 @@ It crosses the cracktro, dumps the 512 KB of chip RAM into `games/lemmings/refer
 and banks a save state that `--statefile` restores later. FS-UAE only: `!move DX DY` moves the
 pointer. `docs/tools.md` lists every directive.
 
+The machine state Kickstart hands the bootblock (registers, CIAs, custom registers), which
+`docs/runtime.md`, "Kickstart handoff", cites:
+
+    python tools/capture.py --game lemmings --script games/lemmings/scripts/handoff.dbg
+
 ## 6. Check and compare screenshots
 
     python tools/pixdiff.py --game lemmings games/lemmings/reference/psygnosis.png --colours
@@ -103,9 +108,10 @@ pointer. `docs/tools.md` lists every directive.
 
 `--colours` flags any colour that is not a 12-bit OCS colour, which marks a scaled capture.
 The comparison writes its difference image to `games/lemmings/build/pixdiff/diff.png`. The
-comparison of the recompiled run is:
+comparisons of the recompiled runs are:
 
     python tools/pixdiff.py --game lemmings games/lemmings/build/shots/psygnosis.png games/lemmings/reference/psygnosis.png
+    python tools/pixdiff.py --game lemmings games/lemmings/build/shots/title-menu.png games/lemmings/reference/title-menu.png
 
 ## 7. Build and run the recompiled version
 
@@ -120,12 +126,17 @@ Linux:
     cmake -S games/lemmings -B games/lemmings/build/cmake-linux -G Ninja
     cmake --build games/lemmings/build/cmake-linux
 
-Headless, with `scripts/psygnosis.input` (it writes `games/lemmings/build/shots/psygnosis.png`
-once the run reaches the owl):
+Headless, with `scripts/psygnosis.input` (the owl) and `scripts/title-menu.input` (the title
+menu); each writes its shot into `games/lemmings/build/shots/`:
 
     games/lemmings/build/cmake/lemmings.exe --headless --shot-dir games/lemmings/build/shots --script games/lemmings/scripts/psygnosis.input "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR].adf" "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 2 of 2)[cr SR].adf"
+    games/lemmings/build/cmake/lemmings.exe --headless --shot-dir games/lemmings/build/shots --script games/lemmings/scripts/title-menu.input "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR].adf" "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 2 of 2)[cr SR].adf"
 
-On Linux, use `games/lemmings/build/cmake-linux/lemmings`. Today the run passes the cracktro's
-exit (`OpenLibrary("intuition.library")`, `RethinkDisplay`) and ends with `script timeout: line
-6: 8 colours never reached in 3000 frames (1 on screen)`, with no shot. This folder's
-`PLAN.md`, M2, has the state.
+In a window, with the two images:
+
+    games/lemmings/build/cmake/lemmings.exe "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 1 of 2)[cr SR].adf" "games/lemmings/build/adf/Lemmings (1991)(Psygnosis)(Disk 2 of 2)[cr SR].adf"
+
+On Linux, use `games/lemmings/build/cmake-linux/lemmings`. The owl run writes `psygnosis.png`
+at frame 864 and the menu run `title-menu.png` at frame 4108; both compare 81 920 of 81 920
+(section 6). The window shows the game's picture, `game_def.view` (`docs/format.md`,
+"Screens"). This folder's `PLAN.md`, M2, has the owl's figures.

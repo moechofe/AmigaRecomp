@@ -20,6 +20,8 @@ A supported game is the self-contained folder `games/<id>/` (decision 013).
 
   On Linux, use `games/<id>/build/cmake-linux` in both commands. The executable is written to
   that build directory.
+- Add `<id>` to the `game` matrix of `.github/workflows/dist.yml` once it builds;
+  `docs/runtime.md`, "Distributable builds in CI", says what that runs.
 
 ## 2. Folder layout
 
@@ -62,6 +64,9 @@ These files are committed:
   `tools/emulator.py`.
 - `oracle.fsuae.in` — the FS-UAE config template, the same machine; optional, filled in the
   same way.
+- `packaging/<id>.desktop` and `packaging/<id>.png` (or `.svg`) — the desktop entry and the icon
+  that `tools/appimage.py` packs. The icon is the author's own artwork, never a game graphic;
+  `.gitignore` lets `packaging/*.png` through for it.
 - `docs/format.md` — the game's boot chain and disk facts, each citing an ADF name and a byte
   offset.
 - `docs/dumps.md` — every dump seen, with:
@@ -126,7 +131,7 @@ declaration of `struct Amiga`.
     	int drives[4];               /* role index in DF0–DF3 at boot, -1 empty */
     	int drive_count;             /* DF0–DF(n-1): the drives the Disks page offers, 1–4 */
     	int pointer_sprite;          /* sprite holding the game's mouse pointer, -1 none */
-    	struct GameView view;        /* what the window shows; w 0: the capture window */
+    	struct GameView view;        /* what the window shows; every game sets it (item 6, step 8); w 0: the capture window */
     	const struct GameHack *const *hacks; uint32_t hack_count;
     };
     extern const struct GameDef game_def;
@@ -213,7 +218,8 @@ An ordered checklist:
 2. Run `python tools/adf.py games/<id>/disks/*` (☑) to group the images by CRC and
    bootblock. Pick the reference dump that the oracle will boot.
 3. Create `games/<id>/CMakeLists.txt` (item 2), a minimal `game.c` (roles and drives, no
-   hacks), and `dumps.txt` listing the reference dump as `known`. Configure and build.
+   hacks, and `view` once a screen draws: step 8), and `dumps.txt` listing the reference dump
+   as `known`. Configure and build.
 4. Write `oracle.winuae.in` and/or `oracle.fsuae.in`, then take reference shots and states into `games/<id>/reference/`
    with `tools/capture.py --game <id>` (☐ M2).
 5. Run the game headless, repeatedly, until the first fatal error:
@@ -225,10 +231,31 @@ An ordered checklist:
    `docs/formats/`. Never implement it in a game-specific way.
 6. **The verification gate for `verified`:**
     - the first-screen shot matches WinUAE on every informative pixel (`tools/pixdiff.py`);
-    - a script reaches a named in-game screen with no fatal.
+    - a script reaches a named in-game screen with no fatal;
+    - a window run shows the picture whole (item 8).
 
    Record the command, the date and the figures in `docs/dumps.md`.
 7. Run the same scripts on every other dump and set each dump's status.
+8. **Set `game_def.view` in `game.c`, as soon as a screen draws; every game needs it.** Without
+   it the window shows the 320 × 256 capture window, whose first column is DIW x 120 and first
+   row scanline 42. Kickstart's standard display window, `DIWSTRT` 0x81 with `DDFSTRT` 0x38,
+   starts a lores picture at DIW x 129, so a game that uses it appears shifted right by 9
+   pixels, with black columns at the left and the last 9 columns cut off at the right. That
+   is the normal case, not a quirk of one game: Deuteros and Lemmings both had it (Deuteros
+   until it set `view`, Lemmings until 2026-10-10). Headless shots and every `pixdiff` look
+   right, because they are the capture window too, so only a window run shows it.
+    - `x`: the DIW x of the picture's first pixel: `DDFSTRT` × 2 + 17 in lores, × 2 + 9 in
+      hires (`docs/runtime.md`, "Timing"). `w`: 320 for a standard screen.
+    - `y`, `h`: the first scanline and the height of the picture, from the copper's `BPLCON0`
+      `WAIT` or `DIWSTRT`. Use the tallest screen the game shows, so no screen is cut: a
+      shorter one sits inside it with black below.
+    - The rectangle must lie inside the frame row, DIW x 120–454 (`docs/emulator.md`, "Capture
+      window"); the frontend refuses to start otherwise (`game_def.view … lies outside the
+      frame buffer`).
+    - Check it with `<id> --scale 2` and a script that reaches the screen: the window opens at
+      twice the view, and the picture's first column and last column are both visible.
+      `games/lemmings/docs/format.md`, "Screens", and `games/deuteros/docs/format.md` hold the
+      two games' values and their evidence.
 
 ## 7. Writing a hack
 

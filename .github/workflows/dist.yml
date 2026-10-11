@@ -1,0 +1,234 @@
+name: dist
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+env:
+  # Debian 11's glibc; the Linux executable must need nothing newer.
+  GLIBC_MAX: GLIBC_2.31
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    container: debian:11
+    strategy:
+      fail-fast: false
+      matrix:
+        game: [deuteros]
+    defaults:
+      run:
+        shell: bash
+    env:
+      GAME: ${{ matrix.game }}
+    steps:
+      - name: Install the toolchain and SDL's build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates git build-essential binutils ninja-build pkg-config python3-pip \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
+            libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols \
+            libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev libdrm-dev libgbm-dev \
+            libasound2-dev libpulse-dev libdbus-1-dev libudev-dev
+          python3 -m pip install 'cmake>=3.24'
+          cmake --version
+          gcc --version
+          ninja --version
+
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          cmake -S "games/$GAME" -B "games/$GAME/build/cmake-linux" -G Ninja
+          cmake --build "games/$GAME/build/cmake-linux"
+
+      - name: Test
+        run: ctest --test-dir "games/$GAME/build/cmake-linux" --output-on-failure
+
+      - name: Check shared libraries and the glibc floor
+        run: |
+          exe="games/$GAME/build/cmake-linux/$GAME"
+          ldd "$exe"
+          extra=$(ldd "$exe" | grep -vE '^[[:space:]]*((linux-vdso|libm|libc|libdl|libpthread)\.so|/lib64/ld-linux-x86-64\.so)' || true)
+          if [ -n "$extra" ]; then
+            echo "::error::unexpected shared libraries:"
+            echo "$extra"
+            exit 1
+          fi
+          floor=$(objdump -T "$exe" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -n1)
+          echo "glibc floor: $floor"
+          if [ "$(printf '%s\n' "$floor" "$GLIBC_MAX" | sort -V | tail -n1)" != "$GLIBC_MAX" ]; then
+            echo "::error::glibc floor $floor is above $GLIBC_MAX"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.game }}-linux-build
+          path: games/${{ matrix.game }}/build/cmake-linux/${{ matrix.game }}
+          retention-days: 1
+          if-no-files-found: error
+
+  linux-run:
+    needs: appimage
+    runs-on: ubuntu-24.04
+    container: ubuntu:20.04
+    strategy:
+      fail-fast: false
+      matrix:
+        game: [deuteros]
+    defaults:
+      run:
+        shell: bash
+    env:
+      GAME: ${{ matrix.game }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.game }}-appimage
+          path: run
+
+      - name: Start the AppImage with no disks on a machine without a compiler or Python
+        working-directory: run
+        run: |
+          if command -v gcc cc python3; then
+            echo "::error::this image has a compiler or Python"
+            exit 1
+          fi
+          app="$GAME-linux-x86_64.AppImage"
+          chmod +x "$app"
+          set +e
+          env -i PATH=/usr/bin:/bin HOME="$PWD" APPIMAGE_EXTRACT_AND_RUN=1 "./$app" --headless --pref ./pref 2> err.txt
+          code=$?
+          set -e
+          cat err.txt
+          echo "exit code: $code"
+          [ "$code" = 2 ] && grep -q ' is missing: ' err.txt
+
+  windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        game: [deuteros]
+    defaults:
+      run:
+        shell: msys2 {0}
+    env:
+      GAME: ${{ matrix.game }}
+    steps:
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: git
+          pacboy: gcc:p cmake:p ninja:p
+
+      - name: Toolchain versions
+        run: |
+          cmake --version
+          gcc --version
+          ninja --version
+
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          cmake -S "games/$GAME" -B "games/$GAME/build/cmake" -G Ninja
+          cmake --build "games/$GAME/build/cmake"
+
+      - name: Test
+        run: ctest --test-dir "games/$GAME/build/cmake" --output-on-failure
+
+      - name: Check imported DLLs
+        run: |
+          dlls=$(objdump -p "games/$GAME/build/cmake/$GAME.exe" | sed -n 's/^[[:space:]]*DLL Name: //p' | tr '[:upper:]' '[:lower:]' | sort -u)
+          echo "$dlls"
+          extra=$(echo "$dlls" | grep -vxE '(advapi32|gdi32|imm32|kernel32|ole32|oleaut32|setupapi|shell32|user32|version|winmm|api-ms-win-crt-[a-z0-9-]+)\.dll' || true)
+          if [ -n "$extra" ]; then
+            echo "::error::unexpected DLLs:"
+            echo "$extra"
+            exit 1
+          fi
+
+      - name: Start with no disks and a PATH that holds only Windows
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path "games/$env:GAME/build/cmake/$env:GAME.exe"
+          $err = "$env:RUNNER_TEMP\err.txt"
+          $env:PATH = "C:\Windows\System32;C:\Windows"
+          $p = Start-Process -FilePath $exe -ArgumentList '--headless', '--pref', "$env:RUNNER_TEMP\pref" -Wait -PassThru -RedirectStandardError $err
+          Get-Content $err
+          "exit code: $($p.ExitCode)"
+          if ($p.ExitCode -ne 2 -or -not (Select-String -Quiet -SimpleMatch ' is missing: ' $err)) { exit 1 }
+
+      - name: Name the release asset
+        run: cp "games/$GAME/build/cmake/$GAME.exe" "$GAME-windows-x86_64.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.game }}-windows
+          path: ${{ matrix.game }}-windows-x86_64.exe
+          if-no-files-found: error
+
+  appimage:
+    needs: linux
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        game: [deuteros]
+    env:
+      GAME: ${{ matrix.game }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.game }}-linux-build
+          path: games/${{ matrix.game }}/build/cmake-linux
+
+      - name: Install appimagetool
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends desktop-file-utils
+          curl -fsSL -o "$RUNNER_TEMP/appimagetool" https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x "$RUNNER_TEMP/appimagetool"
+
+      - name: Validate the desktop entry
+        run: desktop-file-validate "games/$GAME/packaging/$GAME.desktop"
+
+      - name: Pack
+        run: python3 tools/appimage.py --game "$GAME" --tool "$RUNNER_TEMP/appimagetool"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.game }}-appimage
+          path: games/${{ matrix.game }}/build/dist/linux/${{ matrix.game }}-linux-x86_64.AppImage
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [appimage, linux-run, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*-{appimage,windows}'
+          merge-multiple: true
+          path: assets
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l assets
+          gh release create "$GITHUB_REF_NAME" assets/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes

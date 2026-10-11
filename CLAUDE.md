@@ -35,6 +35,7 @@ This table owns the roster; `docs/tools.md` explains how to run them.
 | `tools/pixdiff.py` | M2 | pixel diff |
 | `tools/adf.py` | M3 | identify images against `dumps.txt` |
 | `tools/anchor.py` | M4 | a CRC-32 anchor from a RAM dump |
+| `tools/appimage.py` | M6 | pack a game's Linux executable into an AppImage |
 
 ## Where to look
 

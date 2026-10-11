@@ -29,6 +29,7 @@
 /games/*/reference/
 /build/
 *.png
+!/games/*/packaging/*.png
 *.bmp
 *.ppm
 *.wav

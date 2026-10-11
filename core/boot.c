@@ -8,11 +8,37 @@
 #define BOOT_BUFFER_SIZE 0x488u
 #define BOOT_ENTRY (BOOT_BUFFER + 12)
 
+/* Kickstart's cia.resource, keyboard.device and timer.device CIA state, measured at the
+ * bootblock call and at stage 2's entry; only the times of day differ (docs/runtime.md,
+ * "Kickstart handoff"). */
+static void boot_cias(struct Amiga *m, uint32_t tod_a, uint32_t tod_b)
+{
+	m->cia_a.icr_mask = 0x0A;
+	m->cia_a.tb.cr = 0x08;
+	m->cia_a.ta.latch = m->cia_a.ta.counter = 0xFFFF;
+	m->cia_a.tb.latch = m->cia_a.tb.counter = 0x02CB;
+	m->cia_a.ddra = 0x03;
+	m->cia_a.pra = 0xC0;
+	m->cia_a.sdr = 0x3E;
+	m->cia_a.tod = tod_a;
+	m->cia_b.tb.cr = 0x80;
+	m->cia_b.icr = 0x10;
+	m->cia_b.icr_mask = 0x04;
+	m->cia_b.ta.latch = m->cia_b.ta.counter = 0xFFFF;
+	m->cia_b.tb.latch = m->cia_b.tb.counter = 0xFFFF;
+	m->cia_b.pra = 0xFF;
+	m->cia_b.prb = 0xFF;
+	m->cia_b.ddra = 0xC0;
+	m->cia_b.ddrb = 0xFF;
+	m->cia_b.tod = tod_b;
+}
+
 int amiga_boot(struct Amiga *m)
 {
 	int role = m->drive_role[0];
 	interp_init(m);
 	hle_build(m);
+	boot_cias(m, 0x64, 0x6B);
 
 	m->paula.intena = 0x602C;
 	m->paula.dmacon = 0x02D0;
@@ -69,24 +95,5 @@ void boot_return(struct Amiga *m)
 	/* The strap turned bitplane DMA on (HRM, DMACON). */
 	m->paula.dmacon |= 0x0100;
 
-	/* Kickstart's cia.resource, keyboard.device and timer.device state at stage-2 entry,
-	 * measured: docs/runtime.md, "Kickstart handoff". */
-	m->cia_a.icr_mask = 0x0A;
-	m->cia_a.tb.cr = 0x08;
-	m->cia_a.ta.latch = m->cia_a.ta.counter = 0xFFFF;
-	m->cia_a.tb.latch = m->cia_a.tb.counter = 0x02CB;
-	m->cia_a.ddra = 0x03;
-	m->cia_a.pra = 0xC0;
-	m->cia_a.sdr = 0x3E;
-	m->cia_a.tod = 0x7A;
-	m->cia_b.tb.cr = 0x80;
-	m->cia_b.icr = 0x10;
-	m->cia_b.icr_mask = 0x04;
-	m->cia_b.ta.latch = m->cia_b.ta.counter = 0xFFFF;
-	m->cia_b.tb.latch = m->cia_b.tb.counter = 0xFFFF;
-	m->cia_b.pra = 0xFF;
-	m->cia_b.prb = 0xFF;
-	m->cia_b.ddra = 0xC0;
-	m->cia_b.ddrb = 0xFF;
-	m->cia_b.tod = 0x3E;
+	boot_cias(m, 0x7A, 0x3E);
 }

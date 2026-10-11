@@ -13,4 +13,5 @@ const struct GameDef game_def = {
 	.drives = {0, 1, -1, -1},
 	.drive_count = 2,
 	.pointer_sprite = 0,
+	.view = {129, 44, 320, 208},
 };

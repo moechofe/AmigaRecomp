@@ -20,10 +20,15 @@ Shared code sits at the root. Each game is the self-contained folder `games/<id>
   (`game.c`, M4).
 - `frontend/` — window, GL quad, audio and input; the F1 menu (About, Disks, Hacks, Settings pages),
   disk-image loading and `settings.ini`.
-- `tools/` — `doctor.py`, `emulator.py`, `capture.py`, `pixdiff.py`, `adf.py` and `anchor.py`.
+- `tools/` — `doctor.py`, `emulator.py`, `capture.py`, `pixdiff.py`, `adf.py`, `anchor.py` and
+  `appimage.py`.
 - `games/deuteros/` — the first game.
-- `games/lemmings/` — the second game; only its oracle so far (`oracle.winuae.in`, `oracle.fsuae.in`,
-  `scripts/boot.dbg`, `docs/dumps.md`, `README.md`, `PLAN.md`).
+- `games/lemmings/` — the second game; its oracle (`oracle.winuae.in`, `oracle.fsuae.in`,
+  `scripts/boot.dbg`, `scripts/handoff.dbg`), its build (`CMakeLists.txt`, `game.c`),
+  `docs/format.md`, and `scripts/psygnosis.input` and `scripts/title-menu.input`, which run to
+  the Psygnosis owl and the title menu.
+- `.github/workflows/dist.yml` — the distributable builds, one per game and OS;
+  `docs/runtime.md`, "Distributable builds in CI", says what it checks.
 
 ## Local only, gitignored
 

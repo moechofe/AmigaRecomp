@@ -103,6 +103,11 @@ uint16_t custom_read(struct Amiga *m, uint32_t reg)
 		return m->paula.intreq;
 	case REG_DENISEID:
 		return 0xFFFF;
+	case REG_COPJMP1:
+	case REG_COPJMP2:
+		/* OCS writes the chip-bus latch into a write-only register on a read; strobes ignore the data. WinUAE custom.cpp. */
+		copper_restart(m, reg == REG_COPJMP1 ? 1 : 2);
+		return 0;
 	default:
 		amiga_log_once(m, 0x50000000u | reg, "read of write-only custom register 0x%03X", (unsigned)reg);
 		return 0;

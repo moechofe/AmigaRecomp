@@ -1,13 +1,17 @@
 #include "amiga.h"
 #include "game.h"
 
-/* Bitplanes, sprites and the colour registers, HRM chapters 3, 4 and 6. Lores only. One line
- * at a time into linebuf, indexed by DIW horizontal coordinate (lores pixels). */
+/* Bitplanes, sprites and the colour registers, HRM chapters 3, 4 and 6. One line at a time
+ * into linebuf, indexed by DIW horizontal coordinate (lores pixels); a hires line is drawn one
+ * of its two pixels per lores pixel. */
 
 #define DENISE_X_MAX 456
-/* The first line sprite DMA fetches control words on: the line after PAL vertical blank.
- * Not measured; docs/runtime.md, "Timing". */
+/* The first line of sprite DMA, where every sprite's control-word fetch restarts: the line after
+ * PAL vertical blank, during which there is no sprite DMA. Not measured; docs/runtime.md, "Timing". */
 #define DENISE_SPRITE_LINE 25
+/* Which pixel of each hires pair a lores pixel shows: the first, as the oracle's lores capture
+ * does (docs/runtime.md, "Timing"). */
+#define DENISE_HIRES_PIXEL 0
 
 enum SpriteDma
 {
@@ -31,7 +35,7 @@ static void denise_sprite_control(struct Amiga *m, struct Sprite *s)
 static void denise_sprite_dma(struct Amiga *m, int line)
 {
 	int i;
-	if((m->paula.dmacon & 0x0220) != 0x0220)
+	if((m->paula.dmacon & 0x0220) != 0x0220 || line < DENISE_SPRITE_LINE)
 		return;
 	for(i = 0; i < 8; i++)
 	{
@@ -65,16 +69,31 @@ static void denise_sprite_dma(struct Amiga *m, int line)
 	}
 }
 
+static int denise_vstop(const struct Denise *d)
+{
+	/* OCS: DIWSTOP's V8 is the complement of its V7. HRM. */
+	int v = (d->diwstop >> 8) & 0xFF;
+	return (v & 0x80) ? v : v | 0x100;
+}
+
+static int denise_in_vwindow(const struct Denise *d)
+{
+	return d->line >= ((d->diwstrt >> 8) & 0xFF) && d->line < denise_vstop(d);
+}
+
 /* The game's pointer sprite, `game_def.pointer_sprite`. The frame pixel at the centre
- * of the pixels its first control words and image describe, read from chip RAM where this
- * frame's sprite DMA started, so a position the game wrote after the fetch counts. Image bit
- * 15 - c of a row is column c at DIW x HSTART + 1 + c, as denise_sprite() draws it; row r is
- * line VSTART + r. Returns 0 with no pointer sprite, sprite DMA off or an empty sprite. */
+ * of the pixels its first control words and image describe on the lines the display window
+ * shows, read from chip RAM where this frame's sprite DMA started, so a position the game
+ * wrote after the fetch counts. Image bit 15 - c of a row is column c at DIW x HSTART + 1 + c,
+ * as denise_sprite() draws it; row r is line VSTART + r. A VSTOP below VSTART is never met,
+ * so the image runs on to the end of the frame, as denise_sprite_dma() fetches it.
+ * Returns 0 with no pointer sprite, sprite DMA off or no pixel shown. */
 int denise_pointer(struct Amiga *m, int *x, int *y)
 {
-	uint32_t pt = m->denise.pointer_list;
+	const struct Denise *d = &m->denise;
+	uint32_t pt = d->pointer_list;
 	uint16_t pos, ctl;
-	int vstart, vstop, h, row, c, x0 = 16, x1 = -1, y0 = -1, y1 = -1;
+	int vstart, vstop, first, last, h, row, c, x0 = 16, x1 = -1, y0 = -1, y1 = -1;
 	if(game_def.pointer_sprite < 0 || (m->paula.dmacon & 0x0220) != 0x0220)
 		return 0;
 	pos = mem_chip16(m, pt);
@@ -84,7 +103,13 @@ int denise_pointer(struct Amiga *m, int *x, int *y)
 	vstart = ((pos >> 8) & 0xFF) | ((ctl & 4) << 6);
 	vstop = ((ctl >> 8) & 0xFF) | ((ctl & 2) << 7);
 	h = ((pos & 0xFF) << 1) | (ctl & 1);
-	for(row = 0; row < vstop - vstart; row++)
+	first = (d->diwstrt >> 8) & 0xFF;
+	if(first < vstart)
+		first = vstart;
+	last = vstop < vstart ? AMIGA_LINES : vstop;
+	if(last > denise_vstop(d))
+		last = denise_vstop(d);
+	for(row = first - vstart; row < last - vstart; row++)
 	{
 		uint32_t at = (pt + 4 + 4 * (uint32_t)row) & 0x1FFFFE;
 		uint16_t bits = mem_chip16(m, at) | mem_chip16(m, at + 2);
@@ -119,31 +144,21 @@ void denise_begin_line(struct Amiga *m, int line)
 	denise_sprite_dma(m, line);
 }
 
-static int denise_vstop(const struct Denise *d)
-{
-	/* OCS: DIWSTOP's V8 is the complement of its V7. HRM. */
-	int v = (d->diwstop >> 8) & 0xFF;
-	return (v & 0x80) ? v : v | 0x100;
-}
-
-static int denise_in_vwindow(const struct Denise *d)
-{
-	return d->line >= ((d->diwstrt >> 8) & 0xFF) && d->line < denise_vstop(d);
-}
-
 static void denise_fetch(struct Amiga *m)
 {
 	struct Denise *d = &m->denise;
 	int bpu = (d->bplcon0 >> 12) & 7;
+	int hires = (d->bplcon0 & 0x8000) != 0;
 	int p, w, start = d->ddfstrt & 0xFC, stop = d->ddfstop & 0xFC;
 	d->fetched = -1;
-	if(d->bplcon0 & 0x8C00)
-		amiga_log_once(m, 0x80000000u | (d->bplcon0 & 0x8C00), "BPLCON0 0x%04X: hires, HAM and dual playfield render as lores", d->bplcon0);
+	if(d->bplcon0 & 0x0C00)
+		amiga_log_once(m, 0x80000000u | (d->bplcon0 & 0x0C00), "BPLCON0 0x%04X: HAM and dual playfield render as a single playfield", d->bplcon0);
 	if(bpu > 6)
 		bpu = 6;
 	if((m->paula.dmacon & 0x0300) != 0x0300 || bpu == 0 || !denise_in_vwindow(d) || stop < start)
 		return;
-	d->words = ((stop - start) >> 3) + 1;
+	/* Words per plane: lores (DDFSTOP - DDFSTRT) / 8 + 1, hires / 4 + 2. HRM. */
+	d->words = hires ? ((stop - start) >> 2) + 2 : ((stop - start) >> 3) + 1;
 	if(d->words > 64)
 		d->words = 64;
 	for(p = 0; p < bpu; p++)
@@ -158,8 +173,8 @@ static void denise_fetch(struct Amiga *m)
 	for(; p < 6; p++)
 		for(w = 0; w < d->words; w++)
 			d->plane[p][w] = 0;
-	/* First pixel at DIW DDFSTRT * 2 + 17, HRM; 0x38 gives 0x81. */
-	d->first_x = start * 2 + 17;
+	/* First pixel at DIW DDFSTRT * 2 + 17 lores, + 9 hires, HRM; 0x38 and 0x3C give 0x81. */
+	d->first_x = start * 2 + (hires ? 9 : 17);
 	d->fetched = 1;
 }
 
@@ -167,14 +182,18 @@ static int denise_playfield(const struct Denise *d, int x)
 {
 	int p, idx = 0;
 	int bpu = (d->bplcon0 >> 12) & 7;
+	int hires = (d->bplcon0 & 0x8000) != 0;
 	if(d->fetched != 1)
 		return 0;
 	if(bpu > 6)
 		bpu = 6;
 	for(p = 0; p < bpu; p++)
 	{
+		/* BPLCON1 delays in lores pixels in both resolutions. HRM. */
 		int delay = (p & 1) ? (d->bplcon1 >> 4) & 15 : d->bplcon1 & 15;
 		int px = x - d->first_x - delay;
+		if(hires)
+			px = px * 2 + DENISE_HIRES_PIXEL;
 		if(px < 0 || px >= d->words * 16)
 			continue;
 		idx |= ((d->plane[p][px >> 4] >> (15 - (px & 15))) & 1) << p;
