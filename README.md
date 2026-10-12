@@ -3,6 +3,8 @@
 [![License: MIT](https://img.shields.io/github/license/moechofe/AmigaRecomp)](LICENSE)
 [![dist](https://github.com/moechofe/AmigaRecomp/actions/workflows/dist.yml/badge.svg)](https://github.com/moechofe/AmigaRecomp/actions/workflows/dist.yml)
 
+## AmigaRecomp
+
 A collection of native Windows, Linux and macOS executables that run Amiga games from your own disk images, with some quality-of-life improvements.
 
 AmigaRecomp runs Amiga games natively, one program per game. The game's code runs on the Musashi 68000 interpreter, alongside a recreated Amiga chipset (copper, bitplanes, sprites, blitter, CIAs and Paula audio) written with Claude. Kickstart 1.3 is replaced by C code, so no ROM is needed.
