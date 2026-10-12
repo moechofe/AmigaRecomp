@@ -111,7 +111,8 @@ static const char *const sdl_scale_choices[] = {"integer", "float", 0};
 
 const struct GameSetting sdl_settings[SdlSettingCount] = {
 	{"mouse_capture", "Capture the mouse", "Off: the system cursor moves the game's pointer and can leave the window.", GameValueBool, 0, 0},
-	{"scale", "Scale", "integer: the largest whole multiple of the Amiga screen that fits the window. float: the screen fills the window as far as its shape allows.", GameValueChoice, SdlScaleInteger, sdl_scale_choices},
+	{"scale", "Scale", "integer: the largest whole multiple of the Amiga screen that fits the window. float: the screen fills the window as far as its shape allows.", GameValueChoice, SdlScaleFloat, sdl_scale_choices},
+	{"fullscreen", "Fullscreen", "On: the window fills its display, borderless, without changing the video mode. Alt+Enter switches it too.", GameValueBool, 0, 0},
 };
 
 static int sdl_setting_values[SdlSettingCount];

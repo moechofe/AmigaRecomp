@@ -329,14 +329,15 @@ void sdl_disks_attach(struct Amiga *m, void (*banner)(const char *text))
 	}
 }
 
-static void disks_print_drive(const struct Amiga *m, int drive)
+static void disks_report_drive(const struct Amiga *m, int drive, void (*report)(const char *text))
 {
+	char line[300];
 	int role = m->drive_role[drive];
-	printf("DF%d: %s\n", drive, role < 0 ? "empty" : game_def.disks[role].label);
-	fflush(stdout);
+	snprintf(line, sizeof line, "DF%d: %.255s", drive, role < 0 ? "empty" : game_def.disks[role].label);
+	report(line);
 }
 
-void sdl_disks_insert(struct Amiga *m, int drive, int role)
+void sdl_disks_insert(struct Amiga *m, int drive, int role, void (*report)(const char *text))
 {
 	int old, n, from = -1;
 	if(!m->booted || drive < 0 || drive >= game_def.drive_count || role < -1
@@ -351,10 +352,10 @@ void sdl_disks_insert(struct Amiga *m, int drive, int role)
 	if(from >= 0)
 	{
 		amiga_insert(m, from, old);
-		disks_print_drive(m, from);
+		disks_report_drive(m, from, report);
 	}
 	amiga_insert(m, drive, role);
-	disks_print_drive(m, drive);
+	disks_report_drive(m, drive, report);
 }
 
 void sdl_disks_remember(void)

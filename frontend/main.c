@@ -68,11 +68,66 @@ static void sdl_log(const char *text)
 static int sdl_usage(void)
 {
 	fprintf(stderr,
-		"usage: %s [--headless] [--frames N] [--script FILE] [--shot-dir DIR] [--state PATH]\n"
-		"          [--pref DIR] [--dump FILE] [--no-sprites] [--scale N] <image>...\n"
-		"images: .adf .adz .gz .zip\n",
-		game_def.id);
+		"usage: %s [-h | --help] [--headless] [--frames N] [--script FILE] [--shot-dir DIR]\n"
+		"          [--state PATH] [--pref DIR] [--dump FILE] [--no-sprites] [--scale N] <image>...\n"
+		"Run '%s --help' for what each argument does.\n",
+		game_def.id, game_def.id);
 	return 2;
+}
+
+static int sdl_help(void)
+{
+	uint32_t r;
+	int n = 0;
+	printf("%s, AmigaRecomp\n\n"
+		"usage: %s [options] [image...]\n\n"
+		"Images\n"
+		"  Up to 16 disk images (.adf, .adz, .gz or .zip), in any order. Each is\n"
+		"  identified by its CRC-32 and fills the disk it matches. This game reads:\n"
+		"   ",
+		game_def.title, game_def.id);
+	for(r = 0; r < game_def.disk_count; r++)
+		if(!game_def.disks[r].writable)
+			printf("%s %s", n++ ? "," : "", game_def.disks[r].label);
+	printf("\n");
+	for(r = 0; r < game_def.disk_count; r++)
+		if(game_def.disks[r].writable)
+			printf("  %s is not given: it is kept in <pref>%s.adf.\n", game_def.disks[r].label, game_def.disks[r].id);
+	printf("  In a window, images can also be dropped on it or opened from the menu\n"
+		"  (F1), and the paths are remembered in <pref>settings.ini.\n\n"
+		"Options\n"
+		"  -h, --help       show this help and exit\n"
+		"  --headless       no window, audio or pacing: run as fast as the host\n"
+		"                   allows. Every image must be given and usable;\n"
+		"                   settings.ini is neither read nor written and every hack\n"
+		"                   is off unless the script turns it on\n"
+		"  --frames N       headless: stop with exit 0 at frame N (0: no limit)\n"
+		"  --script FILE    drive the game with an input script of at most 65535\n"
+		"                   bytes (docs/runtime.md, \"Input scripts\"); in a window\n"
+		"                   the script alone moves the pointer and hacks stay off\n"
+		"  --shot-dir DIR   where screenshots go (F12, a script's 'shot');\n"
+		"                   default <pref>shots\n"
+		"  --state PATH     the save-state file (F5/F9, a script's 'state');\n"
+		"                   default <pref>state.sav\n"
+		"  --pref DIR       the folder for settings, writable disks, shots and\n"
+		"                   states, created if missing; default the per-user folder\n"
+		"                   SDL picks for AmigaRecomp/%s\n"
+		"  --dump FILE      write the 512 KB of chip RAM to FILE at exit\n"
+		"  --no-sprites     start with sprites hidden (a script's 'sprites on' shows\n"
+		"                   them again)\n"
+		"  --scale N        window: open at N times the game's view, N from 1 to %d,\n"
+		"                   and draw at that whole multiple, or the largest that fits;\n"
+		"                   overrides the 'scale' setting until it is changed in the menu\n\n"
+		"Keys in the window\n"
+		"  F1               menu (disks, settings and hacks); pauses the game\n"
+		"  F5 / F9          save / load the state file\n"
+		"  F12              screenshot into the shot directory\n"
+		"  Alt+Enter        fullscreen on or off\n\n"
+		"Exit codes\n"
+		"  0 normal end, 1 fatal runtime error, 2 usage, image or script error,\n"
+		"  3 script timeout\n",
+		game_def.id, SDL_MAX_SCALE);
+	return 0;
 }
 
 static long sdl_read_file(const char *path, void *buf, long cap)
@@ -162,8 +217,9 @@ static int sdl_state_save(const char *path, void (*report)(int error, const char
 	return 0;
 }
 
-/* `machine` is untouched unless the whole state reads back and matches this build and disks. */
-static int sdl_state_load(const char *path, void (*report)(int error, const char *text))
+/* `machine` is untouched unless the whole state reads back and matches this build and disks.
+ * 0, or why it was not loaded. */
+static const char *sdl_state_load(const char *path, void (*report)(int error, const char *text))
 {
 	char line[1400];
 	const char *why;
@@ -173,7 +229,7 @@ static int sdl_state_load(const char *path, void (*report)(int error, const char
 	{
 		snprintf(line, sizeof line, "no state at %.1000s", path);
 		report(1, line);
-		return -1;
+		return "no state file";
 	}
 	n = fread(sdl_state_buf, 1, sizeof sdl_state_buf, f);
 	fclose(f);
@@ -182,7 +238,7 @@ static int sdl_state_load(const char *path, void (*report)(int error, const char
 	{
 		snprintf(line, sizeof line, "%.1000s: %s", path, why);
 		report(1, line);
-		return -1;
+		return why;
 	}
 	snprintf(line, sizeof line, "state loaded from %.1000s (frame %u)", path, machine.frame_count);
 	report(0, line);
@@ -361,6 +417,31 @@ static void sdl_banner_window(const char *text)
 	sdl_menu_banner(text);
 }
 
+/* A disk given while the window is up (dropped, Open Disk…, Load save disk…): its lines also
+ * show as notifications. */
+static void sdl_report_given(int error, const char *text)
+{
+	sdl_report_window(error, text);
+	sdl_menu_notify(text, error);
+}
+
+/* F5 and the menu's save buttons; the outcome also shows as a notification. */
+static void sdl_state_save_window(const char *path, void (*report)(int error, const char *text))
+{
+	int failed = sdl_state_save(path, report);
+	sdl_menu_notify(failed ? "State not saved" : "State saved", failed);
+}
+
+/* F9 and the menu's load buttons; the outcome also shows as a notification. */
+static const char *sdl_state_load_window(const char *path, void (*report)(int error, const char *text))
+{
+	char text[200];
+	const char *why = sdl_state_load(path, report);
+	snprintf(text, sizeof text, "State not loaded: %.150s", why ? why : "");
+	sdl_menu_notify(why ? text : "State loaded", why != 0);
+	return why;
+}
+
 /* 0, or -1 with the fatal error printed. */
 static int sdl_boot(void (*banner)(const char *text))
 {
@@ -384,19 +465,19 @@ static int sdl_menu_action_run(const struct SdlOptions *o, const SDL_UserEvent *
 	switch((enum SdlMenuAction)u->code)
 	{
 	case SdlMenuOpenDisk:
-		return sdl_disks_offer(u->data1, SdlOfferGiven, sdl_report_window);
+		return sdl_disks_offer(u->data1, SdlOfferGiven, sdl_report_given);
 	case SdlMenuImportDisk:
 		role = (int)(intptr_t)u->data2;
-		if(sdl_disks_import(role, u->data1, sdl_report_window) == 0 && sdl_roles[role].attached)
+		if(sdl_disks_import(role, u->data1, sdl_report_given) == 0 && sdl_roles[role].attached)
 			for(n = 0; n < AMIGA_DRIVES; n++)
 				if(machine.drive_role[n] == role)
 					amiga_insert(&machine, n, role);
 		return 0;
 	case SdlMenuStateSave:
-		sdl_state_save(path, sdl_report_window);
+		sdl_state_save_window(path, sdl_report_window);
 		return 0;
 	case SdlMenuStateLoad:
-		if(sdl_state_load(path, sdl_report_window) == 0)
+		if(!sdl_state_load_window(path, sdl_report_window))
 			sdl_menu_show(0);
 		return 0;
 	}
@@ -414,7 +495,7 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 	struct SdlPointer ptr;
 	uint64_t next;
 	uint32_t audio_read = 0;
-	int running = 1, code = 0, lmb = 0, rmb = 0, cursor_shown = -1, captured = 0, want, i;
+	int running = 1, code = 0, lmb = 0, rmb = 0, cursor_shown = -1, captured = 0, fullscreen, want, i;
 	float fx = 0, fy = 0;
 	struct SdlView view;
 
@@ -433,7 +514,8 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 		fprintf(stderr, "video: game_def.view %d,%d %dx%d lies outside the frame buffer\n", game_def.view.x, game_def.view.y, game_def.view.w, game_def.view.h);
 		return 1;
 	}
-	window = SDL_CreateWindow(game_def.title, view.w * i, view.h * i, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+	fullscreen = sdl_setting(SdlSettingFullscreen);
+	window = SDL_CreateWindow(game_def.title, view.w * i, view.h * i, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | (fullscreen ? SDL_WINDOW_FULLSCREEN : 0));
 	if(!window)
 	{
 		fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
@@ -497,7 +579,7 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 			if(e.type == SDL_EVENT_QUIT)
 				running = 0;
 			else if(e.type == SDL_EVENT_DROP_FILE)
-				filled += sdl_disks_offer(e.drop.data, SdlOfferGiven, sdl_report_window);
+				filled += sdl_disks_offer(e.drop.data, SdlOfferGiven, sdl_report_given);
 			else if(e.type == sdl_menu_action_event)
 			{
 				filled += sdl_menu_action_run(o, &e.user);
@@ -527,7 +609,10 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 				&& (e.key.scancode == SDL_SCANCODE_RETURN || e.key.scancode == SDL_SCANCODE_KP_ENTER))
 			{
 				if(e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat)
-					SDL_SetWindowFullscreen(window, !(SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN));
+				{
+					sdl_settings_choose(&machine, 0, SdlSettingFullscreen, !sdl_setting(SdlSettingFullscreen));
+					sdl_menu_refresh(sdl_booted);
+				}
 			}
 			else if(open)
 			{
@@ -565,9 +650,9 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 				else if(e.key.scancode == SDL_SCANCODE_F5 || e.key.scancode == SDL_SCANCODE_F9)
 				{
 					if(down && e.key.scancode == SDL_SCANCODE_F5)
-						sdl_state_save(o->state, sdl_report_headless);
+						sdl_state_save_window(o->state, sdl_report_headless);
 					else if(down)
-						sdl_state_load(o->state, sdl_report_headless);
+						sdl_state_load_window(o->state, sdl_report_headless);
 				}
 				else if((k = sdl_amiga_key(e.key.scancode)) >= 0)
 					amiga_key(&machine, (uint8_t)k, !down);
@@ -603,6 +688,11 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 				SDL_ShowCursor();
 			else
 				SDL_HideCursor();
+		}
+		if(sdl_setting(SdlSettingFullscreen) != fullscreen)
+		{
+			fullscreen = !fullscreen;
+			SDL_SetWindowFullscreen(window, fullscreen != 0);
 		}
 
 		want = sdl_booted && !sdl_menu_is_open() && !o->script && sdl_setting(SdlSettingMouseCapture);
@@ -692,6 +782,8 @@ int main(int argc, char **argv)
 	{
 		const char *a = argv[i];
 		const char *v = i + 1 < argc ? argv[i + 1] : 0;
+		if(!strcmp(a, "-h") || !strcmp(a, "--help"))
+			return sdl_help();
 		if(strncmp(a, "--", 2))
 		{
 			if(path_count == SDL_MAX_PATHS)

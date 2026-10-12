@@ -73,10 +73,10 @@ int main(void)
 	amiga_init(&b);
 	n = state_save(&a, buf);
 	why = state_load(&b, buf, n - 1);
+	check(why && !strcmp(why, "truncated or oversized"), "a truncated state is refused", why ? why : "accepted");
 	buf[n] = 0;
-	check(why && !strcmp(why, "truncated or oversized") && (why = state_load(&b, buf, n + 1)) &&
-			!strcmp(why, "truncated or oversized"),
-		"truncated and oversized are refused", why ? why : "accepted");
+	why = state_load(&b, buf, n + 1);
+	check(why && !strcmp(why, "truncated or oversized"), "an oversized state is refused", why ? why : "accepted");
 
 	{
 		uint32_t v = 1;

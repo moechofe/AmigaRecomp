@@ -16,7 +16,7 @@ int sdl_settings_set(const char *key, const char *value);  /* 1 when the stored 
 int sdl_settings_save(void);                    /* 0, or -1 after printing "cannot write <path>" */
 
 /* The frontend's own settings, stored under their id; a game's hacks under `hack.<id>`. */
-enum SdlSetting { SdlSettingMouseCapture, SdlSettingScale, SdlSettingCount };
+enum SdlSetting { SdlSettingMouseCapture, SdlSettingScale, SdlSettingFullscreen, SdlSettingCount };
 enum SdlScale { SdlScaleInteger, SdlScaleFloat };  /* the choice indices of `scale` */
 extern const struct GameSetting sdl_settings[SdlSettingCount];
 

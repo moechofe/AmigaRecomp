@@ -22,6 +22,10 @@ namespace {
 
 constexpr int menu_messages_max = 6;
 constexpr uint64_t menu_banner_ms = 10000;
+constexpr int menu_notes_max = 4;
+constexpr uint64_t menu_note_in_ms = 150;
+constexpr uint64_t menu_note_out_ms = 500;
+constexpr uint64_t menu_note_ms = 3500; /* from the start of the fade-in to the end of the fade-out */
 
 const SdlAsset *menu_asset(const Rml::String &name)
 {
@@ -102,6 +106,14 @@ struct OptionRow
 	Rml::String status;
 };
 
+struct NoteRow
+{
+	Rml::String text;
+	bool error = false;
+	float opacity = 0.0f;
+	uint64_t start = 0;
+};
+
 struct MenuModel
 {
 	Rml::String title;
@@ -113,6 +125,7 @@ struct MenuModel
 	std::vector<Rml::String> messages;
 	Rml::String banner;
 	bool banner_on = false;
+	std::vector<NoteRow> notes;
 	std::vector<OptionRow> settings, hacks;
 	std::vector<DriveRow> drives;
 	std::vector<DriveChoice> drive_choices;
@@ -241,7 +254,10 @@ void menu_disks_refresh()
 		DiskRow row;
 		row.label = d->label;
 		if(d->writable)
-			row.state = Rml::String("kept in ") + role->source;
+		{
+			row.state = "writable";
+			row.source = role->source;
+		}
 		else if(!role->adf)
 		{
 			bool needed = false;
@@ -284,6 +300,42 @@ void menu_disks_refresh()
 	menu->handle.DirtyVariable("disks");
 	menu->handle.DirtyVariable("drives");
 	menu->handle.DirtyVariable("drive_choices");
+}
+
+void menu_drive_report(const char *text)
+{
+	std::printf("%s\n", text);
+	std::fflush(stdout);
+	sdl_menu_notify(text, 0);
+}
+
+void menu_notes_step()
+{
+	std::vector<NoteRow> &notes = menu->model.notes;
+	const uint64_t now = SDL_GetTicks();
+	bool dirty = false;
+	for(size_t i = notes.size(); i-- > 0;)
+	{
+		const uint64_t age = now - notes[i].start;
+		float opacity = 1.0f;
+		if(age >= menu_note_ms)
+		{
+			notes.erase(notes.begin() + (long)i);
+			dirty = true;
+			continue;
+		}
+		if(age < menu_note_in_ms)
+			opacity = (float)age / (float)menu_note_in_ms;
+		else if(menu_note_ms - age < menu_note_out_ms)
+			opacity = (float)(menu_note_ms - age) / (float)menu_note_out_ms;
+		if(opacity != notes[i].opacity)
+		{
+			notes[i].opacity = opacity;
+			dirty = true;
+		}
+	}
+	if(dirty)
+		menu->handle.DirtyVariable("notes");
 }
 
 } // namespace
@@ -352,6 +404,13 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 		row.RegisterMember("role", &DriveChoice::role);
 	}
 	ctor.RegisterArray<std::vector<DriveChoice>>();
+	if(auto row = ctor.RegisterStruct<NoteRow>())
+	{
+		row.RegisterMember("text", &NoteRow::text);
+		row.RegisterMember("error", &NoteRow::error);
+		row.RegisterMember("opacity", &NoteRow::opacity);
+	}
+	ctor.RegisterArray<std::vector<NoteRow>>();
 	ctor.Bind("title", &menu->model.title);
 	ctor.Bind("open", &menu->model.open);
 	ctor.Bind("booted", &menu->model.booted);
@@ -361,6 +420,7 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 	ctor.Bind("messages", &menu->model.messages);
 	ctor.Bind("banner", &menu->model.banner);
 	ctor.Bind("banner_on", &menu->model.banner_on);
+	ctor.Bind("notes", &menu->model.notes);
 	ctor.Bind("settings", &menu->model.settings);
 	ctor.Bind("hacks", &menu->model.hacks);
 	ctor.Bind("drives", &menu->model.drives);
@@ -416,7 +476,7 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 	ctor.BindEventCallback("insert", [](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &args) {
 		if(args.size() != 2)
 			return;
-		sdl_disks_insert(menu->m, args[0].Get<int>(), args[1].Get<int>());
+		sdl_disks_insert(menu->m, args[0].Get<int>(), args[1].Get<int>(), menu_drive_report);
 		menu_disks_refresh();
 	});
 	menu->handle = ctor.GetModelHandle();
@@ -488,10 +548,24 @@ void sdl_menu_banner(const char *text)
 	menu->handle.DirtyVariable("banner_on");
 }
 
+void sdl_menu_notify(const char *text, int error)
+{
+	std::vector<NoteRow> &notes = menu->model.notes;
+	NoteRow note;
+	note.text = text;
+	note.error = error != 0;
+	note.start = SDL_GetTicks();
+	notes.push_back(note);
+	if((int)notes.size() > menu_notes_max)
+		notes.erase(notes.begin());
+	menu->handle.DirtyVariable("notes");
+}
+
 void sdl_menu_refresh(int booted)
 {
 	menu->model.booted = booted != 0;
 	menu->handle.DirtyVariable("booted");
+	menu_options_refresh();
 	menu_disks_refresh();
 }
 
@@ -504,6 +578,7 @@ void sdl_menu_render(SDL_Window *window)
 		menu->model.banner_on = false;
 		menu->handle.DirtyVariable("banner_on");
 	}
+	menu_notes_step();
 	/* At most the display scale; below it, #panel's width fills the window. */
 	float dp = SDL_GetWindowDisplayScale(window);
 	const Rml::Property *pw = menu->panel->GetProperty("width");

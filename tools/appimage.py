@@ -3,13 +3,14 @@
 
 import argparse
 import os
+import platform
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-ARCH = "x86_64"
+ARCHES = ("x86_64", "aarch64")
 ICONS = ("png", "svg")
 
 
@@ -53,13 +54,17 @@ def main():
     ap = argparse.ArgumentParser(
         description="Assemble games/<id>/build/appimage/<id>.AppDir from the Linux executable and "
         "games/<id>/packaging/<id>.desktop and <id>.png (or .svg), then run appimagetool to write "
-        "games/<id>/build/dist/linux/<id>-linux-x86_64.AppImage.")
+        "games/<id>/build/dist/linux/<id>-linux-<arch>.AppImage.")
     ap.add_argument("--game", required=True, metavar="ID", help="the folder under games/")
     ap.add_argument("--exe", type=Path,
                     help="the Linux executable (default games/<id>/build/cmake-linux/<id>)")
+    ap.add_argument("--arch", choices=ARCHES, default=platform.machine(),
+                    help="the executable's architecture (default: this machine's)")
     ap.add_argument("--tool", default="appimagetool", metavar="PATH",
                     help="appimagetool, an AppImage or a binary (default: from PATH)")
     ns = ap.parse_args()
+    if ns.arch not in ARCHES:
+        fail(f"this machine is {ns.arch}; pass --arch")
 
     gamedir = ROOT / "games" / ns.game
     if not gamedir.is_dir():
@@ -77,10 +82,10 @@ def main():
         fail(f"{ns.tool} is not on PATH; pass --tool")
 
     appdir = gamedir / "build" / "appimage" / f"{ns.game}.AppDir"
-    out = gamedir / "build" / "dist" / "linux" / f"{ns.game}-linux-{ARCH}.AppImage"
+    out = gamedir / "build" / "dist" / "linux" / f"{ns.game}-linux-{ns.arch}.AppImage"
     assemble(appdir, ns.game, exe, desktop, icon)
     out.parent.mkdir(parents=True, exist_ok=True)
-    env = dict(os.environ, ARCH=ARCH, APPIMAGE_EXTRACT_AND_RUN="1")
+    env = dict(os.environ, ARCH=ns.arch, APPIMAGE_EXTRACT_AND_RUN="1")
     done = subprocess.run([tool, "--no-appstream", str(appdir), str(out)], env=env)
     if done.returncode != 0:
         fail(f"appimagetool exited {done.returncode}")

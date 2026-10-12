@@ -12,15 +12,18 @@ permissions:
 env:
   # Debian 11's glibc; the Linux executable must need nothing newer.
   GLIBC_MAX: GLIBC_2.31
+  # The oldest macOS the universal executable starts on; 11 is the first with arm64.
+  MACOS_MIN: '11.0'
 
 jobs:
   linux:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     container: debian:11
     strategy:
       fail-fast: false
       matrix:
         game: [deuteros, lemmings]
+        arch: [x86_64, aarch64]
     defaults:
       run:
         shell: bash
@@ -62,7 +65,7 @@ jobs:
         run: |
           exe="games/$GAME/build/cmake-linux/$GAME"
           ldd "$exe"
-          extra=$(ldd "$exe" | grep -vE '^[[:space:]]*((linux-vdso|libm|libc|libdl|libpthread)\.so|/lib64/ld-linux-x86-64\.so)' || true)
+          extra=$(ldd "$exe" | grep -vE '^[[:space:]]*((linux-vdso|libm|libc|libdl|libpthread)\.so|/lib64/ld-linux-x86-64\.so|(/lib/)?ld-linux-aarch64\.so)' || true)
           if [ -n "$extra" ]; then
             echo "::error::unexpected shared libraries:"
             echo "$extra"
@@ -77,28 +80,30 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.game }}-linux-build
+          name: ${{ matrix.game }}-linux-${{ matrix.arch }}-build
           path: games/${{ matrix.game }}/build/cmake-linux/${{ matrix.game }}
           retention-days: 1
           if-no-files-found: error
 
   linux-run:
     needs: appimage
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     container: ubuntu:20.04
     strategy:
       fail-fast: false
       matrix:
         game: [deuteros, lemmings]
+        arch: [x86_64, aarch64]
     defaults:
       run:
         shell: bash
     env:
       GAME: ${{ matrix.game }}
+      ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.game }}-appimage
+          name: ${{ matrix.game }}-linux-${{ matrix.arch }}-appimage
           path: run
 
       - name: Start the AppImage with no disks on a machine without a compiler or Python
@@ -108,7 +113,8 @@ jobs:
             echo "::error::this image has a compiler or Python"
             exit 1
           fi
-          app="$GAME-linux-x86_64.AppImage"
+          [ "$(uname -m)" = "$ARCH" ]
+          app="$GAME-linux-$ARCH.AppImage"
           chmod +x "$app"
           set +e
           env -i PATH=/usr/bin:/bin HOME="$PWD" APPIMAGE_EXTRACT_AND_RUN=1 "./$app" --headless --pref ./pref 2> err.txt
@@ -184,9 +190,8 @@ jobs:
           path: ${{ matrix.game }}-windows-x86_64.exe
           if-no-files-found: error
 
-  appimage:
-    needs: linux
-    runs-on: ubuntu-24.04
+  macos:
+    runs-on: macos-15
     strategy:
       fail-fast: false
       matrix:
@@ -194,48 +199,167 @@ jobs:
     env:
       GAME: ${{ matrix.game }}
     steps:
+      - name: Install the toolchain
+        run: |
+          brew install ninja
+          cmake --version
+          clang --version
+          ninja --version
+
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          cmake -S "games/$GAME" -B "games/$GAME/build/cmake-macos" -G Ninja \
+            -DCMAKE_OSX_ARCHITECTURES='arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOS_MIN"
+          cmake --build "games/$GAME/build/cmake-macos"
+
+      - name: Test
+        run: ctest --test-dir "games/$GAME/build/cmake-macos" --output-on-failure
+
+      - name: Check architectures, the macOS floor and linked libraries
+        run: |
+          exe="games/$GAME/build/cmake-macos/$GAME"
+          archs=$(lipo -archs "$exe")
+          echo "architectures: $archs"
+          if [ "$archs" != "x86_64 arm64" ]; then
+            echo "::error::expected x86_64 arm64"
+            exit 1
+          fi
+          floor=$(vtool -show-build "$exe" | awk '$1 == "minos" { print $2 }' | sort -u)
+          echo "macOS floor: $floor"
+          if [ "$floor" != "$MACOS_MIN" ]; then
+            echo "::error::macOS floor $floor is not $MACOS_MIN"
+            exit 1
+          fi
+          libs=$(otool -L "$exe" | awk '/^\t/ { print $1 }' | sort -u)
+          echo "$libs"
+          extra=$(echo "$libs" | grep -vE '^(/System/Library/Frameworks/[A-Za-z]+\.framework/|/usr/lib/lib(System\.B|c\+\+\.1|objc\.A)\.dylib$)' || true)
+          if [ -n "$extra" ]; then
+            echo "::error::unexpected shared libraries:"
+            echo "$extra"
+            exit 1
+          fi
+
+      - name: Start with no disks
+        run: |
+          set +e
+          env -i PATH=/usr/bin:/bin HOME="$RUNNER_TEMP" "games/$GAME/build/cmake-macos/$GAME" --headless --pref "$RUNNER_TEMP/pref" 2> err.txt
+          code=$?
+          set -e
+          cat err.txt
+          echo "exit code: $code"
+          [ "$code" = 2 ] && grep -q ' is missing: ' err.txt
+
+      - name: Pack the application bundle
+        run: |
+          python3 tools/macapp.py --game "$GAME"
+          codesign --verify --deep --strict --verbose=2 "games/$GAME/build/dist/macos/$GAME.app"
+          plutil -p "games/$GAME/build/dist/macos/$GAME.app/Contents/Info.plist"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.game }}-macos
+          path: games/${{ matrix.game }}/build/dist/macos/${{ matrix.game }}-macos-universal.zip
+          if-no-files-found: error
+
+  macos-run:
+    needs: macos
+    runs-on: macos-15-intel
+    strategy:
+      fail-fast: false
+      matrix:
+        game: [deuteros, lemmings]
+    env:
+      GAME: ${{ matrix.game }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.game }}-macos
+          path: run
+
+      - name: Start the x86_64 half of the release asset with no disks, directly and through LaunchServices
+        working-directory: run
+        run: |
+          uname -m
+          [ "$(uname -m)" = x86_64 ]
+          ditto -x -k "$GAME-macos-universal.zip" .
+          set +e
+          env -i PATH=/usr/bin:/bin HOME="$PWD" "./$GAME.app/Contents/MacOS/$GAME" --headless --pref ./pref 2> err.txt
+          code=$?
+          set -e
+          cat err.txt
+          echo "exit code: $code"
+          [ "$code" = 2 ]
+          grep -q ' is missing: ' err.txt
+          # open -W cannot wait for a process that has already exited, so wait for its message.
+          open -n --stderr "$PWD/open-err.txt" "./$GAME.app" --args --headless --pref "$PWD/open-pref"
+          for i in $(seq 30); do grep -q ' is missing: ' open-err.txt 2>/dev/null && break; sleep 1; done
+          cat open-err.txt
+          grep -q ' is missing: ' open-err.txt
+
+  appimage:
+    needs: linux
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        game: [deuteros, lemmings]
+        arch: [x86_64, aarch64]
+    env:
+      GAME: ${{ matrix.game }}
+      ARCH: ${{ matrix.arch }}
+    steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.game }}-linux-build
+          name: ${{ matrix.game }}-linux-${{ matrix.arch }}-build
           path: games/${{ matrix.game }}/build/cmake-linux
 
       - name: Install appimagetool
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends desktop-file-utils
-          curl -fsSL -o "$RUNNER_TEMP/appimagetool" https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          curl -fsSL -o "$RUNNER_TEMP/appimagetool" "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$ARCH.AppImage"
           chmod +x "$RUNNER_TEMP/appimagetool"
 
       - name: Validate the desktop entry
         run: desktop-file-validate "games/$GAME/packaging/$GAME.desktop"
 
       - name: Pack
-        run: python3 tools/appimage.py --game "$GAME" --tool "$RUNNER_TEMP/appimagetool"
+        run: python3 tools/appimage.py --game "$GAME" --arch "$ARCH" --tool "$RUNNER_TEMP/appimagetool"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.game }}-appimage
-          path: games/${{ matrix.game }}/build/dist/linux/${{ matrix.game }}-linux-x86_64.AppImage
+          name: ${{ matrix.game }}-linux-${{ matrix.arch }}-appimage
+          path: games/${{ matrix.game }}/build/dist/linux/${{ matrix.game }}-linux-${{ matrix.arch }}.AppImage
           if-no-files-found: error
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [appimage, linux-run, windows]
+    needs: [appimage, linux-run, windows, macos-run]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: release/note.md
+          sparse-checkout-cone-mode: false
+
       - uses: actions/download-artifact@v4
         with:
-          pattern: '*-{appimage,windows}'
+          pattern: '*-{appimage,windows,macos}'
           merge-multiple: true
           path: assets
 
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
         run: |
           ls -l assets
-          gh release create "$GITHUB_REF_NAME" assets/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+          envsubst '$TAG $REPO' < release/note.md > "$RUNNER_TEMP/note.md"
+          gh release create "$TAG" assets/* --repo "$REPO" --title "$TAG" --notes-file "$RUNNER_TEMP/note.md" --generate-notes

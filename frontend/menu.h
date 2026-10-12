@@ -25,6 +25,9 @@ void sdl_menu_show(int open);
 void sdl_menu_event(SDL_Event *e);
 void sdl_menu_message(const char *text);
 void sdl_menu_banner(const char *text);
+/* A notification at the window's top right, shown for a few seconds whether or not the menu is
+ * open; `error` marks a failure. */
+void sdl_menu_notify(const char *text, int error);
 void sdl_menu_refresh(int booted);
 void sdl_menu_render(SDL_Window *window);
 

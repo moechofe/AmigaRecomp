@@ -65,6 +65,11 @@ h2
 	font-weight: bold;
 }
 
+.underline
+{
+	text-decoration: underline;
+}
+
 .state
 {
 	display: inline-block;
@@ -319,4 +324,33 @@ button.primary:hover
 .drive button
 {
 	margin-top: 0;
+}
+
+#notes
+{
+	position: absolute;
+	top: 12dp;
+	right: 12dp;
+	width: 360dp;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	pointer-events: none;
+}
+
+.note
+{
+	margin-bottom: 6dp;
+	padding: 8dp 14dp;
+	border: 1dp #606060;
+	border-radius: 6dp;
+	background-color: #202020f0;
+	font-size: 15dp;
+	pointer-events: none;
+}
+
+.note.error
+{
+	border-color: #c06050;
+	color: #f0c0b0;
 }
