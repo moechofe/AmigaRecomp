@@ -194,6 +194,7 @@ static void disk_dma(struct Amiga *m, uint16_t v)
 	for(i = 0; i < len; i++)
 		mem_chip_write16(m, dest + 2 * i, buf[(pos + i) % DISK_TRACK_WORDS]);
 	m->floppy.dskpt = dest + 2 * len;
+	m->disk_accesses++;
 	custom_set_intreq(m, 0x0002);
 	if(m->log)
 		amiga_logf(m, "disk DMA: DF%d=%s cylinder %d head %d +%u words -> RAM 0x%06X", n,

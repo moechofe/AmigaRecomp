@@ -1,6 +1,9 @@
 #include "hle.h"
 #include "cpu_ops.h"
 
+#include <stdio.h>
+#include <string.h>
+
 /* exec.library and graphics.library functions, by negative LVO. Every LVO is from NDK 3.2
  * FD/exec_lib.fd and FD/graphics_lib.fd (bias 30, 6 bytes a slot). Returns 0 to return to the
  * caller, 1 when the function has set the PC itself, -1 when it is not implemented. */
@@ -148,14 +151,14 @@ void hle_free(struct Amiga *m, uint32_t block, uint32_t size)
 
 /* --- signals and messages ---------------------------------------------------------------- */
 
-static uint32_t hle_task(void)
+static uint32_t hle_task(struct Amiga *m)
 {
-	return HLE_THIS_TASK;
+	return hle_r32(m, HLE_EXEC_BASE + EB_THISTASK);
 }
 
-static int32_t hle_alloc_signal(struct Amiga *m, int32_t want)
+int32_t hle_exec_alloc_signal(struct Amiga *m, int32_t want)
 {
-	uint32_t t = hle_task(), alloc = hle_r32(m, t + TC_SIGALLOC);
+	uint32_t t = hle_task(m), alloc = hle_r32(m, t + TC_SIGALLOC);
 	int b;
 	if(want >= 0)
 	{
@@ -175,7 +178,13 @@ static int32_t hle_alloc_signal(struct Amiga *m, int32_t want)
 	return b;
 }
 
-static void hle_reply(struct Amiga *m, uint32_t msg)
+void hle_exec_free_signal(struct Amiga *m, uint32_t bit)
+{
+	if((int32_t)bit >= 0 && bit < 32)
+		hle_w32(m, hle_task(m) + TC_SIGALLOC, hle_r32(m, hle_task(m) + TC_SIGALLOC) & ~(1u << bit));
+}
+
+void hle_reply_msg(struct Amiga *m, uint32_t msg)
 {
 	uint32_t port = hle_r32(m, msg + MN_REPLYPORT);
 	if(!port)
@@ -189,6 +198,8 @@ static void hle_reply(struct Amiga *m, uint32_t msg)
 
 /* --- I/O ------------------------------------------------------------------------------------ */
 
+/* Returns 1 when the request is complete (and replied unless IOF_QUICK), 0 when the device
+ * replies it later, -1 after a fatal. */
 static int hle_begin_io(struct Amiga *m, uint32_t io)
 {
 	uint32_t dev = hle_r32(m, io + IO_DEVICE);
@@ -196,19 +207,87 @@ static int hle_begin_io(struct Amiga *m, uint32_t io)
 		hle_td_io(m, io);
 	else if(dev == HLE_IN_BASE)
 		hle_input_io(m, io);
+	else if(dev == HLE_AUDIO_BASE)
+	{
+		if(!hle_audio_io(m, io))
+			return 0;
+	}
 	else
 	{
 		amiga_fatal(m, "I/O on device 0x%06X, which this runtime does not provide", dev);
 		return -1;
 	}
 	if(!(hle_r8(m, io + IO_FLAGS) & IOF_QUICK))
-		hle_reply(m, io);
-	return 0;
+		hle_reply_msg(m, io);
+	return 1;
 }
 
 static uint32_t hle_io_error(struct Amiga *m, uint32_t io)
 {
 	return (uint32_t)(int32_t)(int8_t)hle_r8(m, io + IO_ERROR);
+}
+
+/* Wait(set): with none of the signals set, the CPU parks at HLE_WAIT_PARK until an interrupt
+ * (input, audio, Intuition) signals the one task (hle.c). For WaitPort, `port` is the port, and
+ * the park ends only once it holds a message; for WaitIO, `io` is the request, and it ends once
+ * the request is replied. */
+static int hle_wait(struct Amiga *m, uint32_t set, uint32_t port, uint32_t io)
+{
+	uint32_t t = hle_task(m), got = hle_r32(m, t + TC_SIGRECVD) & set;
+	if(got && !port && !io)
+	{
+		hle_w32(m, t + TC_SIGRECVD, hle_r32(m, t + TC_SIGRECVD) & ~got);
+		D0 = got;
+		return 0;
+	}
+	if(!(set & hle_r32(m, t + TC_SIGALLOC)))
+	{
+		amiga_fatal(m, "Wait(0x%08X) on signals that are not allocated", set);
+		return 0;
+	}
+	if((int8_t)hle_r8(m, HLE_EXEC_BASE + EB_IDNESTCNT) >= 0)
+	{
+		amiga_fatal(m, "Wait(0x%08X) with interrupts disabled", set);
+		return 0;
+	}
+	m->hle.wait_mask = set;
+	m->hle.wait_port = port;
+	m->hle.wait_io = io;
+	hle_w32(m, t + TC_SIGWAIT, set);
+	m->cpu.pc = HLE_WAIT_PARK;
+	return 1;
+}
+
+/* WaitIO(io): a replied request leaves its reply port and gives its io_Error; one still in the
+ * device is waited for on the reply port's signal. */
+static int hle_wait_io(struct Amiga *m, uint32_t io)
+{
+	uint32_t port = hle_r32(m, io + MN_REPLYPORT);
+	if((hle_r8(m, io + IO_FLAGS) & IOF_QUICK) || hle_r8(m, io + LN_TYPE) == NT_REPLYMSG)
+	{
+		hle_exec_io_done(m, io);
+		return 0;
+	}
+	if(!port)
+	{
+		amiga_fatal(m, "WaitIO(0x%06X) on a request with no reply port", io);
+		return 0;
+	}
+	return hle_wait(m, 1u << (hle_r8(m, port + MP_SIGBIT) & 31), 0, io);
+}
+
+/* A completed request: off its reply port if it is queued there, D0 = io_Error. */
+void hle_exec_io_done(struct Amiga *m, uint32_t io)
+{
+	uint32_t port = hle_r32(m, io + MN_REPLYPORT), n;
+	if(port && !(hle_r8(m, io + IO_FLAGS) & IOF_QUICK))
+		for(n = hle_r32(m, port + MP_MSGLIST + LH_HEAD); hle_r32(m, n + LN_SUCC); n = hle_r32(m, n + LN_SUCC))
+			if(n == io)
+			{
+				hle_remove(m, io);
+				break;
+			}
+	D0 = hle_io_error(m, io);
 }
 
 /* --- exec ---------------------------------------------------------------------------------- */
@@ -248,11 +327,267 @@ static uint32_t hle_stub_library(struct Amiga *m, uint32_t name_at)
 	return base;
 }
 
+/* --- libraries from LIBS: ----------------------------------------------------------------- */
+
+/* InitStruct(table, memory, 0): exec autodoc, InitStruct; exec/initializers.i. */
+static void hle_init_struct(struct Amiga *m, uint32_t p, uint32_t mem)
+{
+	uint32_t dst = mem;
+	for(;;)
+	{
+		uint8_t cmd;
+		int dd, ss, n, k;
+		p = (p + 1) & ~1u;
+		cmd = hle_r8(m, p++);
+		if(!cmd)
+			return;
+		dd = cmd >> 6;
+		ss = (cmd >> 4) & 3;
+		n = (cmd & 15) + 1;
+		if(dd == 2)
+			dst = mem + hle_r8(m, p++);
+		else if(dd == 3)
+		{
+			dst = mem + ((uint32_t)hle_r8(m, p) << 16 | (uint32_t)hle_r8(m, p + 1) << 8 | hle_r8(m, p + 2));
+			p += 3;
+		}
+		if(ss == 3)
+		{
+			amiga_fatal(m, "InitStruct: source size 3 (exec would Alert)");
+			return;
+		}
+		for(k = 0; k < (dd == 1 ? 1 : n); k++)
+		{
+			uint32_t v, r;
+			if(ss == 0)
+			{
+				p = (p + 1) & ~1u;
+				v = hle_r32(m, p);
+				p += 4;
+			}
+			else if(ss == 1)
+			{
+				p = (p + 1) & ~1u;
+				v = hle_r16(m, p);
+				p += 2;
+			}
+			else
+				v = hle_r8(m, p++);
+			for(r = 0; r < (dd == 1 ? (uint32_t)n : 1u); r++)
+			{
+				if(ss == 0)
+					hle_w32(m, dst, v);
+				else if(ss == 1)
+					hle_w16(m, dst, (uint16_t)v);
+				else
+					hle_w8(m, dst, (uint8_t)v);
+				dst += ss == 0 ? 4 : ss == 1 ? 2 : 1;
+			}
+		}
+	}
+}
+
+/* MakeLibrary(vectors, structure, -, dSize): a jump table of JMPs to the vectors (absolute
+ * pointers, or word displacements from `vectors` when its first word is -1), then the data area
+ * through InitStruct. Before V36 the base is not longword adjusted (exec autodoc). */
+static uint32_t hle_make_library(struct Amiga *m, uint32_t vectors, uint32_t structure, uint32_t dsize)
+{
+	int rel = hle_r16(m, vectors) == 0xFFFF;
+	uint32_t count = 0, neg, mem, base, i, at = rel ? vectors + 2 : vectors;
+	while(rel ? hle_r16(m, at + 2 * count) != 0xFFFF : hle_r32(m, at + 4 * count) != 0xFFFFFFFFu)
+		count++;
+	neg = count * 6;
+	mem = hle_alloc(m, neg + dsize, MEMF_PUBLIC | MEMF_CLEAR, 0);
+	if(!mem)
+		return 0;
+	base = mem + neg;
+	for(i = 0; i < count; i++)
+	{
+		uint32_t fn = rel ? vectors + (uint32_t)(int32_t)(int16_t)hle_r16(m, at + 2 * i) : hle_r32(m, at + 4 * i);
+		hle_w16(m, base - 6 * (i + 1), 0x4EF9);
+		hle_w32(m, base - 6 * (i + 1) + 2, fn);
+	}
+	if(structure)
+		hle_init_struct(m, structure, base);
+	hle_w16(m, base + LIB_NEGSIZE, (uint16_t)neg);
+	hle_w16(m, base + LIB_POSSIZE, (uint16_t)dsize);
+	return base;
+}
+
+/* The rest of an OpenLibrary that went to guest code. Stage 0: the library's init routine
+ * returned its base, which joins the library list. Stage 2: the library was already listed.
+ * Both go on to its Open vector (D0 = version, A6 = base); stage 1: Open returned the result. */
+void hle_exec_lib_continue(struct Amiga *m, struct HleFrame *f)
+{
+	uint32_t base = D0;
+	if(f->level == 1)
+	{
+		m->cpu.a[6] = f->saved[1];
+		m->cpu.pc = cpu_pop32(m);
+		return;
+	}
+	if(f->level == 0)
+	{
+		if(!base)
+		{
+			amiga_fatal(m, "OpenLibrary: the init routine of the library at 0x%06X failed", f->node);
+			return;
+		}
+		hle_w8(m, base + LN_TYPE, NT_LIBRARY);
+		hle_enqueue(m, HLE_EXEC_BASE + EB_LIBLIST, base);
+	}
+	if(hle_r16(m, base + LIB_VERSION) < f->saved[0])
+	{
+		D0 = 0;
+		m->cpu.a[6] = f->saved[1];
+		m->cpu.pc = cpu_pop32(m);
+		return;
+	}
+	f->level = 1;
+	f->node = base;
+	hle_call(m, f, base - 6);
+	D0 = f->saved[0];
+	m->cpu.a[6] = base;
+}
+
+/* OpenLibrary of a library exec does not hold: one already in the list, or LIBS:<name> loaded
+ * through dos and set up by its ROMTag, as ramlib does. Returns 1 when guest code now runs, 0
+ * when there is no such library (D0 untouched), -1 after a fatal. */
+static int hle_open_disk_library(struct Amiga *m, uint32_t name_at, uint32_t version)
+{
+	struct HleFrame f;
+	char name[64], path[80];
+	uint32_t base, seg, hunk, size, rt, init, i, initfn;
+	hle_name(m, name_at, name);
+	memset(&f, 0, sizeof f);
+	f.kind = HleFrameLibInit;
+	f.saved[0] = version;
+	f.saved[1] = m->cpu.a[6];
+	for(base = hle_r32(m, HLE_EXEC_BASE + EB_LIBLIST + LH_HEAD); hle_r32(m, base + LN_SUCC); base = hle_r32(m, base + LN_SUCC))
+	{
+		int k, stub = 0;
+		for(k = 0; k < m->hle.stub_count; k++)
+			stub |= m->hle.stub_base[k] == base;
+		if(stub || hle_strcmp(m, hle_r32(m, base + LN_NAME), name))
+			continue;
+		D0 = base;
+		f.level = 2;
+		hle_exec_lib_continue(m, &f);
+		return 1;
+	}
+	if(!m->hle.dos.booted)
+		return 0;
+	snprintf(path, sizeof path, "LIBS:%s", name);
+	seg = hle_dos_loadseg(m, path);
+	if(m->fatal)
+		return -1;
+	if(!seg)
+		return 0;
+	hunk = (seg << 2) + 4;
+	size = hle_r32(m, hunk - 8) - 8;
+	for(rt = 0, i = 0; i + 0x1A <= size; i += 2)
+	{
+		if(hle_r16(m, hunk + i) == 0x4AFC && hle_r32(m, hunk + i + 2) == hunk + i)
+		{
+			rt = hunk + i;
+			break;
+		}
+	}
+	if(!rt)
+	{
+		amiga_fatal(m, "OpenLibrary(\"%s\"): LIBS:%s has no ROMTag in its first hunk", name, name);
+		return -1;
+	}
+	if(!(hle_r8(m, rt + 0x0A) & 0x80))
+	{
+		amiga_fatal(m, "OpenLibrary(\"%s\"): a ROMTag without RTF_AUTOINIT is not implemented", name);
+		return -1;
+	}
+	init = hle_r32(m, rt + 0x16);
+	base = hle_make_library(m, hle_r32(m, init + 4), hle_r32(m, init + 8), hle_r32(m, init));
+	if(!base)
+	{
+		amiga_fatal(m, "OpenLibrary(\"%s\"): no memory for the library", name);
+		return -1;
+	}
+	amiga_logf(m, "OpenLibrary(\"%s\"): loaded from LIBS:, version %u", name, hle_r16(m, base + LIB_VERSION));
+	f.node = base;
+	initfn = hle_r32(m, init + 12);
+	if(!initfn)
+	{
+		D0 = base;
+		hle_exec_lib_continue(m, &f);
+		return 1;
+	}
+	hle_call(m, &f, initfn);
+	D0 = base;
+	m->cpu.a[0] = seg;
+	m->cpu.a[6] = HLE_EXEC_BASE;
+	return 1;
+}
+
 int hle_exec_call(struct Amiga *m, uint32_t lvo)
 {
 	uint32_t eb = HLE_EXEC_BASE, t;
 	switch(lvo)
 	{
+	case 234: /* Insert(a0 list, a1 node, a2 pred): after pred, or at the head when pred is 0 */
+	{
+		uint32_t pred = m->cpu.a[2] ? m->cpu.a[2] : A0 + LH_HEAD, succ = hle_r32(m, pred + LN_SUCC);
+		if(!m->cpu.a[2])
+			pred = A0;
+		hle_w32(m, A1 + LN_SUCC, succ);
+		hle_w32(m, A1 + LN_PRED, pred);
+		hle_w32(m, succ + LN_PRED, A1);
+		hle_w32(m, pred + LN_SUCC, A1);
+		return 0;
+	}
+	case 240: /* AddHead(a0 list, a1 node) */
+	{
+		uint32_t head = hle_r32(m, A0 + LH_HEAD);
+		hle_w32(m, A1 + LN_SUCC, head);
+		hle_w32(m, A1 + LN_PRED, A0 + LH_HEAD);
+		hle_w32(m, head + LN_PRED, A1);
+		hle_w32(m, A0 + LH_HEAD, A1);
+		return 0;
+	}
+	case 246: /* AddTail(a0 list, a1 node) */
+		hle_add_tail(m, A0, A1);
+		return 0;
+	case 252: /* Remove(a1 node) */
+		hle_remove(m, A1);
+		return 0;
+	case 258: /* RemHead(a0 list) */
+		D0 = hle_rem_head(m, A0);
+		return 0;
+	case 264: /* RemTail(a0 list) */
+		D0 = hle_r32(m, A0 + LH_TAILPRED);
+		if(!hle_r32(m, D0 + LN_PRED))
+		{
+			D0 = 0;
+			return 0;
+		}
+		hle_remove(m, D0);
+		return 0;
+	case 270: /* Enqueue(a0 list, a1 node) */
+		hle_enqueue(m, A0, A1);
+		return 0;
+	case 276: /* FindName(a0 start, a1 name): the first node after `start` with that name */
+	{
+		char name[64];
+		uint32_t n;
+		hle_name(m, A1, name);
+		for(n = hle_r32(m, A0 + LN_SUCC); n && hle_r32(m, n + LN_SUCC); n = hle_r32(m, n + LN_SUCC))
+			if(hle_r32(m, n + LN_NAME) && !hle_strcmp(m, hle_r32(m, n + LN_NAME), name))
+				break;
+		D0 = n && hle_r32(m, n + LN_SUCC) ? n : 0;
+		return 0;
+	}
+	case 624: /* CopyMem(a0 source, a1 dest, d0 size) */
+	case 630: /* CopyMemQuick(a0 source, a1 dest, d0 size) */
+		for(t = 0; t < D0; t++)
+			hle_w8(m, A1 + t, hle_r8(m, A0 + t));
+		return 0;
 	case 120: /* Disable */
 		hle_w16(m, 0xDFF09A, 0x4000);
 		hle_w8(m, eb + EB_IDNESTCNT, (uint8_t)(hle_r8(m, eb + EB_IDNESTCNT) + 1));
@@ -377,32 +712,23 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo)
 			amiga_fatal(m, "FindTask by name is not implemented");
 			return 0;
 		}
-		D0 = hle_task();
+		D0 = hle_task(m);
 		return 0;
 	case 306: /* SetSignal(d0 new, d1 mask) */
-		t = hle_r32(m, hle_task() + TC_SIGRECVD);
-		hle_w32(m, hle_task() + TC_SIGRECVD, (t & ~D1) | (D0 & D1));
+		t = hle_r32(m, hle_task(m) + TC_SIGRECVD);
+		hle_w32(m, hle_task(m) + TC_SIGRECVD, (t & ~D1) | (D0 & D1));
 		D0 = t;
 		return 0;
 	case 318: /* Wait(d0 set) */
-		t = hle_r32(m, hle_task() + TC_SIGRECVD) & D0;
-		if(!t)
-		{
-			amiga_fatal(m, "Wait(0x%08X) with none of those signals set", D0);
-			return 0;
-		}
-		hle_w32(m, hle_task() + TC_SIGRECVD, hle_r32(m, hle_task() + TC_SIGRECVD) & ~t);
-		D0 = t;
-		return 0;
+		return hle_wait(m, D0, 0, 0);
 	case 324: /* Signal(a1 task, d0 set) */
 		hle_w32(m, A1 + TC_SIGRECVD, hle_r32(m, A1 + TC_SIGRECVD) | D0);
 		return 0;
 	case 330: /* AllocSignal(d0 n) */
-		D0 = (uint32_t)hle_alloc_signal(m, (int32_t)(int8_t)D0);
+		D0 = (uint32_t)hle_exec_alloc_signal(m, (int32_t)(int8_t)D0);
 		return 0;
 	case 336: /* FreeSignal(d0 n) */
-		if((int32_t)D0 >= 0 && D0 < 32)
-			hle_w32(m, hle_task() + TC_SIGALLOC, hle_r32(m, hle_task() + TC_SIGALLOC) & ~(1u << D0));
+		hle_exec_free_signal(m, D0);
 		return 0;
 	case 354: /* AddPort(a1 port) */
 		hle_new_list(m, A1 + MP_MSGLIST, NT_MESSAGE);
@@ -420,28 +746,60 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo)
 		D0 = hle_rem_head(m, A0 + MP_MSGLIST);
 		return 0;
 	case 378: /* ReplyMsg(a1 message) */
-		hle_reply(m, A1);
+		hle_reply_msg(m, A1);
 		return 0;
-	case 384: /* WaitPort(a0 port) */
+	case 384: /* WaitPort(a0 port): the first message, left on the port */
 		D0 = hle_r32(m, A0 + MP_MSGLIST + LH_HEAD);
-		if(!hle_r32(m, D0 + LN_SUCC))
+		if(hle_r32(m, D0 + LN_SUCC))
+			return 0;
+		return hle_wait(m, 1u << (hle_r8(m, A0 + MP_SIGBIT) & 31), A0, 0);
+	case 96: /* FindResident(a1 name) */
+		if(hle_strcmp(m, A1, "dos.library"))
 		{
-			amiga_fatal(m, "WaitPort(0x%06X) on an empty port", A0);
+			char name[64];
+			hle_name(m, A1, name);
+			amiga_fatal(m, "FindResident(\"%s\") is not implemented", name);
 			return 0;
 		}
+		D0 = HLE_DOS_RESIDENT;
 		return 0;
-	case 408: /* OldOpenLibrary(a1 name) */
+	case 108: /* Alert(d7 alertNum) */
+		amiga_fatal(m, "exec Alert(0x%08X)", m->cpu.d[7]);
+		return 0;
+	case 408: /* OldOpenLibrary(a1 name): version 0 */
+		D0 = 0;
+		/* fall through */
 	case 552: /* OpenLibrary(a1 name, d0 version) */
 	{
-		uint32_t lib;
+		uint32_t lib, want = D0;
+		int builtin = 1;
 		if(!hle_strcmp(m, A1, "graphics.library"))
 			lib = HLE_GFX_BASE;
 		else if(!hle_strcmp(m, A1, "intuition.library"))
 			lib = HLE_INT_BASE;
+		else if(!hle_strcmp(m, A1, "dos.library") && m->hle.dos.booted)
+			lib = HLE_DOS_BASE;
+		else if(!hle_strcmp(m, A1, "expansion.library"))
+			lib = HLE_EXP_BASE;
+		else if(!hle_strcmp(m, A1, "layers.library"))
+			lib = HLE_LAYERS_BASE;
 		else
+		{
+			int r = hle_open_disk_library(m, A1, want);
+			if(r)
+				return r > 0;
 			lib = hle_stub_library(m, A1);
+			builtin = 0;
+		}
 		if(!lib)
 			return 0;
+		/* "If the library's version is lower than the one asked for, NULL is returned" (exec
+		 * autodoc, OpenLibrary). A stub has no version to compare. */
+		if(builtin && hle_r16(m, lib + LIB_VERSION) < want)
+		{
+			D0 = 0;
+			return 0;
+		}
 		hle_w16(m, lib + LIB_OPENCNT, (uint16_t)(hle_r16(m, lib + LIB_OPENCNT) + 1));
 		D0 = lib;
 		return 0;
@@ -467,6 +825,11 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo)
 			m->hle.input.lmb = m->paula.lmb;
 			m->hle.input.rmb = m->paula.rmb;
 		}
+		else if(!hle_strcmp(m, A0, "audio.device"))
+		{
+			D0 = (uint32_t)(int32_t)hle_audio_open(m, A1);
+			return 0;
+		}
 		if(!dev)
 		{
 			char name[64];
@@ -483,36 +846,31 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo)
 	}
 	case 450: /* CloseDevice(a1 ioRequest) */
 		return 0;
-	case 456: /* DoIO(a1 ioRequest) */
+	case 456: /* DoIO(a1 ioRequest): a request the device completes later is waited for */
+	{
+		int r;
 		hle_w8(m, A1 + IO_FLAGS, IOF_QUICK);
-		if(hle_begin_io(m, A1) < 0)
+		r = hle_begin_io(m, A1);
+		if(r < 0)
 			return 0;
+		if(r == 0)
+			return hle_wait_io(m, A1);
 		hle_w8(m, A1 + LN_TYPE, NT_REPLYMSG);
 		D0 = hle_io_error(m, A1);
 		return 0;
+	}
 	case 462: /* SendIO(a1 ioRequest) */
 		hle_w8(m, A1 + IO_FLAGS, 0);
 		hle_begin_io(m, A1);
 		return 0;
-	case 468: /* CheckIO(a1 ioRequest) */
-		D0 = A1;
+	case 468: /* CheckIO(a1 ioRequest): the request if it is complete, else 0 */
+		D0 = (hle_r8(m, A1 + IO_FLAGS) & IOF_QUICK) || hle_r8(m, A1 + LN_TYPE) == NT_REPLYMSG ? A1 : 0;
 		return 0;
 	case 474: /* WaitIO(a1 ioRequest) */
-		if(!(hle_r8(m, A1 + IO_FLAGS) & IOF_QUICK) && hle_r8(m, A1 + LN_TYPE) == NT_REPLYMSG)
-		{
-			uint32_t port = hle_r32(m, A1 + MN_REPLYPORT), n;
-			for(n = hle_r32(m, port + MP_MSGLIST + LH_HEAD); hle_r32(m, n + LN_SUCC); n = hle_r32(m, n + LN_SUCC))
-			{
-				if(n == A1)
-				{
-					hle_remove(m, A1);
-					break;
-				}
-			}
-		}
-		D0 = hle_io_error(m, A1);
-		return 0;
+		return hle_wait_io(m, A1);
 	case 480: /* AbortIO(a1 ioRequest) */
+		if(hle_r32(m, A1 + IO_DEVICE) == HLE_AUDIO_BASE)
+			hle_audio_abort(m, A1);
 		D0 = 0;
 		return 0;
 	default:

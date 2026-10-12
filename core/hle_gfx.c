@@ -12,6 +12,7 @@
 #define D2 m->cpu.d[2]
 
 #define GFX_V_SPRITES 0x4000
+#define GFX_V_EXTRA_HALFBRITE 0x0080
 #define GFX_MAX_INS 128
 
 static uint32_t gfx_ins[GFX_MAX_INS];
@@ -30,6 +31,49 @@ static int gfx_wait(int n, int line, int hpos)
 	return n + 1;
 }
 
+/* The ViewPort's user copper list (vp_UCopIns, built by CMove, CWait and CBump): each WAIT is
+ * relative to the ViewPort's first line; the instructions run until a WAIT at or below the
+ * ViewPort's last line, which ends them. A WAIT past line 255 is preceded once by the WAIT for
+ * the end of line 255 (*crossed). */
+static int gfx_user_copper(struct Amiga *m, uint32_t vp, int n, int y0, int y1, int *crossed)
+{
+	uint32_t ucl = hle_r32(m, vp + VP_UCOPINS), cl;
+	for(; ucl; ucl = hle_r32(m, ucl + UCL_NEXT))
+		for(cl = hle_r32(m, ucl + UCL_FIRSTCOPLIST); cl; cl = hle_r32(m, cl + CL_NEXT))
+		{
+			uint32_t ins = hle_r32(m, cl + CL_COPINS), k, count = hle_r16(m, cl + CL_COUNT);
+			for(k = 0; k < count; k++, ins += 6)
+			{
+				uint16_t op = hle_r16(m, ins), a = hle_r16(m, ins + 2), b = hle_r16(m, ins + 4);
+				if(op == 0)
+					n = gfx_move(n, (uint16_t)(a & 0x1FE), b);
+				else if(op == 1)
+				{
+					int line = y0 + (int16_t)a;
+					if(line >= y1)
+						return n;
+					if(b)
+					{
+						amiga_fatal(m, "MakeVPort: a user copper WAIT at horizontal position %u is not implemented", b);
+						return n;
+					}
+					if(line >= 256 && !*crossed)
+					{
+						n = gfx_wait(n, 255, 0xDE);
+						*crossed = 1;
+					}
+					n = gfx_wait(n, line, 0);
+				}
+				else
+				{
+					amiga_fatal(m, "MakeVPort: user copper instruction %u is not implemented", op);
+					return n;
+				}
+			}
+		}
+	return n;
+}
+
 /* One non-interlaced lores ViewPort, in the order graphics 34.1 emitted it. The
  * vertical display-window bytes 0x05 and 0x40 are as observed (docs/runtime.md, "HLE"). */
 static int gfx_viewport(struct Amiga *m, uint32_t view, uint32_t vp)
@@ -42,10 +86,15 @@ static int gfx_viewport(struct Amiga *m, uint32_t view, uint32_t vp)
 	int width = (int16_t)hle_r16(m, vp + VP_DWIDTH), height = (int16_t)hle_r16(m, vp + VP_DHEIGHT);
 	int depth = hle_r8(m, bm + BM_DEPTH), bpr = hle_r16(m, bm + BM_BYTESPERROW);
 	int rx = (int16_t)hle_r16(m, ri + RI_RXOFFSET), ry = (int16_t)hle_r16(m, ri + RI_RYOFFSET);
-	int ddfstrt = ((x0 - 17) / 2) & 0xF8, n = 0, i, count, y1;
-	if(modes & ~GFX_V_SPRITES)
+	int ddfstrt = ((x0 - 17) / 2) & 0xF8, n = 0, i, count, y1, crossed = 0;
+	if(modes & ~(GFX_V_SPRITES | GFX_V_EXTRA_HALFBRITE))
 	{
 		amiga_fatal(m, "MakeVPort: ViewPort modes 0x%04X are not implemented", modes);
+		return 0;
+	}
+	if((modes & GFX_V_EXTRA_HALFBRITE) && depth != 6)
+	{
+		amiga_fatal(m, "MakeVPort: EXTRA_HALFBRITE with %d bitplanes", depth);
 		return 0;
 	}
 	if(rx & 15)
@@ -76,7 +125,8 @@ static int gfx_viewport(struct Amiga *m, uint32_t view, uint32_t vp)
 	n = gfx_wait(n, y0, 0);
 	n = gfx_move(n, 0x100, (uint16_t)((depth << 12) | 0x0200));
 	y1 = y0 + height;
-	if(y1 >= 256)
+	n = gfx_user_copper(m, vp, n, y0, y1, &crossed);
+	if(y1 >= 256 && !crossed)
 		n = gfx_wait(n, 255, 0xDE);
 	n = gfx_wait(n, y1, 0);
 	n = gfx_move(n, 0x100, 0x0200);
@@ -87,7 +137,7 @@ static int gfx_viewport(struct Amiga *m, uint32_t view, uint32_t vp)
 
 /* vp->DspIns holds this runtime's own CopList: CopLStart points at raw copper words, Count
  * says how many. */
-static void gfx_make_vport(struct Amiga *m, uint32_t view, uint32_t vp)
+void hle_gfx_make_vport(struct Amiga *m, uint32_t view, uint32_t vp)
 {
 	uint32_t cl = hle_r32(m, vp + VP_DSPINS), buf;
 	int n = gfx_viewport(m, view, vp), i;
@@ -113,7 +163,7 @@ static void gfx_make_vport(struct Amiga *m, uint32_t view, uint32_t vp)
 
 /* The View's long-frame list: every ViewPort's instructions and the end-of-list WAIT, in a chip
  * buffer of MaxCount words where MaxCount is the instruction count plus 3, as observed (docs/runtime.md, "HLE"). */
-static void gfx_mrgcop(struct Amiga *m, uint32_t view)
+void hle_gfx_mrgcop(struct Amiga *m, uint32_t view)
 {
 	uint32_t vp, cpr = hle_r32(m, view + V_LOFCPRLIST), start, total = 1, at = 0;
 	for(vp = hle_r32(m, view + V_VIEWPORT); vp; vp = hle_r32(m, vp + VP_NEXT))
@@ -293,6 +343,101 @@ void hle_gfx_vblank(struct Amiga *m)
 	}
 }
 
+void hle_gfx_load_view(struct Amiga *m, uint32_t view)
+{
+	hle_w32(m, HLE_GFX_BASE + GB_ACTIVIEW, view);
+	if(!view)
+	{
+		amiga_log_once(m, 0xC0000000u | 222, "LoadView(NULL): ActiView cleared, copper left alone");
+		return;
+	}
+	if(hle_r32(m, view + V_LOFCPRLIST))
+		hle_w32(m, HLE_GFX_BASE + GB_LOFLIST, hle_r32(m, hle_r32(m, view + V_LOFCPRLIST) + CPR_START));
+}
+
+/* InitVPort: SpritePriorities 0x24, as observed (docs/runtime.md, "HLE"). */
+void hle_gfx_init_vport(struct Amiga *m, uint32_t vp)
+{
+	uint32_t i;
+	for(i = 0; i < VP_SIZE; i += 2)
+		hle_w16(m, vp + i, 0);
+	hle_w8(m, vp + VP_SPRITEPRI, 0x24);
+}
+
+/* InitView: DyOffset 0x2C, DxOffset 0x81, as observed (docs/runtime.md, "HLE"). */
+void hle_gfx_init_view(struct Amiga *m, uint32_t view)
+{
+	uint32_t i;
+	for(i = 0; i < V_SIZE; i += 2)
+		hle_w16(m, view + i, 0);
+	hle_w16(m, view + V_DYOFFSET, 0x2C);
+	hle_w16(m, view + V_DXOFFSET, 0x81);
+}
+
+/* InitRastPort: zero the first 0x4E bytes, then Mask, FgPen, AOlPen and LinePtrn all ones and
+ * DrawMode JAM2 (graphics autodoc); the last 0x16 bytes of the structure stay as they were
+ * (docs/runtime.md, "Observed"); there is no ROM font to point Font at. */
+void hle_gfx_init_rastport(struct Amiga *m, uint32_t rp)
+{
+	uint32_t i;
+	for(i = 0; i < 0x4E; i += 2)
+		hle_w16(m, rp + i, 0);
+	hle_w8(m, rp + RP_MASK, 0xFF);
+	hle_w8(m, rp + RP_FGPEN, 0xFF);
+	hle_w8(m, rp + RP_AOLPEN, 0xFF);
+	hle_w8(m, rp + RP_DRAWMODE, 1);
+	hle_w16(m, rp + RP_LINEPTRN, 0xFFFF);
+	amiga_log_once(m, 0xC1000000u, "InitRastPort: rp_Font left 0, there is no ROM font");
+}
+
+/* GetColorMap: the V34 ColorMap (Flags, Type, Count, ColorTable) and a table of `entries`
+ * colours. graphics' default colours are not measured, so the table starts black. */
+uint32_t hle_gfx_color_map(struct Amiga *m, uint32_t entries)
+{
+	uint32_t cm = hle_alloc(m, CM_SIZE, MEMF_PUBLIC | MEMF_CLEAR, 0), t = hle_alloc(m, entries * 2, MEMF_PUBLIC | MEMF_CLEAR, 0);
+	if(!cm || !t)
+		return 0;
+	hle_w16(m, cm + CM_COUNT, (uint16_t)entries);
+	hle_w32(m, cm + CM_COLORTABLE, t);
+	return cm;
+}
+
+void hle_gfx_free_color_map(struct Amiga *m, uint32_t cm)
+{
+	if(!cm)
+		return;
+	hle_free(m, hle_r32(m, cm + CM_COLORTABLE), hle_r16(m, cm + CM_COUNT) * 2u);
+	hle_free(m, cm, CM_SIZE);
+}
+
+/* RASSIZE(w, h): h rows of whole words, graphics/gfx.h. */
+static uint32_t gfx_rassize(uint32_t w, uint32_t h)
+{
+	return h * (((w + 15) >> 3) & 0xFFFEu);
+}
+
+uint32_t hle_gfx_alloc_raster(struct Amiga *m, uint32_t w, uint32_t h)
+{
+	return hle_alloc(m, gfx_rassize(w, h), MEMF_CHIP, 0);
+}
+
+void hle_gfx_free_raster(struct Amiga *m, uint32_t p, uint32_t w, uint32_t h)
+{
+	if(p)
+		hle_free(m, p, gfx_rassize(w, h));
+}
+
+/* FreeVPortCopLists: the CopList and buffer gfx_make_vport allocated. */
+void hle_gfx_free_vport_coplists(struct Amiga *m, uint32_t vp)
+{
+	uint32_t cl = hle_r32(m, vp + VP_DSPINS);
+	if(!cl)
+		return;
+	hle_free(m, hle_r32(m, cl + CL_LSTART), GFX_MAX_INS * 4);
+	hle_free(m, cl, CL_SIZE);
+	hle_w32(m, vp + VP_DSPINS, 0);
+}
+
 int hle_gfx_call(struct Amiga *m, uint32_t lvo)
 {
 	uint32_t i;
@@ -303,26 +448,17 @@ int hle_gfx_call(struct Amiga *m, uint32_t lvo)
 		D0 = gfx_blt_bitmap(m, A0, (int16_t)D0, (int16_t)D1, A1, (int16_t)D2, (int16_t)m->cpu.d[3],
 			(int16_t)m->cpu.d[4], (int16_t)m->cpu.d[5], (uint8_t)m->cpu.d[6], (uint8_t)m->cpu.d[7]);
 		return 0;
-	case 204: /* InitVPort(a0 vp): SpritePriorities 0x24, as observed (docs/runtime.md, "HLE") */
-		for(i = 0; i < VP_SIZE; i += 2)
-			hle_w16(m, A0 + i, 0);
-		hle_w8(m, A0 + VP_SPRITEPRI, 0x24);
+	case 204: /* InitVPort(a0 vp) */
+		hle_gfx_init_vport(m, A0);
 		return 0;
 	case 210: /* MrgCop(a1 view) */
-		gfx_mrgcop(m, A1);
+		hle_gfx_mrgcop(m, A1);
 		return 0;
 	case 216: /* MakeVPort(a0 view, a1 vp) */
-		gfx_make_vport(m, A0, A1);
+		hle_gfx_make_vport(m, A0, A1);
 		return 0;
 	case 222: /* LoadView(a1 view) */
-		hle_w32(m, HLE_GFX_BASE + GB_ACTIVIEW, A1);
-		if(!A1)
-		{
-			amiga_log_once(m, 0xC0000000u | lvo, "LoadView(NULL): ActiView cleared, copper left alone");
-			return 0;
-		}
-		if(hle_r32(m, A1 + V_LOFCPRLIST))
-			hle_w32(m, HLE_GFX_BASE + GB_LOFLIST, hle_r32(m, hle_r32(m, A1 + V_LOFCPRLIST) + CPR_START));
+		hle_gfx_load_view(m, A1);
 		return 0;
 	case 408: /* GetSprite(a0 ss, d0 num): reserve that sprite, or the first free one for -1 */
 	{
@@ -371,18 +507,8 @@ int hle_gfx_call(struct Amiga *m, uint32_t lvo)
 	case 288: /* SetRGB4(a0 vp, d0 index, d1 red, d2 green, d3 blue), 4 bits a gun */
 		gfx_set_color(m, A0, D0 & 31, (uint16_t)(((D1 & 15) << 8) | ((D2 & 15) << 4) | (m->cpu.d[3] & 15)));
 		return 0;
-	case 198: /* InitRastPort(a1 rp): zero the first 0x4E bytes, then Mask, FgPen, AOlPen and
-	           * LinePtrn all ones and DrawMode JAM2 (graphics autodoc); the last 0x16 bytes of
-	           * the structure stay as they were (docs/runtime.md, "Observed"); there is no ROM
-	           * font to point Font at */
-		for(i = 0; i < 0x4E; i += 2)
-			hle_w16(m, A1 + i, 0);
-		hle_w8(m, A1 + 0x18, 0xFF);
-		hle_w8(m, A1 + 0x19, 0xFF);
-		hle_w8(m, A1 + 0x1B, 0xFF);
-		hle_w8(m, A1 + 0x1C, 1);
-		hle_w16(m, A1 + 0x22, 0xFFFF);
-		amiga_log_once(m, 0xC1000000u, "InitRastPort: rp_Font left 0, there is no ROM font");
+	case 198: /* InitRastPort(a1 rp) */
+		hle_gfx_init_rastport(m, A1);
 		return 0;
 	case 228: /* WaitBlit: the blitter finishes instantly */
 		return 0;
@@ -390,11 +516,8 @@ int hle_gfx_call(struct Amiga *m, uint32_t lvo)
 		m->hle.wait_tof_frame = m->frame_count + 1;
 		m->cpu.pc = HLE_WAIT_TOF;
 		return 1;
-	case 360: /* InitView(a1 view): DyOffset 0x2C, DxOffset 0x81, as observed (docs/runtime.md, "HLE") */
-		for(i = 0; i < V_SIZE; i += 2)
-			hle_w16(m, A1 + i, 0);
-		hle_w16(m, A1 + V_DYOFFSET, 0x2C);
-		hle_w16(m, A1 + V_DXOFFSET, 0x81);
+	case 360: /* InitView(a1 view) */
+		hle_gfx_init_view(m, A1);
 		return 0;
 	case 384: /* VBeamPos: the beam's vertical position, 0-312 on PAL */
 		D0 = (uint32_t)sched_line(m, amiga_now(m));
@@ -409,7 +532,25 @@ int hle_gfx_call(struct Amiga *m, uint32_t lvo)
 	case 456: /* OwnBlitter */
 	case 462: /* DisownBlitter */
 		return 0;
+	case 492: /* AllocRaster(d0 width, d1 height): chip RAM, RASSIZE bytes */
+		D0 = hle_gfx_alloc_raster(m, D0 & 0xFFFF, D1 & 0xFFFF);
+		return 0;
+	case 498: /* FreeRaster(a0 p, d0 width, d1 height) */
+		hle_gfx_free_raster(m, A0, D0 & 0xFFFF, D1 & 0xFFFF);
+		return 0;
+	case 540: /* FreeVPortCopLists(a0 vp) */
+		hle_gfx_free_vport_coplists(m, A0);
+		return 0;
+	case 570: /* GetColorMap(d0 entries) */
+		D0 = hle_gfx_color_map(m, D0 & 0xFFFF);
+		return 0;
+	case 576: /* FreeColorMap(a0 colormap) */
+		hle_gfx_free_color_map(m, A0);
+		return 0;
+	case 582: /* GetRGB4(a0 colormap, d0 entry): -1 outside the map */
+		D0 = A0 && D0 < hle_r16(m, A0 + CM_COUNT) ? hle_r16(m, hle_r32(m, A0 + CM_COLORTABLE) + 2 * D0) : 0xFFFFFFFFu;
+		return 0;
 	default:
-		return -1;
+		return hle_draw_call(m, lvo);
 	}
 }

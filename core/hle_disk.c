@@ -58,6 +58,7 @@ static void hle_td_read(struct Amiga *m, uint32_t io, int drive, uint32_t off, u
 	}
 	hle_td_record(m, drive, off, len, dest);
 	m->load_reads++;
+	m->disk_accesses++;
 	mem_dma_load(m, dest, img + off, len);
 	m->floppy.cyl[drive] = (uint8_t)(off / (2 * 11 * 512));
 	if(m->log)
@@ -83,6 +84,7 @@ static void hle_td_write(struct Amiga *m, uint32_t io, int drive, uint32_t off, 
 	for(i = 0; i < len; i++)
 		d->rw[off + i] = mem_read8(m, src + i);
 	d->dirty = 1;
+	m->disk_accesses++;
 	hle_w32(m, io + IO_ACTUAL, len);
 }
 
@@ -183,6 +185,8 @@ void amiga_insert(struct Amiga *m, int drive, int role)
 		m->hle.change_count[drive]++;
 		hle_w32(m, hle_td_units[drive] + TDU_COUNTER, m->hle.change_count[drive]);
 	}
+	if(m->hle.dos.booted)
+		hle_dos_mount(m);
 }
 
 /* The device's own vectors, for a caller that skips exec: BeginIO -30, AbortIO -36

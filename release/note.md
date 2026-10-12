@@ -6,7 +6,8 @@ The project contains _no game code and no game data_. Some optional hacks slight
 
 Players need their own copies of the games as `ADF` or `ADZ` files, either loose or inside a `GZ` or `ZIP` archive.
 
-| Games | Windows | Linux | macOS |
+|:Games |:Windows |:Linux |:macOS |
 |---|---|---|---|
 | Deuteros: The Next Millennium<br>1991 Activision (UK) Limited | [x86_64](https://github.com/$REPO/releases/download/$TAG/deuteros-windows-x86_64.exe) | [x86_64](https://github.com/$REPO/releases/download/$TAG/deuteros-linux-x86_64.AppImage)<br>[aarch64](https://github.com/$REPO/releases/download/$TAG/deuteros-linux-aarch64.AppImage) | [universal](https://github.com/$REPO/releases/download/$TAG/deuteros-macos-universal.zip) |
 | Lemmings<br>1991 Psygnosis | [x86_64](https://github.com/$REPO/releases/download/$TAG/lemmings-windows-x86_64.exe) | [x86_64](https://github.com/$REPO/releases/download/$TAG/lemmings-linux-x86_64.AppImage)<br>[aarch64](https://github.com/$REPO/releases/download/$TAG/lemmings-linux-aarch64.AppImage) | [universal](https://github.com/$REPO/releases/download/$TAG/lemmings-macos-universal.zip) |
+| Sid Meier's Pirates!<br>1990 MicroProse | [x86_64](https://github.com/$REPO/releases/download/$TAG/pirates-windows-x86_64.exe) | [x86_64](https://github.com/$REPO/releases/download/$TAG/pirates-linux-x86_64.AppImage)<br>[aarch64](https://github.com/$REPO/releases/download/$TAG/pirates-linux-aarch64.AppImage) | [universal](https://github.com/$REPO/releases/download/$TAG/pirates-macos-universal.zip) |

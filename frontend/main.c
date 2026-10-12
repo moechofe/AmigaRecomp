@@ -1,4 +1,5 @@
 #include "amiga.h"
+#include "bindings.h"
 #include "disks.h"
 #include "desktop.h"
 #include "game.h"
@@ -122,11 +123,15 @@ static int sdl_help(void)
 		"  F1               menu (disks, settings and hacks); pauses the game\n"
 		"  F5 / F9          save / load the state file\n"
 		"  F12              screenshot into the shot directory\n"
-		"  Alt+Enter        fullscreen on or off\n\n"
+		"  Alt+Enter        fullscreen on or off\n",
+		game_def.id, SDL_MAX_SCALE);
+	if(game_def.joystick)
+		printf("  bound keys       the joystick in port 2, bound on the menu's Controls page;\n"
+			"                   by default the arrows and Right Ctrl (fire)\n");
+	printf("\n"
 		"Exit codes\n"
 		"  0 normal end, 1 fatal runtime error, 2 usage, image or script error,\n"
-		"  3 script timeout\n",
-		game_def.id, SDL_MAX_SCALE);
+		"  3 script timeout\n");
 	return 0;
 }
 
@@ -247,7 +252,7 @@ static const char *sdl_state_load(const char *path, void (*report)(int error, co
 
 static void sdl_stats(void)
 {
-	static const char *libs[HLE_CALL_LIBS] = {"exec", "graphics", "trackdisk", "input", "intuition"};
+	static const char *libs[HLE_CALL_LIBS] = {"exec", "graphics", "trackdisk", "input", "intuition", "dos", "layers", "audio"};
 	int lib, i;
 	printf("frames %u, instructions %llu, cycles %llu, reads %d, loads %d\n", machine.frame_count,
 		(unsigned long long)machine.insns, (unsigned long long)machine.cycles, machine.load_reads, machine.load_count);
@@ -335,6 +340,12 @@ static int sdl_amiga_key(SDL_Scancode sc)
 	case SDL_SCANCODE_RALT: return 0x65;
 	default: return -1;
 	}
+}
+
+/* The keys the window loop takes for itself while the game runs; they cannot be bound. */
+static int sdl_frontend_key(SDL_Scancode sc)
+{
+	return sc == SDL_SCANCODE_F1 || sc == SDL_SCANCODE_F5 || sc == SDL_SCANCODE_F9 || sc == SDL_SCANCODE_F12;
 }
 
 static int sdl_headless(const struct SdlOptions *o)
@@ -616,7 +627,12 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 			}
 			else if(open)
 			{
-				if(e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && sdl_booted
+				if(e.type == SDL_EVENT_KEY_DOWN && sdl_menu_binding())
+				{
+					if(!e.key.repeat)
+						sdl_menu_bind(sdl_frontend_key(e.key.scancode) || e.key.scancode == SDL_SCANCODE_ESCAPE ? -1 : (int)e.key.scancode);
+				}
+				else if(e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && sdl_booted
 					&& (e.key.scancode == SDL_SCANCODE_F1 || e.key.scancode == SDL_SCANCODE_ESCAPE))
 					sdl_menu_show(0);
 				else
@@ -654,7 +670,7 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 					else if(down)
 						sdl_state_load_window(o->state, sdl_report_headless);
 				}
-				else if((k = sdl_amiga_key(e.key.scancode)) >= 0)
+				else if(!sdl_bindings_key(e.key.scancode, down) && (k = sdl_amiga_key(e.key.scancode)) >= 0)
 					amiga_key(&machine, (uint8_t)k, !down);
 			}
 		}
@@ -680,7 +696,10 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 			sdl_menu_refresh(sdl_booted);
 		}
 		if(sdl_menu_is_open())
+		{
 			lmb = rmb = 0;
+			sdl_bindings_release();
+		}
 		if(sdl_menu_is_open() != cursor_shown)
 		{
 			cursor_shown = sdl_menu_is_open();
@@ -716,6 +735,7 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 			else
 				sdl_pointer_step(&ptr, window, &dx, &dy);
 			amiga_mouse(&machine, dx, dy, lmb, rmb);
+			amiga_joystick(&machine, sdl_bindings_joystick());
 
 			if(o->script)
 			{
@@ -882,6 +902,7 @@ int main(int argc, char **argv)
 		if(sdl_settings_load(settings_path))
 			return 2;
 		sdl_settings_apply(&machine, o.script == 0);
+		sdl_bindings_apply();
 		if(o.scale)
 			sdl_scale_force(o.scale);
 		code = sdl_window(&o, paths, path_count);

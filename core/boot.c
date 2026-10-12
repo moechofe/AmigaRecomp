@@ -69,6 +69,7 @@ int amiga_boot(struct Amiga *m)
 	m->loads[0].dest = BOOT_BUFFER;
 	m->load_count = 1;
 	m->load_reads = 1;
+	m->disk_accesses++;
 	mem_dma_load(m, BOOT_BUFFER, m->disks[role].image, 0x400);
 	mem_write16(m, HLE_BOOT_IOREQ + IO_COMMAND, 2);
 	mem_write32(m, HLE_BOOT_IOREQ + IO_ACTUAL, 0x400);

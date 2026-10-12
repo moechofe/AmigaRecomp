@@ -326,6 +326,44 @@ button.primary:hover
 	margin-top: 0;
 }
 
+.command
+{
+	display: block;
+	margin-bottom: 4dp;
+}
+
+.command .label
+{
+	width: 130dp;
+	padding-top: 7dp;
+}
+
+.keys
+{
+	display: inline-block;
+	vertical-align: top;
+	width: 400dp;
+}
+
+.keys button
+{
+	margin-top: 0;
+	margin-bottom: 4dp;
+}
+
+.keycap .remove
+{
+	margin-left: 8dp;
+	color: #a0a0a0;
+}
+
+.waiting
+{
+	display: inline-block;
+	padding-top: 7dp;
+	color: #e0c080;
+}
+
 #notes
 {
 	position: absolute;
@@ -353,4 +391,24 @@ button.primary:hover
 {
 	border-color: #c06050;
 	color: #f0c0b0;
+}
+
+#disk_light
+{
+	position: absolute;
+	bottom: 12dp;
+	right: 12dp;
+	width: 24dp;
+	height: 24dp;
+	padding: 6dp;
+	border: 1dp #606060;
+	border-radius: 6dp;
+	background-color: #202020f0;
+	pointer-events: none;
+}
+
+#disk_light img
+{
+	width: 24dp;
+	height: 24dp;
 }

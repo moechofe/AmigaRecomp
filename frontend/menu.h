@@ -29,6 +29,10 @@ void sdl_menu_banner(const char *text);
  * open; `error` marks a failure. */
 void sdl_menu_notify(const char *text, int error);
 void sdl_menu_refresh(int booted);
+/* While the Controls page waits for a key (after "Add key…"), key presses go to sdl_menu_bind:
+ * a scancode binds that key to the waiting command, -1 cancels. */
+int sdl_menu_binding(void);
+void sdl_menu_bind(int scancode);
 void sdl_menu_render(SDL_Window *window);
 
 #ifdef __cplusplus

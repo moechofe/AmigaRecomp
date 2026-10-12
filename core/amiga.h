@@ -40,9 +40,12 @@
 #define HLE_LIB_TRACKDISK 2
 #define HLE_LIB_INPUT 3
 #define HLE_LIB_INTUITION 4
-#define HLE_LIB_STUB 5
-#define HLE_STUBS 10
-#define HLE_CALL_LIBS 5
+#define HLE_LIB_DOS 5
+#define HLE_LIB_LAYERS 6
+#define HLE_LIB_AUDIO 7
+#define HLE_LIB_STUB 8
+#define HLE_STUBS 7
+#define HLE_CALL_LIBS 8
 #define HLE_LIB_INTERNAL 15
 #define HLE_INPUT_EVENTS 16
 
@@ -158,6 +161,7 @@ struct Paula
 	uint64_t audio_cck_frac;
 	int16_t mouse_x, mouse_y;
 	uint8_t lmb, rmb;
+	uint8_t joy; /* the port-2 joystick, enum AmigaJoy bits */
 };
 
 struct CiaTimer
@@ -223,12 +227,86 @@ struct HleInput
 	uint8_t mouse_x, mouse_y, lmb, rmb;
 };
 
+/* dos.library's host side (core/hle_dos.c). The capacities are this runtime's, not AmigaDOS's. */
+#define HLE_DOS_FILES 16
+#define HLE_DOS_ASSIGNS 8
+#define HLE_DOS_VOLUMES 8
+#define HLE_DOS_OVERLAYS 4
+
+/* An open file: index i is the FileHandle whose fh_Arg1 is i + 1; index 0 is the console. */
+struct HleDosFile
+{
+	uint8_t used;
+	int8_t drive;
+	uint32_t header, size, pos;
+	uint32_t fh;
+};
+
+struct HleDosAssign
+{
+	char name[8];
+	int8_t drive;
+	uint32_t block;
+};
+
+/* A DLT_VOLUME node, kept for as long as the machine runs so that locks on it stay valid. */
+struct HleDosVolume
+{
+	char name[32];
+	uint32_t node;
+};
+
+/* What LoadSeg of an overlaid file allocated besides the segments, freed by its UnLoadSeg. */
+struct HleDosOverlay
+{
+	uint32_t seglist, table, size, hunks, hunks_size, stream;
+};
+
+struct HleDos
+{
+	uint8_t booted;
+	int8_t script_drive;
+	uint32_t script_header, script_pos;
+	struct HleDosFile files[HLE_DOS_FILES];
+	struct HleDosAssign assigns[HLE_DOS_ASSIGNS];
+	int assign_count;
+	char volume[AMIGA_DRIVES][32];
+	struct HleDosVolume volumes[HLE_DOS_VOLUMES];
+	int volume_count;
+	struct HleDosOverlay overlays[HLE_DOS_OVERLAYS];
+	uint32_t process, cli;
+	uint32_t cmd_seglist, cmd_stack, cmd_stack_size, cmd_args, cmd_args_size;
+	uint32_t delay_frame;
+	uint64_t clock_ticks;       /* the system clock in 1/50 s ticks at frame clock_frame */
+	uint32_t clock_frame;
+};
+
+/* audio.device's channels (core/hle_audio.c): queue[0] is the write that plays. */
+#define HLE_AUDIO_QUEUE 8
+
+struct HleAudioChannel
+{
+	uint32_t queue[HLE_AUDIO_QUEUE];
+	uint8_t count;
+	uint8_t allocated, preloaded, finishing;
+	int8_t prec;
+	uint16_t key;
+	uint32_t plays;
+};
+
+struct HleAudio
+{
+	struct HleAudioChannel ch[4];
+	uint16_t next_key;
+};
+
 struct Hle
 {
 	uint32_t change_count[AMIGA_DRIVES];
 	struct HleFrame frames[8];
 	int depth;
 	uint32_t wait_tof_frame;
+	uint32_t wait_mask, wait_port, wait_io;
 	uint32_t softint_pending[16];
 	int softint_count;
 	uint8_t motor;
@@ -236,6 +314,9 @@ struct Hle
 	uint32_t stub_base[HLE_STUBS];
 	int stub_count;
 	struct HleInput input;
+	uint32_t int_tick; /* Intuition's last IDCMP_INTUITICKS message, until it is freed; 0 none */
+	struct HleDos dos;
+	struct HleAudio audio;
 };
 
 struct Amiga
@@ -265,6 +346,7 @@ struct Amiga
 	struct LoadRecord loads[AMIGA_LOAD_LOG];
 	int load_count;
 	int load_reads;
+	uint32_t disk_accesses; /* one per disk transfer, any path; the frontend's drive light */
 
 	uint8_t keys[AMIGA_KEY_QUEUE];
 	int key_head, key_tail;
@@ -292,6 +374,8 @@ void amiga_log_once(struct Amiga *m, uint32_t key, const char *fmt, ...);
 void amiga_logf(struct Amiga *m, const char *fmt, ...);
 void amiga_key(struct Amiga *m, uint8_t code, int up);
 void amiga_mouse(struct Amiga *m, int dx, int dy, int lmb, int rmb);
+enum AmigaJoy { AmigaJoyUp = 1, AmigaJoyDown = 2, AmigaJoyLeft = 4, AmigaJoyRight = 8, AmigaJoyFire = 16 };
+void amiga_joystick(struct Amiga *m, uint8_t joy);
 uint64_t amiga_now(const struct Amiga *m);
 
 /* mem.c */
@@ -380,7 +464,7 @@ static inline int game_hook_at(const struct Amiga *m, uint32_t pc)
 }
 
 /* state.c */
-#define STATE_VERSION 2
+#define STATE_VERSION 3
 #define STATE_SECTIONS 23
 
 struct StateHeader

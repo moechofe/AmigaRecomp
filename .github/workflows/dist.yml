@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros, lemmings]
+        game: [deuteros, lemmings, pirates]
         arch: [x86_64, aarch64]
     defaults:
       run:
@@ -91,7 +91,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros, lemmings]
+        game: [deuteros, lemmings, pirates]
         arch: [x86_64, aarch64]
     defaults:
       run:
@@ -128,7 +128,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros, lemmings]
+        game: [deuteros, lemmings, pirates]
     defaults:
       run:
         shell: msys2 {0}
@@ -194,7 +194,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros, lemmings]
+        game: [deuteros, lemmings, pirates]
     env:
       GAME: ${{ matrix.game }}
     steps:
@@ -268,7 +268,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros, lemmings]
+        game: [deuteros, lemmings, pirates]
     env:
       GAME: ${{ matrix.game }}
     steps:
@@ -303,7 +303,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros, lemmings]
+        game: [deuteros, lemmings, pirates]
         arch: [x86_64, aarch64]
     env:
       GAME: ${{ matrix.game }}

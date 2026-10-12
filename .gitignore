@@ -30,6 +30,7 @@
 /build/
 *.png
 !/games/*/packaging/*.png
+!/frontend/menu/*.png
 *.bmp
 *.ppm
 *.wav

@@ -45,6 +45,7 @@ struct GameDef
 	int drive_count;             /* DF0–DF(n-1): the drives the Disks page offers, 1–4 */
 	int pointer_sprite;          /* sprite holding the game's mouse pointer, -1 none */
 	struct GameView view;        /* what the window shows; w 0: the capture window */
+	int joystick;                /* 1: keys bound on the menu's Controls page drive the port-2 joystick */
 	const struct GameHack *const *hacks; uint32_t hack_count;
 };
 extern const struct GameDef game_def;

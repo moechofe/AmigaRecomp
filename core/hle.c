@@ -220,6 +220,17 @@ void hle_build(struct Amiga *m)
 	hle_w16(m, HLE_GFX_BASE + LIB_VERSION, 34);
 	hle_w16(m, HLE_GFX_BASE + LIB_REVISION, 1);
 	hle_add_tail(m, eb + EB_LIBLIST, HLE_GFX_BASE);
+	/* gb_DisplayFlags PAL and graphics' display limits, as the PAL machine holds them
+	 * (docs/runtime.md, "Kickstart handoff"). */
+	hle_w16(m, HLE_GFX_BASE + GB_DISPLAYFLAGS, 0x0004);
+	hle_w16(m, HLE_GFX_BASE + 0xD4, 0x0137);
+	hle_w16(m, HLE_GFX_BASE + 0xD6, 0x01D1);
+	hle_w16(m, HLE_GFX_BASE + 0xD8, 0x0100);
+	hle_w16(m, HLE_GFX_BASE + 0xDA, 0x0280);
+	hle_w16(m, HLE_GFX_BASE + 0xDC, 0x04CA);
+	hle_w16(m, HLE_GFX_BASE + 0xDE, 0x0513);
+	hle_w16(m, HLE_GFX_BASE + 0xE8, 0x3F9D);
+	hle_w16(m, HLE_GFX_BASE + 0xEA, 0x0030);
 
 	/* gb_copinit and the null sprite as they stand when the bootblock returns, and graphics'
 	 * vertical-blank server at priority 10: graphics.library 34 / Kickstart 1.3 behaviour
@@ -268,6 +279,12 @@ void hle_build(struct Amiga *m)
 		hle_new_list(m, hle_td_units[i] + MP_MSGLIST, NT_MESSAGE);
 	}
 
+	/* layers.library sits between graphics and intuition in Kickstart 1.3's library list
+	 * (docs/runtime.md, "Kickstart handoff"). */
+	hle_layers_build(m);
+	hle_add_tail(m, eb + EB_LIBLIST, HLE_LAYERS_BASE);
+	hle_audio_build(m);
+
 	/* intuition.library */
 	hle_jump_table(m, HLE_INT_BASE, HLE_INT_NEGSIZE, HLE_LIB_INTUITION);
 	hle_w8(m, HLE_INT_BASE + LN_TYPE, NT_LIBRARY);
@@ -276,6 +293,7 @@ void hle_build(struct Amiga *m)
 	hle_w16(m, HLE_INT_BASE + LIB_POSSIZE, LIB_SIZE);
 	hle_w16(m, HLE_INT_BASE + LIB_VERSION, 34);
 	hle_add_tail(m, eb + EB_LIBLIST, HLE_INT_BASE);
+	hle_int_build(m);
 
 	/* The ROM's IORequest, opened on unit 0, and its reply port. */
 	hle_w8(m, HLE_BOOT_PORT + LN_TYPE, NT_MSGPORT);
@@ -287,6 +305,7 @@ void hle_build(struct Amiga *m)
 	hle_w32(m, HLE_BOOT_IOREQ + IO_DEVICE, HLE_TD_BASE);
 	hle_w32(m, HLE_BOOT_IOREQ + IO_UNIT, HLE_TD_UNIT0);
 
+	hle_dos_build(m);
 	hle_mem_init(m);
 }
 
@@ -335,6 +354,20 @@ static void hle_call_guest(struct Amiga *m, const struct HleFrame *f, uint32_t c
 	m->cpu.a[5] = code;
 	m->cpu.a[6] = HLE_EXEC_BASE;
 	m->cpu.d[1] = m->paula.intena & m->paula.intreq;
+	cpu_push32(m, HLE_CONTINUE);
+	m->cpu.pc = code;
+}
+
+/* Call guest code `code` as a function, with the registers the caller sets; HLE work resumes
+ * from frame `f` when it returns into HLE_CONTINUE. */
+void hle_call(struct Amiga *m, const struct HleFrame *f, uint32_t code)
+{
+	if(m->hle.depth >= 8)
+	{
+		amiga_fatal(m, "HLE continuation stack overflow");
+		return;
+	}
+	m->hle.frames[m->hle.depth++] = *f;
 	cpu_push32(m, HLE_CONTINUE);
 	m->cpu.pc = code;
 }
@@ -468,6 +501,9 @@ static void hle_continue(struct Amiga *m)
 		hle_finish(m, &f);
 		return;
 	}
+	case HleFrameLibInit:
+		hle_exec_lib_continue(m, &f);
+		return;
 	default:
 		amiga_fatal(m, "bad HLE frame kind %d", f.kind);
 		return;
@@ -506,9 +542,10 @@ static int hle_internal(struct Amiga *m, uint32_t off)
 		hle_continue(m);
 		return 0;
 	case 0x410:
-		/* graphics' and gameport's vertical-blank work. */
+		/* graphics', gameport's and Intuition's vertical-blank work. */
 		hle_gfx_vblank(m);
 		hle_input_vblank(m);
+		hle_int_vblank(m);
 		m->cpu.z = 1;
 		m->cpu.pc = cpu_pop32(m);
 		return 0;
@@ -526,6 +563,59 @@ static int hle_internal(struct Amiga *m, uint32_t off)
 	case 0x418:
 		cia_read(m, &m->cia_b, 0xD);
 		m->cpu.z = 1;
+		m->cpu.pc = cpu_pop32(m);
+		return 0;
+	case 0x41C:
+		hle_dos_boot(m);
+		return 0;
+	case 0x420:
+		hle_dos_cli_return(m);
+		return 0;
+	case 0x424:
+		/* dos Delay: parked until its frame. */
+		if(m->frame_count >= m->hle.dos.delay_frame)
+		{
+			m->cpu.pc = cpu_pop32(m);
+			return 0;
+		}
+		return 1;
+	case 0x428:
+	{
+		/* exec Wait, WaitPort and WaitIO: parked until one of the signals arrives; WaitPort
+		 * until its port also holds a message, which it returns; WaitIO until its request is
+		 * replied. */
+		uint32_t task = hle_r32(m, HLE_EXEC_BASE + EB_THISTASK), got = hle_r32(m, task + TC_SIGRECVD) & m->hle.wait_mask;
+		if(!got)
+			return 1;
+		hle_w32(m, task + TC_SIGRECVD, hle_r32(m, task + TC_SIGRECVD) & ~got);
+		if(m->hle.wait_port)
+		{
+			uint32_t msg = hle_r32(m, m->hle.wait_port + MP_MSGLIST + LH_HEAD);
+			if(!hle_r32(m, msg + LN_SUCC))
+				return 1;
+			got = msg;
+			m->hle.wait_port = 0;
+		}
+		hle_w32(m, task + TC_SIGWAIT, 0);
+		m->cpu.d[0] = got;
+		if(m->hle.wait_io)
+		{
+			if(hle_r8(m, m->hle.wait_io + LN_TYPE) != NT_REPLYMSG)
+				return 1;
+			hle_exec_io_done(m, m->hle.wait_io);
+			m->hle.wait_io = 0;
+		}
+		m->cpu.pc = cpu_pop32(m);
+		return 0;
+	}
+	case 0x42C:
+		/* Intuition's input handler: a0 the events, a1 is_Data; d0 the events it passes on. */
+		hle_int_input(m);
+		m->cpu.pc = cpu_pop32(m);
+		return 0;
+	case 0x430:
+		/* audio.device's interrupt handler for channel a1 (iv_Data). */
+		hle_audio_interrupt(m, (int)(m->cpu.a[1] & 3));
 		m->cpu.pc = cpu_pop32(m);
 		return 0;
 	default:
@@ -553,11 +643,15 @@ int hle_dispatch(struct Amiga *m)
 	case HLE_LIB_TRACKDISK: done = hle_td_call(m, off); break;
 	case HLE_LIB_INPUT: done = hle_in_call(m, off); break;
 	case HLE_LIB_INTUITION: done = hle_int_call(m, off); break;
+	case HLE_LIB_DOS: done = hle_dos_call(m, off); break;
+	case HLE_LIB_LAYERS: done = hle_layers_call(m, off); break;
+	case HLE_LIB_AUDIO: done = hle_audio_call(m, off); break;
 	default: done = -1; break;
 	}
 	if(done < 0)
 	{
-		static const char *names[HLE_CALL_LIBS] = {"exec.library", "graphics.library", "trackdisk.device", "input.device", "intuition.library"};
+		static const char *names[HLE_CALL_LIBS] = {"exec.library", "graphics.library", "trackdisk.device", "input.device",
+			"intuition.library", "dos.library", "layers.library", "audio.device"};
 		char buf[64];
 		const char *who = "unknown library";
 		if(lib < HLE_CALL_LIBS)

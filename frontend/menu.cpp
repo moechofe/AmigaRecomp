@@ -1,6 +1,7 @@
 #include "menu.h"
 
 #include "amiga.h"
+#include "bindings.h"
 #include "desktop.h"
 #include "disks.h"
 #include "game.h"
@@ -26,9 +27,12 @@ constexpr int menu_notes_max = 4;
 constexpr uint64_t menu_note_in_ms = 150;
 constexpr uint64_t menu_note_out_ms = 500;
 constexpr uint64_t menu_note_ms = 3500; /* from the start of the fade-in to the end of the fade-out */
+constexpr uint64_t menu_disk_ms = 500;  /* the drive light stays on this long after a disk transfer */
 
-const SdlAsset *menu_asset(const Rml::String &name)
+const SdlAsset *menu_asset(const Rml::String &path)
 {
+	size_t slash = path.find_last_of("/\\");
+	Rml::String name = slash == Rml::String::npos ? path : path.substr(slash + 1);
 	for(const SdlAsset *table : {sdl_menu_game, sdl_menu_shared})
 		for(const SdlAsset *a = table; a->name; a++)
 			if(name == a->name)
@@ -47,9 +51,7 @@ class SdlMenuFiles : public Rml::FileInterface
 public:
 	Rml::FileHandle Open(const Rml::String &path) override
 	{
-		size_t slash = path.find_last_of("/\\");
-		Rml::String name = slash == Rml::String::npos ? path : path.substr(slash + 1);
-		const SdlAsset *a = menu_asset(name);
+		const SdlAsset *a = menu_asset(path);
 		if(!a)
 			return 0;
 		return (Rml::FileHandle) new MenuFile{a->data, a->size, 0};
@@ -78,6 +80,35 @@ public:
 		return true;
 	}
 	size_t Tell(Rml::FileHandle file) override { return ((MenuFile *)file)->pos; }
+};
+
+/* RmlUi's GL3 backend reads only TGA; the menu's images are PNG. */
+class MenuRender : public RenderInterface_GL3
+{
+public:
+	Rml::TextureHandle LoadTexture(Rml::Vector2i &dimensions, const Rml::String &source) override
+	{
+		const SdlAsset *a = menu_asset(source);
+		Rml::TextureHandle texture = 0;
+		SDL_Surface *png, *rgba;
+		if(!a)
+		{
+			std::fprintf(stderr, "menu: no image %s\n", source.c_str());
+			return 0;
+		}
+		png = SDL_LoadPNG_IO(SDL_IOFromConstMem(a->data, a->size), true);
+		rgba = png ? SDL_ConvertSurface(png, SDL_PIXELFORMAT_RGBA32) : nullptr;
+		SDL_DestroySurface(png);
+		if(rgba && rgba->pitch == rgba->w * 4 && SDL_PremultiplySurfaceAlpha(rgba, false))
+		{
+			dimensions = Rml::Vector2i(rgba->w, rgba->h);
+			texture = GenerateTexture({(const Rml::byte *)rgba->pixels, (size_t)rgba->pitch * (size_t)rgba->h}, dimensions);
+		}
+		else
+			std::fprintf(stderr, "menu: cannot load %s: %s\n", source.c_str(), SDL_GetError());
+		SDL_DestroySurface(rgba);
+		return texture;
+	}
 };
 
 struct DiskRow
@@ -114,6 +145,18 @@ struct NoteRow
 	uint64_t start = 0;
 };
 
+struct KeyChip
+{
+	Rml::String name;
+	int scancode = 0;
+};
+
+struct CommandRow
+{
+	Rml::String label;
+	std::vector<KeyChip> keys;
+};
+
 struct MenuModel
 {
 	Rml::String title;
@@ -132,13 +175,17 @@ struct MenuModel
 	bool desktop_offered = false;
 	bool desktop_installed = false;
 	Rml::String desktop_note;
+	bool controls = false;
+	std::vector<CommandRow> commands;
+	int binding = -1; /* the command waiting for a key */
+	bool disk_light = false; /* a disk transfer within menu_disk_ms */
 };
 
 struct Menu
 {
 	SdlMenuFiles files;
 	SystemInterface_SDL *system = nullptr;
-	RenderInterface_GL3 *render = nullptr;
+	MenuRender *render = nullptr;
 	Rml::Context *context = nullptr;
 	Rml::ElementDocument *doc = nullptr;
 	Rml::Element *panel = nullptr;
@@ -146,6 +193,8 @@ struct Menu
 	MenuModel model;
 	SDL_Window *window = nullptr;
 	uint64_t banner_start = 0;
+	uint32_t disk_accesses = 0; /* m->disk_accesses when last seen */
+	uint64_t disk_seen = 0;     /* when it last changed */
 	struct Amiga *m = nullptr;
 	bool rml_up = false;
 };
@@ -302,6 +351,30 @@ void menu_disks_refresh()
 	menu->handle.DirtyVariable("drive_choices");
 }
 
+void menu_controls_refresh()
+{
+	std::vector<CommandRow> &rows = menu->model.commands;
+	rows.assign(SdlCommandCount, CommandRow());
+	for(int c = 0; c < SdlCommandCount; c++)
+		rows[c].label = sdl_command_labels[c];
+	for(int i = 0; i < sdl_bindings_count(); i++)
+	{
+		const SdlBinding *b = sdl_bindings_get(i);
+		const char *name = SDL_GetScancodeName((SDL_Scancode)b->scancode);
+		KeyChip key;
+		key.name = *name ? name : "Key " + std::to_string(b->scancode);
+		key.scancode = b->scancode;
+		rows[b->command].keys.push_back(key);
+	}
+	menu->handle.DirtyVariable("commands");
+}
+
+void menu_binding_set(int command)
+{
+	menu->model.binding = command;
+	menu->handle.DirtyVariable("binding");
+}
+
 void menu_drive_report(const char *text)
 {
 	std::printf("%s\n", text);
@@ -338,6 +411,23 @@ void menu_notes_step()
 		menu->handle.DirtyVariable("notes");
 }
 
+void menu_disk_step()
+{
+	const uint64_t now = SDL_GetTicks();
+	bool on = menu->model.disk_light && now - menu->disk_seen < menu_disk_ms;
+	if(menu->m->disk_accesses != menu->disk_accesses)
+	{
+		menu->disk_accesses = menu->m->disk_accesses;
+		menu->disk_seen = now;
+		on = true;
+	}
+	if(on != menu->model.disk_light)
+	{
+		menu->model.disk_light = on;
+		menu->handle.DirtyVariable("disk_light");
+	}
+}
+
 } // namespace
 
 int sdl_menu_init(SDL_Window *window, struct Amiga *m)
@@ -350,7 +440,7 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 	menu->m = m;
 	sdl_menu_action_event = SDL_RegisterEvents(1);
 	menu->system = new SystemInterface_SDL(window);
-	menu->render = new RenderInterface_GL3;
+	menu->render = new MenuRender;
 	if(!*menu->render)
 		return menu_fail("the renderer");
 	Rml::SetFileInterface(&menu->files);
@@ -411,6 +501,18 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 		row.RegisterMember("opacity", &NoteRow::opacity);
 	}
 	ctor.RegisterArray<std::vector<NoteRow>>();
+	if(auto row = ctor.RegisterStruct<KeyChip>())
+	{
+		row.RegisterMember("name", &KeyChip::name);
+		row.RegisterMember("scancode", &KeyChip::scancode);
+	}
+	ctor.RegisterArray<std::vector<KeyChip>>();
+	if(auto row = ctor.RegisterStruct<CommandRow>())
+	{
+		row.RegisterMember("label", &CommandRow::label);
+		row.RegisterMember("keys", &CommandRow::keys);
+	}
+	ctor.RegisterArray<std::vector<CommandRow>>();
 	ctor.Bind("title", &menu->model.title);
 	ctor.Bind("open", &menu->model.open);
 	ctor.Bind("booted", &menu->model.booted);
@@ -428,6 +530,10 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 	ctor.Bind("desktop_offered", &menu->model.desktop_offered);
 	ctor.Bind("desktop_installed", &menu->model.desktop_installed);
 	ctor.Bind("desktop_note", &menu->model.desktop_note);
+	ctor.Bind("controls", &menu->model.controls);
+	ctor.Bind("commands", &menu->model.commands);
+	ctor.Bind("binding", &menu->model.binding);
+	ctor.Bind("disk_light", &menu->model.disk_light);
 	ctor.BindEventCallback("desktop", [](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &args) {
 		char msg[1200];
 		if(args.size() != 1)
@@ -462,6 +568,7 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 			return;
 		menu->model.page = args[0].Get<Rml::String>();
 		menu->handle.DirtyVariable("page");
+		menu_binding_set(-1);
 		page = menu->doc->GetElementById("page");
 		if(page)
 			page->SetScrollTop(0);
@@ -479,10 +586,26 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 		sdl_disks_insert(menu->m, args[0].Get<int>(), args[1].Get<int>(), menu_drive_report);
 		menu_disks_refresh();
 	});
+	ctor.BindEventCallback("bind_key", [](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &args) {
+		if(args.size() == 1)
+			menu_binding_set(args[0].Get<int>());
+	});
+	ctor.BindEventCallback("unbind_key", [](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &args) {
+		if(args.size() != 1)
+			return;
+		sdl_bindings_remove(args[0].Get<int>());
+		menu_controls_refresh();
+	});
+	ctor.BindEventCallback("bind_defaults", [](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) {
+		sdl_bindings_reset();
+		menu_binding_set(-1);
+		menu_controls_refresh();
+	});
 	menu->handle = ctor.GetModelHandle();
 	menu->model.title = game_def.title;
 	menu->model.desktop_offered = sdl_desktop_offered() != 0;
 	menu->model.desktop_installed = sdl_desktop_installed() != 0;
+	menu->model.controls = game_def.joystick != 0;
 	if(const SdlAsset *a = menu_asset("about.rml"))
 		menu->model.about.assign((const char *)a->data, a->size);
 
@@ -494,6 +617,7 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 		return menu_fail("#panel in menu.rml");
 	menu->doc->Show();
 	menu_options_refresh();
+	menu_controls_refresh();
 	return 0;
 }
 
@@ -518,11 +642,26 @@ void sdl_menu_show(int open)
 {
 	menu->model.open = open != 0;
 	menu->handle.DirtyVariable("open");
+	menu_binding_set(-1);
 	if(open)
 	{
 		menu_options_refresh();
 		menu_disks_refresh();
+		menu_controls_refresh();
 	}
+}
+
+int sdl_menu_binding(void)
+{
+	return menu && menu->model.open && menu->model.binding >= 0;
+}
+
+void sdl_menu_bind(int scancode)
+{
+	if(scancode >= 0 && menu->model.binding >= 0)
+		sdl_bindings_add(scancode, (SdlCommand)menu->model.binding);
+	menu_binding_set(-1);
+	menu_controls_refresh();
 }
 
 void sdl_menu_event(SDL_Event *e)
@@ -579,6 +718,7 @@ void sdl_menu_render(SDL_Window *window)
 		menu->handle.DirtyVariable("banner_on");
 	}
 	menu_notes_step();
+	menu_disk_step();
 	/* At most the display scale; below it, #panel's width fills the window. */
 	float dp = SDL_GetWindowDisplayScale(window);
 	const Rml::Property *pw = menu->panel->GetProperty("width");

@@ -14,6 +14,7 @@
 				<button data-class-current="page == 'about'" data-event-click="show_page('about')">About</button>
 				<button data-class-current="page == 'disks'" data-event-click="show_page('disks')">Disks</button>
 				<button data-if="hacks.size > 0" data-class-current="page == 'hacks'" data-event-click="show_page('hacks')">Hacks</button>
+				<button data-if="controls" data-class-current="page == 'controls'" data-event-click="show_page('controls')">Controls</button>
 				<button data-class-current="page == 'settings'" data-event-click="show_page('settings')">Settings</button>
 			</div>
 		</div>
@@ -39,6 +40,7 @@
 				<div class="key"><span class="label">F5 / F9</span><span class="state">quick save / quick load</span></div>
 				<div class="key"><span class="label">F12</span><span class="state">screenshot of the game screen</span></div>
 				<div class="key"><span class="label">Alt+Enter</span><span class="state">fullscreen on / off</span></div>
+				<div class="key" data-if="controls"><span class="label">bound keys</span><span class="state">the joystick in port 2; see the Controls page</span></div>
 			</div>
 			<div data-if="page == 'disks'">
 				<h2>Drives</h2>
@@ -78,6 +80,19 @@
 					<p class="hint" data-if="h.status == 'mismatch'">not compatible with this disk image</p>
 				</div>
 			</div>
+			<div data-if="page == 'controls'">
+				<p>Rebind Amiga's joystick in port 2 to your keyboard keys.</p>
+				<div class="command" data-for="c, i : commands">
+					<span class="label">{{c.label}}</span>
+					<span class="keys">
+						<button class="keycap" data-for="k : c.keys" data-event-click="unbind_key(k.scancode)">{{k.name}}<span class="remove">×</span></button>
+						<button data-if="binding != i" data-event-click="bind_key(i)">Add key…</button>
+						<span class="waiting" data-if="binding == i">Press a key (Esc cancels)</span>
+					</span>
+				</div>
+				<p class="hint">Click a key to unbind it. F1, F5, F9, F12 and Esc stay with this program and cannot be bound.</p>
+				<div class="actions"><button data-event-click="bind_defaults">Restore defaults</button></div>
+			</div>
 			<div data-if="page == 'settings'">
 				<div class="option" data-for="s, i : settings">
 					<span class="name">{{s.label}}</span>
@@ -89,5 +104,6 @@
 		</div>
 	</div>
 	<div id="notes"><div data-for="n : notes"><div class="note" data-class-error="n.error" data-style-opacity="n.opacity">{{n.text}}</div></div></div>
+	<div id="disk_light" data-if="disk_light"><img src="floppy.png"/></div>
 </body>
 </rml>

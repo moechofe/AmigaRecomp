@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Pirates!
+Comment=Amiga game running natively from your own disks
+Exec=pirates %F
+Icon=pirates
+Terminal=false
+Categories=Game;StrategyGame;
+StartupWMClass=pirates

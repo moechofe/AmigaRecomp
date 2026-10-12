@@ -81,7 +81,14 @@ uint16_t custom_read(struct Amiga *m, uint32_t reg)
 	case REG_JOY0DAT:
 		return (uint16_t)(((m->paula.mouse_y & 0xFF) << 8) | (m->paula.mouse_x & 0xFF));
 	case REG_JOY1DAT:
-		return 0;
+	{
+		/* HRM, "Reading the joystick": right is bit 1, left bit 9; down is bit 1 XOR bit 0, up
+		 * bit 9 XOR bit 8. */
+		const uint8_t j = m->paula.joy;
+		const int right = (j & AmigaJoyRight) != 0, left = (j & AmigaJoyLeft) != 0;
+		const int down = (j & AmigaJoyDown) != 0, up = (j & AmigaJoyUp) != 0;
+		return (uint16_t)((left << 9) | ((left ^ up) << 8) | (right << 1) | (right ^ down));
+	}
 	case REG_CLXDAT:
 		amiga_log_once(m, 0x50000000u | reg, "collision detection is not emulated (CLXDAT read)");
 		return 0x8000;

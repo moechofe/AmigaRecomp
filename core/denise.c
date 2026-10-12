@@ -265,7 +265,9 @@ void denise_render_to(struct Amiga *m, int hpos)
 			if(sp && (idx == 0 || pair < ((d->bplcon2 >> 3) & 7)))
 				idx = sp;
 		}
-		d->linebuf[x] = d->color[idx];
+		/* Six planes in single playfield are extra half-brite: plane 6 halves the colour the
+		 * other five select. HRM, "Extra Half Brite". */
+		d->linebuf[x] = idx < 32 ? d->color[idx] : (uint16_t)((d->color[idx & 31] >> 1) & 0x777);
 	}
 	d->drawn_x = to;
 }
