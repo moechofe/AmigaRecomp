@@ -164,6 +164,15 @@ struct Paula
 	uint8_t joy; /* the port-2 joystick, enum AmigaJoy bits */
 };
 
+/* Paula's output stage (core/paula.c): the sums of the colour clocks the next 48 kHz frame
+ * covers, and the A500 low-pass stages, Q8, per side. Host output, not part of a save state. */
+struct PaulaOutput
+{
+	int32_t sum[2];
+	uint32_t cck;
+	int32_t rc[2][2];
+};
+
 struct CiaTimer
 {
 	uint16_t latch, counter;
@@ -347,6 +356,7 @@ struct Amiga
 	int load_count;
 	int load_reads;
 	uint32_t disk_accesses; /* one per disk transfer, any path; the frontend's drive light */
+	struct PaulaOutput audio_out;
 
 	uint8_t keys[AMIGA_KEY_QUEUE];
 	int key_head, key_tail;

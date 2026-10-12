@@ -1,7 +1,9 @@
 #include "amiga.h"
 
 /* The blitter, HRM chapter 6: area mode with shifts, masks, modulos, descending mode and
- * fill, and line mode. A blit completes the instant BLTSIZE is written. */
+ * fill, and line mode. A blit completes the instant BLTSIZE is written. The A and B shifters'
+ * previous words carry from row to row but start each blit at 0, as WinUAE's blitter.cpp
+ * (blitter_start_init) has them; a left-over word would shift into the first row's first word. */
 
 static uint16_t blit_minterm(uint8_t lf, uint16_t a, uint16_t b, uint16_t c)
 {
@@ -188,6 +190,8 @@ void blit_start(struct Amiga *m, uint16_t bltsize)
 		height = 1024;
 	if(!(m->paula.dmacon & 0x0040) || !(m->paula.dmacon & 0x0200))
 		amiga_log_once(m, 0xA0000000u, "blit started with blitter DMA off; run anyway");
+	m->blit.aold = 0;
+	m->blit.bold = 0;
 	if(m->blit.con1 & 1)
 		blit_line(m, height);
 	else

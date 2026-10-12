@@ -393,10 +393,22 @@ static int sdl_clamp(int v, int lo, int hi)
 	return v < lo ? lo : v > hi ? hi : v;
 }
 
-/* The counts that move the game's pointer onto the OS cursor, mapped into the drawn frame: the whole error, so the loop
- * closes for any pointer that moves at most two frame pixels per count. The bound keeps
- * JOY0DAT's 8-bit counter from wrapping (HRM), and hle_input_vblank reads the counters'
- * difference as a signed byte. */
+/* One axis of the counts that move the game's pointer onto the OS cursor, mapped into the drawn
+ * frame: the whole error, so the loop closes for any pointer that moves at most two frame pixels
+ * per count. A cursor on the view's first or last column (or row) pushes at least one count a
+ * frame outward, so the pointer rests at the game's own limit even when that limit lies past the
+ * edge, as a mouse pushed against it would. The bound keeps JOY0DAT's 8-bit counter from
+ * wrapping (HRM), and hle_input_vblank reads the counters' difference as a signed byte. */
+static int sdl_pointer_counts(int target, int at, int first, int last)
+{
+	int d = sdl_clamp(target - at, -127, 127);
+	if(target == first && d > -1)
+		return -1;
+	if(target == last && d < 1)
+		return 1;
+	return d;
+}
+
 static void sdl_pointer_step(const struct SdlPointer *p, SDL_Window *window, int *dx, int *dy)
 {
 	struct SdlVideoRect r;
@@ -407,8 +419,8 @@ static void sdl_pointer_step(const struct SdlPointer *p, SDL_Window *window, int
 		return;
 	tx = sdl_clamp(r.view.x + (int)SDL_floorf((p->wx * r.window_w / ww - r.x) * r.view.w / r.w), r.view.x, r.view.x + r.view.w - 1);
 	ty = sdl_clamp(r.view.y + (int)SDL_floorf((p->wy * r.window_h / wh - r.y) * r.view.h / r.h), r.view.y, r.view.y + r.view.h - 1);
-	*dx = sdl_clamp(tx - px, -127, 127);
-	*dy = sdl_clamp(ty - py, -127, 127);
+	*dx = sdl_pointer_counts(tx, px, r.view.x, r.view.x + r.view.w - 1);
+	*dy = sdl_pointer_counts(ty, py, r.view.y, r.view.y + r.view.h - 1);
 }
 
 /* Accepted-image and state lines go to stdout only: the Disks page already lists each disk. */

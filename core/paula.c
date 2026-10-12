@@ -1,7 +1,16 @@
 #include "amiga.h"
 
 /* Paula's four DMA audio channels, HRM chapter 5. Zero-order hold, channels 0 + 3 left and
- * 1 + 2 right, no filter, resampled to 48 kHz from the colour clock. */
+ * 1 + 2 right. Each 48 kHz frame is the mean of the colour clocks it covers, then passes the
+ * A500's fixed low-pass, as WinUAE's audio.cpp models it ("Emulated (A500)", LED filter off):
+ * one-pole RC stages at 6200 Hz and 20 000 Hz. */
+
+#if AMIGA_AUDIO_HZ != 48000u
+#error "PAULA_RC_6200 and PAULA_RC_20000 are for 48 kHz"
+#endif
+/* A one-pole stage's a0 in Q16: 1 / (1 + 1 / (2 tan(pi fc / 48000))), WinUAE's rc_calculate_a0. */
+#define PAULA_RC_6200 30288
+#define PAULA_RC_20000 57793
 
 static void paula_reload(struct Amiga *m, int ch)
 {
@@ -71,9 +80,24 @@ static int paula_level(const struct AudioChannel *a)
 	return a->sample * vol;
 }
 
+/* One RC stage; the state is Q8. */
+static int32_t paula_rc(int32_t *state, int32_t in_q8, int32_t a0)
+{
+	*state += (int32_t)(((int64_t)a0 * (in_q8 - *state)) >> 16);
+	return *state;
+}
+
+static int16_t paula_out(struct PaulaOutput *o, int side)
+{
+	int32_t v = o->sum[side] * 2 / (int32_t)o->cck;
+	v = paula_rc(&o->rc[side][1], paula_rc(&o->rc[side][0], v * 256, PAULA_RC_6200), PAULA_RC_20000) / 256;
+	return (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
+}
+
 void paula_audio_run(struct Amiga *m, int cck)
 {
 	struct Paula *p = &m->paula;
+	struct PaulaOutput *o = &m->audio_out;
 	int i, ch;
 	for(i = 0; i < cck; i++)
 	{
@@ -93,15 +117,18 @@ void paula_audio_run(struct Amiga *m, int cck)
 			if(++a->byte == 2)
 				paula_fetch(m, ch);
 		}
+		o->sum[0] += paula_level(&p->aud[0]) + paula_level(&p->aud[3]);
+		o->sum[1] += paula_level(&p->aud[1]) + paula_level(&p->aud[2]);
+		o->cck++;
 		p->audio_write_frac += AMIGA_AUDIO_HZ;
 		if(p->audio_write_frac >= AMIGA_CCK_HZ)
 		{
-			int l = (paula_level(&p->aud[0]) + paula_level(&p->aud[3])) * 2;
-			int r = (paula_level(&p->aud[1]) + paula_level(&p->aud[2])) * 2;
 			uint32_t w = p->audio_write % AMIGA_AUDIO_FRAMES;
 			p->audio_write_frac -= AMIGA_CCK_HZ;
-			p->audio[w][0] = (int16_t)(l > 32767 ? 32767 : l < -32768 ? -32768 : l);
-			p->audio[w][1] = (int16_t)(r > 32767 ? 32767 : r < -32768 ? -32768 : r);
+			p->audio[w][0] = paula_out(o, 0);
+			p->audio[w][1] = paula_out(o, 1);
+			o->sum[0] = o->sum[1] = 0;
+			o->cck = 0;
 			p->audio_write++;
 		}
 	}
