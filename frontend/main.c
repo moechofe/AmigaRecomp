@@ -7,6 +7,7 @@
 #include "png.h"
 #include "script.h"
 #include "settings.h"
+#include "stereo.h"
 #include "video.h"
 
 #include <SDL3/SDL.h>
@@ -775,7 +776,7 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 					uint32_t n = machine.paula.audio_write - audio_read;
 					if(n > AMIGA_AUDIO_FRAMES - at)
 						n = AMIGA_AUDIO_FRAMES - at;
-					SDL_PutAudioStreamData(audio, machine.paula.audio[at], (int)(n * 4));
+					SDL_PutAudioStreamData(audio, sdl_stereo_mix(machine.paula.audio[at], n, sdl_setting(SdlSettingStereo) == SdlStereoModern), (int)(n * 4));
 					audio_read += n;
 				}
 			}
