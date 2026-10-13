@@ -37,11 +37,15 @@ static void denise_sprite_dma(struct Amiga *m, int line)
 	int i;
 	if((m->paula.dmacon & 0x0220) != 0x0220 || line < DENISE_SPRITE_LINE)
 		return;
+	if(line == DENISE_SPRITE_LINE && game_def.pointer_sprites)
+	{
+		for(i = 0; !((game_def.pointer_sprites >> i) & 1); i++)
+			;
+		m->denise.pointer_list = m->denise.spr[i].pt;
+	}
 	for(i = 0; i < 8; i++)
 	{
 		struct Sprite *s = &m->denise.spr[i];
-		if(i == game_def.pointer_sprite && line == DENISE_SPRITE_LINE)
-			m->denise.pointer_list = s->pt;
 		if(line == DENISE_SPRITE_LINE)
 			s->dma_state = SpriteControl;
 		if(s->dma_state == SpriteControl)
@@ -81,7 +85,7 @@ static int denise_in_vwindow(const struct Denise *d)
 	return d->line >= ((d->diwstrt >> 8) & 0xFF) && d->line < denise_vstop(d);
 }
 
-/* The game's pointer sprite, `game_def.pointer_sprite`. The frame pixel at the centre
+/* The game's pointer sprite, the lowest in `game_def.pointer_sprites`. The frame pixel at the centre
  * of the pixels its first control words and image describe on the lines the display window
  * shows, read from chip RAM where this frame's sprite DMA started, so a position the game
  * wrote after the fetch counts. Image bit 15 - c of a row is column c at DIW x HSTART + 1 + c,
@@ -94,7 +98,7 @@ int denise_pointer(struct Amiga *m, int *x, int *y)
 	uint32_t pt = d->pointer_list;
 	uint16_t pos, ctl;
 	int vstart, vstop, first, last, h, row, c, x0 = 16, x1 = -1, y0 = -1, y1 = -1;
-	if(game_def.pointer_sprite < 0 || (m->paula.dmacon & 0x0220) != 0x0220)
+	if(!game_def.pointer_sprites || (m->paula.dmacon & 0x0220) != 0x0220)
 		return 0;
 	pos = mem_chip16(m, pt);
 	ctl = mem_chip16(m, pt + 2);
@@ -201,8 +205,10 @@ static int denise_playfield(const struct Denise *d, int x)
 	return idx;
 }
 
-/* Highest-priority sprite pixel at x: colour register index, or 0. Pair number in *pair. */
-static int denise_sprite(const struct Denise *d, int x, int *pair)
+/* Highest-priority sprite pixel at x: colour register index, or 0. Pair number in *pair.
+ * The sprites in mask `hide` draw nothing; when one is half of an attached pair, the whole
+ * pair draws nothing. */
+static int denise_sprite(const struct Denise *d, int x, unsigned hide, int *pair)
 {
 	int i;
 	for(i = 0; i < 8; i += 2)
@@ -212,11 +218,14 @@ static int denise_sprite(const struct Denise *d, int x, int *pair)
 		int he = ((e->pos & 0xFF) << 1) | (e->ctl & 1);
 		int ho = ((o->pos & 0xFF) << 1) | (o->ctl & 1);
 		int be = x - he - 1, bo = x - ho - 1;
-		if(e->armed && be >= 0 && be < 16)
+		int hidden_e = (hide >> i) & 1, hidden_o = (hide >> (i + 1)) & 1, attached = (o->ctl & 0x80) != 0;
+		if(attached)
+			hidden_e = hidden_o = hidden_e | hidden_o;
+		if(e->armed && !hidden_e && be >= 0 && be < 16)
 			ve = ((e->data >> (15 - be)) & 1) | (((e->datb >> (15 - be)) & 1) << 1);
-		if(o->armed && bo >= 0 && bo < 16)
+		if(o->armed && !hidden_o && bo >= 0 && bo < 16)
 			vo = ((o->data >> (15 - bo)) & 1) | (((o->datb >> (15 - bo)) & 1) << 1);
-		if(o->ctl & 0x80)
+		if(attached)
 		{
 			if(ve | vo)
 			{
@@ -259,7 +268,7 @@ void denise_render_to(struct Amiga *m, int hpos)
 		int idx = 0;
 		if(inv && x >= hstart && x < hstop)
 		{
-			int pair = 0, sp = m->sprites_enabled ? denise_sprite(d, x, &pair) : 0;
+			int pair = 0, sp = m->sprites_enabled ? denise_sprite(d, x, m->pointer_hidden ? game_def.pointer_sprites : 0u, &pair) : 0;
 			idx = denise_playfield(d, x);
 			/* Single playfield: PF2P is the playfield's priority code. HRM. */
 			if(sp && (idx == 0 || pair < ((d->bplcon2 >> 3) & 7)))

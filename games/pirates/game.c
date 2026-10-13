@@ -23,7 +23,7 @@ const struct GameDef game_def = {
 	.disk_count = 2,
 	.drives = {0, 1, -1, -1},
 	.drive_count = 2,
-	.pointer_sprite = 0,
+	.pointer_sprites = 0x01,
 	.view = {129, 64, 320, 200},
 	.joystick = 1,
 };

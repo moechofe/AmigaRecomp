@@ -8,7 +8,6 @@
 const struct GameDef game_def = {
 	.id = "test",
 	.title = "Test Game",
-	.pointer_sprite = -1,
 };
 
 static int failures;

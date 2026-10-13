@@ -43,10 +43,11 @@ struct GameDef
 	const struct GameDisk *disks; uint32_t disk_count;
 	int drives[4];               /* role index in DF0–DF3 at boot, -1 empty */
 	int drive_count;             /* DF0–DF(n-1): the drives the Disks page offers, 1–4 */
-	int pointer_sprite;          /* sprite holding the game's mouse pointer, -1 none */
+	uint8_t pointer_sprites;     /* bit n: sprite n draws part of the game's mouse pointer; steering follows the lowest; 0 none */
 	struct GameView view;        /* what the window shows; w 0: the capture window */
 	int joystick;                /* 1: keys bound on the menu's Controls page drive the port-2 joystick */
 	const struct GameHack *const *hacks; uint32_t hack_count;
+	const struct GameHack *system_cursor; /* the bool hack that, while on, shows the OS cursor over the running game in place of pointer_sprites; NULL none */
 };
 extern const struct GameDef game_def;
 int game_anchor_ok(const struct Amiga *m, const struct GameAnchor *a);

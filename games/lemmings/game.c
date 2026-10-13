@@ -16,6 +16,10 @@ static const struct GameDisk lemmings_disks[] = {
 	{"disk2", "Disk 2", 0, lemmings_identify_disk2},
 };
 
+extern const struct GameHack lemmings_hack_system_cursor;
+
+static const struct GameHack *const lemmings_hacks[] = {&lemmings_hack_system_cursor};
+
 const struct GameDef game_def = {
 	.id = "lemmings",
 	.title = "Lemmings",
@@ -23,6 +27,9 @@ const struct GameDef game_def = {
 	.disk_count = 2,
 	.drives = {0, 1, -1, -1},
 	.drive_count = 2,
-	.pointer_sprite = 0,
+	.pointer_sprites = 0x05,
 	.view = {129, 44, 320, 208},
+	.hacks = lemmings_hacks,
+	.hack_count = 1,
+	.system_cursor = &lemmings_hack_system_cursor,
 };

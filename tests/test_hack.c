@@ -44,7 +44,6 @@ static const struct GameHack *const test_hacks[] = {&test_hack_one};
 const struct GameDef game_def = {
 	.id = "test",
 	.title = "Test Game",
-	.pointer_sprite = -1,
 	.hacks = test_hacks,
 	.hack_count = 1,
 };

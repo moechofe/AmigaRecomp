@@ -361,6 +361,7 @@ struct Amiga
 	uint8_t keys[AMIGA_KEY_QUEUE];
 	int key_head, key_tail;
 	int sprites_enabled;
+	int pointer_hidden;      /* 1: Denise does not draw game_def.pointer_sprites; set by the frontend each frame */
 	struct Hacks hacks;
 
 	uint16_t frame[AMIGA_FRAME_H][AMIGA_FRAME_STRIDE];
@@ -457,6 +458,7 @@ void interp_run(struct Amiga *m, uint32_t max_insns, uint64_t until);
 int game_hack_set(struct Amiga *m, uint32_t hack, int value);
 int game_hook_run(struct Amiga *m, uint32_t pc);
 void game_hacks_frame(struct Amiga *m);
+int game_system_cursor(const struct Amiga *m);
 
 /* True when an enabled hack hooks pc. Cheap enough to call once per instruction. */
 static inline int game_hook_at(const struct Amiga *m, uint32_t pc)

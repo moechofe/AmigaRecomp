@@ -113,3 +113,13 @@ void game_hacks_frame(struct Amiga *m)
 			hack->frame(m, m->hacks.value[h]);
 	}
 }
+
+/* 1 when game_def.system_cursor is one of the game's hacks and is on. */
+int game_system_cursor(const struct Amiga *m)
+{
+	uint32_t h;
+	for(h = 0; h < game_def.hack_count && h < AMIGA_HACKS; h++)
+		if(game_def.hacks[h] == game_def.system_cursor)
+			return m->hacks.value[h] != 0;
+	return 0;
+}

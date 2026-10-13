@@ -361,6 +361,7 @@ static int sdl_headless(const struct SdlOptions *o)
 		}
 		if(o->frames && (long)machine.frame_count >= o->frames)
 			break;
+		machine.pointer_hidden = game_system_cursor(&machine);
 		if(amiga_run_frame(&machine))
 		{
 			code = 1;
@@ -712,9 +713,10 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 			lmb = rmb = 0;
 			sdl_bindings_release();
 		}
-		if(sdl_menu_is_open() != cursor_shown)
+		want = sdl_menu_is_open() || (game_system_cursor(&machine) && !captured);
+		if(want != cursor_shown)
 		{
-			cursor_shown = sdl_menu_is_open();
+			cursor_shown = want;
 			if(cursor_shown)
 				SDL_ShowCursor();
 			else
@@ -748,6 +750,7 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 				sdl_pointer_step(&ptr, window, &dx, &dy);
 			amiga_mouse(&machine, dx, dy, lmb, rmb);
 			amiga_joystick(&machine, sdl_bindings_joystick());
+			machine.pointer_hidden = game_system_cursor(&machine) && !captured;
 
 			if(o->script)
 			{
