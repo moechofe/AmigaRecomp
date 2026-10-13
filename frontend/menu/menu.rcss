@@ -400,10 +400,7 @@ button.primary:hover
 	right: 12dp;
 	width: 24dp;
 	height: 24dp;
-	padding: 6dp;
-	border: 1dp #606060;
-	border-radius: 6dp;
-	background-color: #202020f0;
+	opacity: 0.75;
 	pointer-events: none;
 }
 
