@@ -604,6 +604,16 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo)
 	case 138: /* Permit */
 		hle_w8(m, eb + EB_TDNESTCNT, (uint8_t)(hle_r8(m, eb + EB_TDNESTCNT) - 1));
 		return 0;
+	case 30: /* Supervisor(a5 userFunction): it runs in supervisor mode on an exception frame, and its RTE returns to the caller */
+	{
+		uint32_t ret = cpu_pop32(m);
+		uint16_t old = cpu_get_sr(&m->cpu);
+		cpu_set_sr(&m->cpu, (uint16_t)(old | 0x2000));
+		cpu_push32(m, ret);
+		cpu_push16(m, old);
+		m->cpu.pc = m->cpu.a[5];
+		return 1;
+	}
 	case 150: /* SuperState: supervisor mode on the caller's stack; d0 = the old SSP */
 	{
 		uint32_t ret = cpu_pop32(m), old_ssp = cpu_ssp(&m->cpu);

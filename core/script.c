@@ -11,7 +11,8 @@ enum ScriptOp
 	OpUntil,
 	OpKey,
 	OpClick,
-	OpMouse
+	OpMouse,
+	OpFire
 };
 
 struct ScriptKey
@@ -164,6 +165,11 @@ static enum ScriptResult script_start(struct Script *s, struct Amiga *m)
 		s->arg[1] = b;
 		return ScriptRunFrame;
 	}
+	if(!strcmp(word, "fire") && n == 1)
+	{
+		s->active = OpFire;
+		return ScriptRunFrame;
+	}
 	if(!strcmp(word, "disk"))
 	{
 		char drive[16], role[32];
@@ -282,6 +288,13 @@ static int script_continue(struct Script *s, struct Amiga *m, enum ScriptResult 
 			return 0;
 		amiga_mouse(m, s->arg[0], s->arg[1], m->paula.lmb, m->paula.rmb);
 		return 1;
+	case OpFire:
+		/* The port-2 fire button held 3 frames, then one frame released, as a click. */
+		if(s->count < 3)
+			amiga_joystick(m, (uint8_t)(m->paula.joy | AmigaJoyFire));
+		else
+			amiga_joystick(m, (uint8_t)(m->paula.joy & ~AmigaJoyFire));
+		return s->count++ < 4;
 	case OpClick:
 		/* Park in the top-left corner for 8 frames, move at most 100 counts a frame, hold
 		 * the button (arg[2]: 0 left, 1 right) 3 frames, release. */

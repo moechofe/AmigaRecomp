@@ -1,0 +1,10 @@
+# docs/game.md, item 4.
+0f3acb2c disk1 verified Lotus Turbo Challenge 2 (1991)(Gremlin)[cr CPY]
+610263f6 disk1 known Lotus Turbo Challenge 2 (1991)(Gremlin)[cr CPY][a]
+ca3b0b17 disk1 known Lotus Turbo Challenge 2 (1991)(Gremlin)[cr CPY][a2]
+eadb85e3 disk1 known Lotus Turbo Challenge 2 (1991)(Gremlin)[cr CPY][b dump]
+41ad2299 disk1 known Lotus Turbo Challenge 2 (1991)(Gremlin)[cr CPY][t +4 Goonies]
+d9ed10e3 disk1 known Lotus Turbo Challenge 2 (1991)(Gremlin)[cr CPY][t +4 Goonies][b dump]
+b8571528 disk1 known Lotus Turbo Challenge 2 (1991)(Gremlin)[cr CPY][t +6 LGD]
+baef9e3e disk1 refused This Lotus Turbo Challenge 2 is fixed for AGA Amigas: it crashes after its loading screen on an A500 too, and this runtime is an A500
+3f82b943 disk1 refused This Lotus Turbo Challenge 2 fix needs 1 MB of chip RAM, as its own text says, and this runtime is an A500 with 512 KB
