@@ -27,6 +27,7 @@
 #define DI_DEVINFO 0x04
 #define DOL_NEXT 0x00
 #define DOL_TYPE 0x04
+#define DOL_TASK 0x08
 #define DOL_LOCK 0x0C
 #define DOL_NAME 0x28
 #define DOL_SIZEOF 0x2C
@@ -71,6 +72,8 @@
 #define CLI_STACK_LONGS 1000
 #define DOS_PATH 256
 #define DOS_LINE 256
+/* HleDosFile.drive of a NIL: handle; the console's is -1. */
+#define DOS_NIL -2
 
 static const char *const dos_system_assigns[][2] = {
 	{"SYS", ""}, {"C", "c"}, {"S", "s"}, {"L", "l"}, {"LIBS", "libs"}, {"DEVS", "devs"}, {"FONTS", "fonts"},
@@ -205,6 +208,53 @@ static int dos_drive_of_volume(struct Amiga *m, uint32_t node)
 				if(!strcmp(m->hle.dos.volume[n], m->hle.dos.volumes[i].name))
 					return n;
 	return -1;
+}
+
+/* --- the handlers' packets ---------------------------------------------------------------- */
+
+#define DP_PORT 0x04
+#define DP_TYPE 0x08
+#define DP_RES1 0x0C
+#define DP_RES2 0x10
+#define DP_ARG1 0x14
+#define ACTION_INHIBIT 31
+#define MP_SIZEOF 0x22
+#define PA_IGNORE 2
+
+/* A message PutMsg sends to DFn's handler port holds a DosPacket at its ln_Name (dos/dosextens.i,
+ * StandardPacket). The packet is done at once and returned as a handler returns it: dp_Port set
+ * to the handler's port, then PutMsg to the port dp_Port named (AmigaDOS Technical Reference
+ * Manual, "Packets"). ACTION_INHIBIT (dos/dosextens.i) is the only type: inhibiting does nothing,
+ * since this filesystem holds no state between calls, and ending it reads the disks again, as a
+ * filesystem does once it is no longer inhibited. Returns 0 when `port` is no handler's. */
+int hle_dos_packet(struct Amiga *m, uint32_t port, uint32_t msg)
+{
+	struct HleDos *d = &m->hle.dos;
+	uint32_t pkt, reply;
+	int n;
+	for(n = 0; n < AMIGA_DRIVES && (!d->handler[n] || d->handler[n] != port); n++)
+		;
+	if(n == AMIGA_DRIVES)
+		return 0;
+	pkt = hle_r32(m, msg + LN_NAME);
+	switch(hle_r32(m, pkt + DP_TYPE))
+	{
+	case ACTION_INHIBIT:
+		amiga_logf(m, "dos: DF%d %s", n, hle_r32(m, pkt + DP_ARG1) ? "inhibited" : "no longer inhibited");
+		if(!hle_r32(m, pkt + DP_ARG1))
+			hle_dos_mount(m);
+		hle_w32(m, pkt + DP_RES1, DOSTRUE);
+		hle_w32(m, pkt + DP_RES2, 0);
+		break;
+	default:
+		amiga_fatal(m, "dos: packet type %d to DF%d's handler is not implemented", (int32_t)hle_r32(m, pkt + DP_TYPE), n);
+		return 1;
+	}
+	reply = hle_r32(m, pkt + DP_PORT);
+	hle_w32(m, pkt + DP_PORT, port);
+	hle_w8(m, msg + LN_TYPE, NT_MESSAGE);
+	hle_put_msg(m, reply, msg);
+	return 1;
 }
 
 /* --- locks -------------------------------------------------------------------------------- */
@@ -391,20 +441,12 @@ static struct HleDosFile *dos_file(struct Amiga *m, uint32_t fh)
 	return &m->hle.dos.files[i - 1];
 }
 
-/* Open a file for reading; returns the FileHandle BPTR, or 0 with pr_Result2 set. */
-static uint32_t dos_open(struct Amiga *m, const char *path, const char *why)
+/* A FileHandle in a free slot; 0 with pr_Result2 set, or after a fatal. */
+static uint32_t dos_handle(struct Amiga *m, int drive, uint32_t header, uint32_t size)
 {
 	struct HleDos *d = &m->hle.dos;
-	struct HleOfsEntry e;
-	uint32_t block, fh;
-	int drive, i;
-	if(dos_resolve(m, 0, path, &drive, &block) < 0)
-		return 0;
-	if(hle_ofs_entry(dos_image(m, drive), block, &e) < 0 || e.type >= 0)
-	{
-		dos_error(m, HLE_DOS_OBJECT_WRONG_TYPE);
-		return 0;
-	}
+	uint32_t fh;
+	int i;
 	for(i = 1; i < HLE_DOS_FILES && d->files[i].used; i++)
 		;
 	if(i == HLE_DOS_FILES)
@@ -421,12 +463,34 @@ static uint32_t dos_open(struct Amiga *m, const char *path, const char *why)
 	hle_w32(m, fh + FH_ARG1, (uint32_t)i + 1);
 	d->files[i].used = 1;
 	d->files[i].drive = (int8_t)drive;
-	d->files[i].header = block;
-	d->files[i].size = e.size;
+	d->files[i].header = header;
+	d->files[i].size = size;
 	d->files[i].pos = 0;
 	d->files[i].fh = fh >> 2;
-	amiga_logf(m, "dos: %s(\"%s\") DF%d %u bytes", why, path, drive, e.size);
 	return fh >> 2;
+}
+
+/* Open a file for reading, or NIL: ("NIL: is a dummy device: output written to it is
+ * discarded, and input read from it is empty", AmigaDOS Manual 1.3, "Devices"); returns the
+ * FileHandle BPTR, or 0 with pr_Result2 set. */
+static uint32_t dos_open(struct Amiga *m, const char *path, const char *why)
+{
+	struct HleOfsEntry e;
+	uint32_t block, fh;
+	int drive;
+	if(dos_same(path, "NIL:"))
+		return dos_handle(m, DOS_NIL, 0, 0);
+	if(dos_resolve(m, 0, path, &drive, &block) < 0)
+		return 0;
+	if(hle_ofs_entry(dos_image(m, drive), block, &e) < 0 || e.type >= 0)
+	{
+		dos_error(m, HLE_DOS_OBJECT_WRONG_TYPE);
+		return 0;
+	}
+	fh = dos_handle(m, drive, block, e.size);
+	if(fh)
+		amiga_logf(m, "dos: %s(\"%s\") DF%d %u bytes", why, path, drive, e.size);
+	return fh;
 }
 
 static void dos_close(struct Amiga *m, uint32_t fh)
@@ -440,8 +504,11 @@ static void dos_close(struct Amiga *m, uint32_t fh)
 
 static uint32_t dos_read(struct Amiga *m, struct HleDosFile *f, uint8_t *out, uint32_t n)
 {
-	const uint8_t *adf = dos_image(m, f->drive);
+	const uint8_t *adf;
 	uint32_t got;
+	if(f->drive == DOS_NIL)
+		return 0;
+	adf = dos_image(m, f->drive);
 	if(!adf)
 	{
 		amiga_fatal(m, "dos: reading a file whose disk has left DF%d", f->drive);
@@ -550,8 +617,8 @@ static int dos_script_line(struct Amiga *m, char *line)
 	return 1;
 }
 
-/* Comments, the command word and the argument string (AmigaDOS Manual 1.3, "The CLI"). */
-static int dos_cli_parse(struct Amiga *m, char *line, char *cmd, char *args)
+/* The line without its comment and outer blanks (AmigaDOS Manual 1.3, "The CLI"). */
+static char *dos_cli_trim(char *line)
 {
 	int quoted = 0;
 	char *p, *e;
@@ -570,41 +637,135 @@ static int dos_cli_parse(struct Amiga *m, char *line, char *cmd, char *args)
 	for(e = p + strlen(p); e > p && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\r'); e--)
 		;
 	*e = 0;
-	if(!*p)
-		return 0;
-	if(strchr(p, '>') || strchr(p, '<'))
-	{
-		amiga_fatal(m, "CLI: redirection is not implemented: %s", p);
-		return -1;
-	}
-	if(*p == '"')
-	{
-		e = strchr(p + 1, '"');
-		if(!e)
-		{
-			amiga_fatal(m, "CLI: unmatched quote: %s", p);
-			return -1;
-		}
-		memcpy(cmd, p + 1, (size_t)(e - p - 1));
-		cmd[e - p - 1] = 0;
-		p = e + 1;
-	}
-	else
-	{
-		for(e = p; *e && *e != ' ' && *e != '\t'; e++)
-			;
-		memcpy(cmd, p, (size_t)(e - p));
-		cmd[e - p] = 0;
-		p = e;
-	}
-	while(*p == ' ' || *p == '\t')
-		p++;
-	strcpy(args, p);
-	strcat(args, "\n");
-	return 1;
+	return p;
 }
 
-static void dos_cli_run(struct Amiga *m, const char *cmd, const char *args)
+static void dos_cli_run(struct Amiga *m, const char *cmd, const char *args, int nil_in, int nil_out);
+
+/* The command word at *p into cmd, quoted or not; *p moves past it. -1 after a fatal. */
+static int dos_cli_word(struct Amiga *m, char **p, char *cmd)
+{
+	char *s = *p, *e;
+	if(*s == '"')
+	{
+		e = strchr(s + 1, '"');
+		if(!e)
+		{
+			amiga_fatal(m, "CLI: unmatched quote: %s", s);
+			return -1;
+		}
+		memcpy(cmd, s + 1, (size_t)(e - s - 1));
+		cmd[e - s - 1] = 0;
+		*p = e + 1;
+		return 0;
+	}
+	for(e = s; *e && *e != ' ' && *e != '\t'; e++)
+		;
+	memcpy(cmd, s, (size_t)(e - s));
+	cmd[e - s] = 0;
+	*p = e;
+	return 0;
+}
+
+/* ENDCLI: the Initial CLI's console window closes and the CLI ends (AmigaDOS Manual 1.3, ENDCLI). */
+static void dos_cli_end(struct Amiga *m)
+{
+	m->hle.dos.cli_ended = 1;
+	amiga_logf(m, "CLI: ENDCLI; the Initial CLI's window closes");
+}
+
+/* RUN's command starts as its own process while the CLI goes on with the script (AmigaDOS
+ * Manual 1.3, RUN). Here it runs in the CLI, so only a next line that is ENDCLI goes first, as
+ * the oracle shows it (docs/runtime.md, "dos.library"). */
+static void dos_cli_endcli_next(struct Amiga *m)
+{
+	struct HleDos *d = &m->hle.dos;
+	char line[DOS_LINE], cmd[DOS_LINE], *p;
+	uint32_t pos = d->script_pos;
+	do
+	{
+		if(!dos_script_line(m, line))
+		{
+			d->script_pos = pos;
+			return;
+		}
+		p = dos_cli_trim(line);
+	}
+	while(!*p);
+	if(dos_cli_word(m, &p, cmd) == 0 && dos_same(cmd, "endcli"))
+		dos_cli_end(m);
+	else
+		d->script_pos = pos;
+}
+
+/* One command line: the command word, then the redirections `<name` and `>name` right after it,
+ * then the argument string (AmigaDOS Manual 1.3, "The CLI"); only NIL: is implemented. RUN and
+ * ENDCLI are the CLI's own: Workbench 1.3's C:Run and C:EndCLI are BCPL programs, which need the
+ * BCPL global vector this runtime does not have (docs/formats/hunk.md). A redirection of RUN
+ * itself passes to its command. */
+static void dos_cli_command(struct Amiga *m, char *p, int nil_in, int nil_out)
+{
+	char cmd[DOS_LINE], args[DOS_LINE + 1], *e;
+	if(dos_cli_word(m, &p, cmd) < 0)
+		return;
+	for(;;)
+	{
+		char name[DOS_LINE];
+		int to;
+		while(*p == ' ' || *p == '\t')
+			p++;
+		if(*p != '<' && *p != '>')
+			break;
+		to = *p++ == '>';
+		for(e = p; *e && *e != ' ' && *e != '\t'; e++)
+			;
+		memcpy(name, p, (size_t)(e - p));
+		name[e - p] = 0;
+		p = e;
+		if(!dos_same(name, "NIL:"))
+		{
+			amiga_fatal(m, "CLI: redirection %s%s is not implemented; only NIL: is", to ? ">" : "<", name);
+			return;
+		}
+		if(to)
+			nil_out = 1;
+		else
+			nil_in = 1;
+	}
+	if(dos_same(cmd, "run"))
+	{
+		if(!*p)
+		{
+			amiga_fatal(m, "CLI: RUN with no command");
+			return;
+		}
+		amiga_logf(m, "CLI: RUN %s", p);
+		dos_cli_endcli_next(m);
+		dos_cli_command(m, p, nil_in, nil_out);
+		return;
+	}
+	if(dos_same(cmd, "endcli"))
+	{
+		dos_cli_end(m);
+		amiga_fatal(m, "CLI: ENDCLI ended the Initial CLI; no other process runs");
+		return;
+	}
+	strcpy(args, p);
+	strcat(args, "\n");
+	dos_cli_run(m, cmd, args, nil_in, nil_out);
+}
+
+/* The command's Input() and Output(): the process's and the CLI's current streams. */
+static void dos_cli_io(struct Amiga *m, uint32_t in, uint32_t out)
+{
+	struct HleDos *d = &m->hle.dos;
+	hle_w32(m, d->process + PR_CIS, in);
+	hle_w32(m, d->process + PR_COS, out);
+	hle_w32(m, d->cli + CLI_CURRENTINPUT, in);
+	hle_w32(m, d->cli + CLI_CURRENTOUTPUT, out);
+}
+
+static void dos_cli_run(struct Amiga *m, const char *cmd, const char *args, int nil_in, int nil_out)
 {
 	struct HleDos *d = &m->hle.dos;
 	char path[DOS_LINE + 2];
@@ -638,6 +799,11 @@ static void dos_cli_run(struct Amiga *m, const char *cmd, const char *args)
 	}
 	for(i = 0; i <= len; i++)
 		hle_w8(m, d->cmd_args + i, (uint8_t)args[i]);
+	d->cmd_in = nil_in ? dos_open(m, "NIL:", "CLI") : 0;
+	d->cmd_out = nil_out ? dos_open(m, "NIL:", "CLI") : 0;
+	if(m->fatal)
+		return;
+	dos_cli_io(m, d->cmd_in ? d->cmd_in : d->files[0].fh, d->cmd_out ? d->cmd_out : d->files[0].fh);
 	name = hle_r32(m, d->cli + CLI_COMMANDNAME) << 2;
 	dos_bstr(m, name, cmd);
 	hle_w32(m, d->cli + CLI_MODULE, seg);
@@ -664,25 +830,19 @@ static void dos_cli_run(struct Amiga *m, const char *cmd, const char *args)
 
 static void dos_cli_next(struct Amiga *m)
 {
-	char line[DOS_LINE], cmd[DOS_LINE], args[DOS_LINE + 1];
-	for(;;)
+	char line[DOS_LINE], *p;
+	do
 	{
-		int r;
 		if(!dos_script_line(m, line))
 		{
 			if(!m->fatal)
 				amiga_fatal(m, "CLI: S:Startup-Sequence ended; the CLI has no console window");
 			return;
 		}
-		r = dos_cli_parse(m, line, cmd, args);
-		if(r < 0)
-			return;
-		if(r > 0)
-		{
-			dos_cli_run(m, cmd, args);
-			return;
-		}
+		p = dos_cli_trim(line);
 	}
+	while(!*p);
+	dos_cli_command(m, p, 0, 0);
 }
 
 /* A command returned into HLE_DOS_CLI_RETURN with its return code in D0. */
@@ -696,6 +856,17 @@ void hle_dos_cli_return(struct Amiga *m)
 	hle_free(m, d->cmd_stack, d->cmd_stack_size);
 	hle_free(m, d->cmd_args, d->cmd_args_size);
 	d->cmd_seglist = 0;
+	dos_cli_io(m, d->files[0].fh, d->files[0].fh);
+	if(d->cmd_in)
+		dos_close(m, d->cmd_in);
+	if(d->cmd_out)
+		dos_close(m, d->cmd_out);
+	d->cmd_in = d->cmd_out = 0;
+	if(d->cli_ended)
+	{
+		amiga_fatal(m, "CLI: the command RUN started has returned; ENDCLI had ended the Initial CLI");
+		return;
+	}
 	dos_cli_next(m);
 }
 
@@ -744,8 +915,18 @@ void hle_dos_boot(struct Amiga *m)
 	for(i = 0; i < AMIGA_DRIVES; i++)
 	{
 		char df[4] = {'D', 'F', (char)('0' + i), 0};
-		if(!dos_node(m, DLT_DEVICE, df, 0))
+		uint32_t node = dos_node(m, DLT_DEVICE, df, 0), port = hle_alloc(m, MP_SIZEOF, MEMF_PUBLIC | MEMF_CLEAR, 0);
+		if(!node || !port)
+		{
+			if(!m->fatal)
+				amiga_fatal(m, "dos: no memory for DF%d's handler", i);
 			return;
+		}
+		hle_w8(m, port + LN_TYPE, NT_MSGPORT);
+		hle_w8(m, port + MP_FLAGS, PA_IGNORE);
+		hle_new_list(m, port + MP_MSGLIST, NT_MESSAGE);
+		hle_w32(m, node + DOL_TASK, port);
+		d->handler[i] = port;
 	}
 	hle_dos_mount(m);
 	if(m->fatal)
@@ -756,6 +937,9 @@ void hle_dos_boot(struct Amiga *m)
 		return;
 	}
 	d->booted = 1;
+	/* Kickstart 1.3 opens the Workbench screen for the Initial CLI's console window (the oracle's
+	 * shots show its title bar once a game's own screen has gone). */
+	d->workbench = 1;
 	{
 		/* No battery clock: the system clock starts at the boot volume's last-alteration date
 		 * (docs/runtime.md, "dos.library"). */
@@ -904,13 +1088,18 @@ static int dos_call(struct Amiga *m, uint32_t lvo)
 		D0 = dos_read(m, f, p, D3);
 		return 0;
 	}
-	case 48: /* Write(d1 file, d2 buffer, d3 length): the console only */
+	case 48: /* Write(d1 file, d2 buffer, d3 length): the console and NIL: only */
 	{
 		struct HleDosFile *f = dos_file(m, D1);
 		char text[DOS_LINE];
 		uint32_t i, n = D3 < sizeof text - 1 ? D3 : (uint32_t)sizeof text - 1;
 		if(!f)
 			return 0;
+		if(f->drive == DOS_NIL)
+		{
+			D0 = D3;
+			return 0;
+		}
 		if(f != &d->files[0])
 		{
 			amiga_fatal(m, "dos: writing files is not implemented (Write)");
@@ -1018,6 +1207,51 @@ static int dos_call(struct Amiga *m, uint32_t lvo)
 		dos_unloadseg(m, D1);
 		D0 = DOSTRUE;
 		return 0;
+	case 174: /* DeviceProc(d1 name): the MsgPort of the handler of DF0:-DF3:, or of the drive holding a volume */
+	{
+		char *colon;
+		int drive = -1, i;
+		uint32_t block;
+		if(dos_cstr(m, D1, path, sizeof path) < 0)
+			return 0;
+		colon = strchr(path, ':');
+		if(!colon)
+		{
+			amiga_fatal(m, "dos: DeviceProc(\"%s\") without a device name is not implemented", path);
+			return 0;
+		}
+		*colon = 0;
+		for(i = 0; i < d->assign_count; i++)
+			if(dos_same(path, d->assigns[i].name))
+			{
+				amiga_fatal(m, "dos: DeviceProc(\"%s:\") of an assign is not implemented", path);
+				return 0;
+			}
+		for(i = 0; i < AMIGA_DRIVES; i++)
+		{
+			char df[4] = {'D', 'F', (char)('0' + i), 0};
+			if(dos_same(path, df))
+				drive = i;
+		}
+		colon[0] = ':';
+		colon[1] = 0;
+		if(drive < 0 && dos_resolve(m, 0, path, &drive, &block) < 0)
+		{
+			D0 = 0;
+			return 0;
+		}
+		D0 = d->handler[drive];
+		return 0;
+	}
+	case 192: /* DateStamp(d1 ds): days since 1978-01-01, minutes past midnight, ticks past the minute */
+	{
+		uint64_t t = d->clock_ticks + (m->frame_count - d->clock_frame);
+		hle_w32(m, D1, (uint32_t)(t / (3000 * 1440)));
+		hle_w32(m, D1 + 4, (uint32_t)(t / 3000 % 1440));
+		hle_w32(m, D1 + 8, (uint32_t)(t % 3000));
+		D0 = D1;
+		return 0;
+	}
 	case 198: /* Delay(d1 ticks): a tick is 1/50 s, one PAL frame */
 		if((int32_t)D1 <= 0)
 			return 0;

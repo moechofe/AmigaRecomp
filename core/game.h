@@ -42,6 +42,7 @@ struct GameDef
 	const char *id, *title;
 	const struct GameDisk *disks; uint32_t disk_count;
 	int drives[4];               /* role index in DF0–DF3 at boot, -1 empty */
+	const int *drives_optional;  /* NULL, or 4 role indexes (-1 empty): DF0–DF3 at boot in place of drives[] when every role they name has an image; drives[] alone decides when the machine boots */
 	int drive_count;             /* DF0–DF(n-1): the drives the Disks page offers, 1–4 */
 	uint8_t pointer_sprites;     /* bit n: sprite n draws part of the game's mouse pointer; steering follows the lowest; 0 none */
 	struct GameView view;        /* what the window shows; w 0: the capture window */

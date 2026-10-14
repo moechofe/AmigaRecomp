@@ -33,6 +33,7 @@ void sdl_disks_offer_remembered(void (*report)(int error, const char *text));
  * 0, or -1 when refused or unwritable (nothing changed). */
 int sdl_disks_import(int role, const char *path, void (*report)(int error, const char *text));
 int sdl_disks_ready(void);  /* every role that drives[] names has an image */
+const int *sdl_disks_boot_drives(void); /* the roles of DF0–DF3 at boot: drives_optional once its roles have images, else drives[] */
 void sdl_disks_missing(char *buf, size_t size);
 void sdl_disks_attach(struct Amiga *m, void (*banner)(const char *text));
 /* Once booted: puts `role` (-1: none) in DF`drive`. A role already in another drive swaps

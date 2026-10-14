@@ -1,0 +1,31 @@
+# docs/game.md, item 4.
+2a786568 disk1 verified Settlers, The (1993)(Blue Byte)(Disk 1 of 3)(Intro)
+769f57a1 disk1 known Settlers, The (1993)(Blue Byte)(Disk 1 of 3)(Intro)[a]
+e45641fc disk1 known Settlers, The (1993)(Blue Byte)(Disk 1 of 3)(Intro)[h MSH - Blizzard]
+9bedc39a disk1 refused This Settlers Disk 1 starts with an intro in Kickstart's ROM font, which this runtime does not have; the game starts from Disk 3 without it
+61b2ecb8 disk1 refused This Settlers Disk 1 starts with an intro in Kickstart's ROM font, which this runtime does not have; the game starts from Disk 3 without it
+fc396042 disk1 known Settlers, The (1993)(Blue Byte)(Disk 1 of 3)(Intro)[m bamcopy - doscopy]
+ea57299a disk1 known Settlers, The (1993)(Blue Byte)(Disk 1 of 3)(Intro)[m]
+f5e8daf3 disk1 refused This Settlers Disk 1 carries the Lamer Exterminator bootblock virus; the game starts from Disk 3 without it
+e50e339f disk1 known Settlers, The (1993)(Blue Byte)(FR)(Disk 1 of 3)(Intro)
+a88175b1 disk2 verified Settlers, The (1993)(Blue Byte)(Disk 2 of 3)
+8b1fcf83 disk2 known Settlers, The (1993)(Blue Byte)(Disk 2 of 3)[a savegame]
+940db987 disk2 known Settlers, The (1993)(Blue Byte)(Disk 2 of 3)[a2 savegame]
+17bdff6c disk2 known Settlers, The (1993)(Blue Byte)(Disk 2 of 3)[a3 savegame]
+2ed961e2 disk2 known Settlers, The (1993)(Blue Byte)(Disk 2 of 3)[b corrupt file]
+3ea9b04f disk2 known Settlers, The (1993)(Blue Byte)(Disk 2 of 3)[h Mailman]
+ed2ccefb disk2 known Settlers, The (1993)(Blue Byte)(Disk 2 of 3)[h Mailman][a hacktro]
+684508ac disk2 known Settlers, The (1993)(Blue Byte)(Disk 2 of 3)[h PDX DK]
+e800e13e disk2 known Settlers, The (1993)(Blue Byte)(Disk 2 of 3)[m bamcopy - doscopy]
+99f91983 disk2 known Settlers, The (1993)(Blue Byte)(Disk 2 of 3)[m][a bootblock]
+e33bdef8 disk2 known Settlers, The (1993)(Blue Byte)(FR)(Disk 2 of 3)
+15b9a872 disk3 verified Settlers, The (1993)(Blue Byte)(Disk 3 of 3)(Game)[cr FLT][bootable]
+f0af7b54 disk3 refused This Settlers Disk 3 opens the Workbench screen once its game is loaded, which needs Kickstart's ROM font, which this runtime does not have
+fbdf85b1 disk3 refused This Settlers Disk 3 starts with an intro in Kickstart's ROM font, which this runtime does not have
+f48d50a0 disk3 known Settlers, The (1993)(Blue Byte)(Disk 3 of 3)(Game)[cr FLT][tr cs][bootable]
+6bee6327 disk3 refused This Settlers Disk 3 carries the Byte Bandit bootblock virus
+bdeebf23 disk3 known Settlers, The (1993)(Blue Byte)(Disk 3 of 3)(Game)[cr QTX][a][bootable]
+dede095f disk3 known Settlers, The (1993)(Blue Byte)(Disk 3 of 3)(Game)[cr QTX][bootable]
+52f84009 disk3 known Settlers, The (1993)(Blue Byte)(Disk 3 of 3)(Game)[cr QTX][tr pl][a cracktro removed - rebuilt][bootable]
+e331b7ba disk3 known Settlers, The (1993)(Blue Byte)(Disk 3 of 3)(Game)[cr QTX][tr pl][bootable]
+b4d69755 disk3 refused This French Settlers Disk 3 has a cracktro that opens the Workbench screen, which needs Kickstart's ROM font, which this runtime does not have

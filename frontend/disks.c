@@ -46,9 +46,9 @@ int sdl_disks_init(const char *pref)
 		return -1;
 	}
 	for(n = game_def.drive_count; n < AMIGA_DRIVES; n++)
-		if(game_def.drives[n] >= 0)
+		if(game_def.drives[n] >= 0 || (game_def.drives_optional && game_def.drives_optional[n] >= 0))
 		{
-			fprintf(stderr, "game_def.drives[%d] is beyond drive_count %d\n", n, game_def.drive_count);
+			fprintf(stderr, "game_def.drives%s[%d] is beyond drive_count %d\n", game_def.drives[n] >= 0 ? "" : "_optional", n, game_def.drive_count);
 			return -1;
 		}
 	for(r = 0; r < game_def.disk_count; r++)
@@ -290,6 +290,17 @@ int sdl_disks_ready(void)
 		if(game_def.drives[n] >= 0 && !sdl_roles[game_def.drives[n]].adf)
 			return 0;
 	return 1;
+}
+
+const int *sdl_disks_boot_drives(void)
+{
+	int n;
+	if(!game_def.drives_optional)
+		return game_def.drives;
+	for(n = 0; n < 4; n++)
+		if(game_def.drives_optional[n] >= 0 && !sdl_roles[game_def.drives_optional[n]].adf)
+			return game_def.drives;
+	return game_def.drives_optional;
 }
 
 void sdl_disks_missing(char *buf, size_t size)

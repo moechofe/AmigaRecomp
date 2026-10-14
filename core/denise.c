@@ -7,8 +7,8 @@
 
 #define DENISE_X_MAX 456
 /* The first line of sprite DMA, where every sprite's control-word fetch restarts: the line after
- * PAL vertical blank, during which there is no sprite DMA. Not measured; docs/runtime.md, "Timing". */
-#define DENISE_SPRITE_LINE 25
+ * PAL vertical blank, during which there is no sprite DMA. */
+#define DENISE_SPRITE_LINE AMIGA_DISPLAY_LINE0
 /* Which pixel of each hires pair a lores pixel shows: the first, as the oracle's lores capture
  * does (docs/runtime.md, "Timing"). */
 #define DENISE_HIRES_PIXEL 0
@@ -135,7 +135,7 @@ int denise_pointer(struct Amiga *m, int *x, int *y)
 	if(y0 < 0)
 		return 0;
 	*x = h + 1 + (x0 + x1) / 2 - AMIGA_FRAME_DIW_X0;
-	*y = vstart + (y0 + y1) / 2 - AMIGA_FRAME_LINE0;
+	*y = vstart + (y0 + y1) / 2 - AMIGA_DISPLAY_LINE0;
 	return 1;
 }
 
@@ -148,12 +148,19 @@ void denise_begin_line(struct Amiga *m, int line)
 	denise_sprite_dma(m, line);
 }
 
+/* The colour clock of the first fetch block: blocks fall on multiples of 8, and DDFSTRT starts
+ * the block it falls in, in lores, or the next one, in hires (docs/runtime.md, "Timing"). */
+static int denise_ddf_start(const struct Denise *d)
+{
+	return (d->bplcon0 & 0x8000) ? (d->ddfstrt + 7) & 0xF8 : d->ddfstrt & 0xF8;
+}
+
 static void denise_fetch(struct Amiga *m)
 {
 	struct Denise *d = &m->denise;
 	int bpu = (d->bplcon0 >> 12) & 7;
 	int hires = (d->bplcon0 & 0x8000) != 0;
-	int p, w, start = d->ddfstrt & 0xFC, stop = d->ddfstop & 0xFC;
+	int p, w, start = denise_ddf_start(d), stop = d->ddfstop & 0xFC;
 	d->fetched = -1;
 	if(d->bplcon0 & 0x0C00)
 		amiga_log_once(m, 0x80000000u | (d->bplcon0 & 0x0C00), "BPLCON0 0x%04X: HAM and dual playfield render as a single playfield", d->bplcon0);
@@ -161,8 +168,11 @@ static void denise_fetch(struct Amiga *m)
 		bpu = 6;
 	if((m->paula.dmacon & 0x0300) != 0x0300 || bpu == 0 || !denise_in_vwindow(d) || stop < start)
 		return;
-	/* Words per plane: lores (DDFSTOP - DDFSTRT) / 8 + 1, hires / 4 + 2. HRM. */
-	d->words = hires ? ((stop - start) >> 2) + 2 : ((stop - start) >> 3) + 1;
+	/* The fetch runs in blocks of 8 colour clocks up to and including the first block that
+	 * starts at or after DDFSTOP; a block fetches one word per plane in lores, two in hires.
+	 * With DDFSTOP on a block's start that is the HRM's (DDFSTOP - DDFSTRT) / 8 + 1 lores and
+	 * / 4 + 2 hires words (docs/runtime.md, "Timing"). */
+	d->words = (((stop - start + 7) >> 3) + 1) * (hires ? 2 : 1);
 	if(d->words > 64)
 		d->words = 64;
 	for(p = 0; p < bpu; p++)
@@ -172,13 +182,16 @@ static void denise_fetch(struct Amiga *m)
 			d->plane[p][w] = mem_chip16(m, d->bplpt[p]);
 			d->bplpt[p] = (d->bplpt[p] + 2) & 0x1FFFFE;
 		}
-		d->bplpt[p] = (d->bplpt[p] + (uint32_t)(int32_t)((p & 1) ? d->bpl2mod : d->bpl1mod)) & 0x1FFFFE;
 	}
+	/* The modulos are added once the line's last fetch block has ended, so a modulo written
+	 * during the line's fetch applies to that line (docs/runtime.md, "Timing"). */
+	d->mod_at = start + (hires ? d->words / 2 : d->words) * 8;
 	for(; p < 6; p++)
 		for(w = 0; w < d->words; w++)
 			d->plane[p][w] = 0;
-	/* First pixel at DIW DDFSTRT * 2 + 17 lores, + 9 hires, HRM; 0x38 and 0x3C give 0x81. */
-	d->first_x = start * 2 + (hires ? 9 : 17);
+	/* First pixel at DIW block * 2 + 17 lores, + 1 hires: DDFSTRT 0x38 lores and 0x3C hires
+	 * give 0x81 (HRM; docs/runtime.md, "Timing"). */
+	d->first_x = start * 2 + (hires ? 1 : 17);
 	d->fetched = 1;
 }
 
@@ -248,14 +261,26 @@ static int denise_sprite(const struct Denise *d, int x, unsigned hide, int *pair
 	return 0;
 }
 
+static void denise_add_modulos(struct Denise *d)
+{
+	int p, bpu = (d->bplcon0 >> 12) & 7;
+	if(bpu > 6)
+		bpu = 6;
+	for(p = 0; p < bpu; p++)
+		d->bplpt[p] = (d->bplpt[p] + (uint32_t)(int32_t)((p & 1) ? d->bpl2mod : d->bpl1mod)) & 0x1FFFFE;
+	d->mod_at = -1;
+}
+
 void denise_render_to(struct Amiga *m, int hpos)
 {
 	struct Denise *d = &m->denise;
 	int to = hpos * 2 + 1, x;
 	int hstart = d->diwstrt & 0xFF, hstop = (d->diwstop & 0xFF) | 0x100;
 	int inv;
-	if(!d->fetched && hpos >= (d->ddfstrt & 0xFC))
+	if(!d->fetched && hpos >= denise_ddf_start(d))
 		denise_fetch(m);
+	if(d->fetched == 1 && d->mod_at >= 0 && (hpos >= d->mod_at || hpos >= AMIGA_CCK_PER_LINE))
+		denise_add_modulos(d);
 	if(to > DENISE_X_MAX)
 		to = DENISE_X_MAX;
 	if(d->drawn_x < AMIGA_FRAME_DIW_X0)
@@ -284,9 +309,9 @@ void denise_render_to(struct Amiga *m, int hpos)
 void denise_end_line(struct Amiga *m)
 {
 	struct Denise *d = &m->denise;
-	int row = d->line - AMIGA_FRAME_LINE0, x;
+	int row = d->line - AMIGA_DISPLAY_LINE0, x;
 	denise_render_to(m, AMIGA_CCK_PER_LINE);
-	if(row < 0 || row >= AMIGA_FRAME_H)
+	if(row < 0 || row >= AMIGA_FRAME_ROWS)
 		return;
 	for(x = 0; x < AMIGA_FRAME_STRIDE; x++)
 		m->frame[row][x] = d->linebuf[AMIGA_FRAME_DIW_X0 + x];

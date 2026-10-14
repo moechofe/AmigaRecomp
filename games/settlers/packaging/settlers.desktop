@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=The Settlers
+Comment=Amiga game running natively from your own disks
+Exec=settlers %F
+Icon=settlers
+Terminal=false
+Categories=Game;StrategyGame;
+StartupWMClass=settlers

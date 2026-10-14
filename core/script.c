@@ -52,7 +52,7 @@ int script_colours(const struct Amiga *m)
 	{
 		for(x = 0; x < AMIGA_FRAME_W; x++)
 		{
-			uint16_t c = m->frame[y][x] & 0xFFF;
+			uint16_t c = m->frame[AMIGA_FRAME_CAPTURE_ROW + y][x] & 0xFFF;
 			if(!(seen[c >> 3] & (1u << (c & 7))))
 			{
 				seen[c >> 3] |= (uint8_t)(1u << (c & 7));

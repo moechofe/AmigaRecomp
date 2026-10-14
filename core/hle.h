@@ -374,6 +374,7 @@ void hle_dos_mount(struct Amiga *m);
 void hle_dos_cli_return(struct Amiga *m);
 int hle_dos_call(struct Amiga *m, uint32_t lvo);
 uint32_t hle_dos_loadseg(struct Amiga *m, const char *path);
+int hle_dos_packet(struct Amiga *m, uint32_t port, uint32_t msg);
 void hle_dos_time(struct Amiga *m, uint32_t *secs, uint32_t *micros);
 
 /* hle_ofs.c: the Old File System, read from an ADF image. */

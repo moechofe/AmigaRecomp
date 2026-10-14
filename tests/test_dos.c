@@ -210,6 +210,17 @@ static void test_hunks(void)
 	check(hle_r32(&m, h0 - 8) == 2 * 4 + 8, "a segment records its allocation size before its next-pointer");
 	hle_hunk_unload(&m, seg);
 
+	/* Two CODE hunks with no HUNK_END between them, as Kickstart 1.3's LoadSeg takes. */
+	f.len = f.pos = 0;
+	emit(&f, 0x3F3); emit(&f, 0); emit(&f, 2); emit(&f, 0); emit(&f, 1); emit(&f, 1); emit(&f, 1);
+	emit(&f, 0x3E9); emit(&f, 1); emit(&f, 0x11111111);
+	emit(&f, 0x3E9); emit(&f, 1); emit(&f, 0x22222222); emit(&f, 0x3F2);
+	seg = hle_hunk_load(&m, &src, 0, &err, &o);
+	h1 = seg ? seg_data(hle_r32(&m, seg << 2)) : 0;
+	check(seg && !err && h1 && hle_r32(&m, seg_data(seg)) == 0x11111111 && hle_r32(&m, h1) == 0x22222222,
+		"a hunk block after a hunk's own data starts the next hunk");
+	hle_hunk_unload(&m, seg);
+
 	/* A root of one hunk, an overlay table of 4 longwords, and two nodes. */
 	emit(&ov, 0x3F3); emit(&ov, 0); emit(&ov, 3); emit(&ov, 0); emit(&ov, 0); emit(&ov, 6);
 	emit(&ov, 0x3E9); emit(&ov, 6);

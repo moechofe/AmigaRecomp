@@ -724,6 +724,11 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo)
 		}
 		D0 = hle_task(m);
 		return 0;
+	case 300: /* SetTaskPri(a1 task, d0 priority): the old priority; one task runs, so nothing is rescheduled */
+		t = (uint32_t)(int32_t)(int8_t)hle_r8(m, A1 + LN_PRI);
+		hle_w8(m, A1 + LN_PRI, (uint8_t)D0);
+		D0 = t;
+		return 0;
 	case 306: /* SetSignal(d0 new, d1 mask) */
 		t = hle_r32(m, hle_task(m) + TC_SIGRECVD);
 		hle_w32(m, hle_task(m) + TC_SIGRECVD, (t & ~D1) | (D0 & D1));
@@ -749,6 +754,8 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo)
 		hle_remove(m, A1);
 		return 0;
 	case 366: /* PutMsg(a0 port, a1 message) */
+		if(hle_dos_packet(m, A0, A1))
+			return 0;
 		hle_w8(m, A1 + LN_TYPE, NT_MESSAGE);
 		hle_put_msg(m, A0, A1);
 		return 0;

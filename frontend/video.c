@@ -100,16 +100,16 @@ int sdl_video_view(struct SdlView *v)
 	if(!g->w)
 	{
 		v->x = 0;
-		v->y = 0;
+		v->y = AMIGA_FRAME_CAPTURE_ROW;
 		v->w = AMIGA_FRAME_W;
 		v->h = AMIGA_FRAME_H;
 		return 0;
 	}
 	v->x = g->x - AMIGA_FRAME_DIW_X0;
-	v->y = g->y - AMIGA_FRAME_LINE0;
+	v->y = g->y - AMIGA_DISPLAY_LINE0;
 	v->w = g->w;
 	v->h = g->h;
-	return v->x < 0 || v->y < 0 || v->w <= 0 || v->h <= 0 || v->x + v->w > AMIGA_FRAME_STRIDE || v->y + v->h > AMIGA_FRAME_H ? -1 : 0;
+	return v->x < 0 || v->y < 0 || v->w <= 0 || v->h <= 0 || v->x + v->w > AMIGA_FRAME_STRIDE || v->y + v->h > AMIGA_FRAME_ROWS ? -1 : 0;
 }
 
 int sdl_video_rect(SDL_Window *window, struct SdlVideoRect *r)
@@ -148,7 +148,7 @@ int sdl_video_rect(SDL_Window *window, struct SdlVideoRect *r)
 	return 0;
 }
 
-void sdl_video_draw(SDL_Window *window, const uint16_t frame[AMIGA_FRAME_H][AMIGA_FRAME_STRIDE])
+void sdl_video_draw(SDL_Window *window, const uint16_t frame[AMIGA_FRAME_ROWS][AMIGA_FRAME_STRIDE])
 {
 	struct SdlVideoRect r;
 	if(sdl_video_rect(window, &r))

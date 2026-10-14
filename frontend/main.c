@@ -369,6 +369,7 @@ static int sdl_headless(const struct SdlOptions *o)
 			break;
 		}
 		sdl_flush_disks();
+		{ static uint32_t seen; if(machine.disk_accesses != seen) { fprintf(stderr, "ACCESS %u %u\n", machine.frame_count, machine.disk_accesses - seen); seen = machine.disk_accesses; } }
 	}
 	sdl_flush_disks();
 	return code;
@@ -411,18 +412,20 @@ static int sdl_pointer_counts(int target, int at, int first, int last)
 	return d;
 }
 
-static void sdl_pointer_step(const struct SdlPointer *p, SDL_Window *window, int *dx, int *dy)
+/* 0 when the game's pointer is not on screen, and nothing steers it. */
+static int sdl_pointer_step(const struct SdlPointer *p, SDL_Window *window, int *dx, int *dy)
 {
 	struct SdlVideoRect r;
 	int px, py, ww = 0, wh = 0, tx, ty;
 	*dx = *dy = 0;
 	if(!p->inside || !denise_pointer(&machine, &px, &py) || !SDL_GetWindowSize(window, &ww, &wh) || ww <= 0 || wh <= 0
 		|| sdl_video_rect(window, &r))
-		return;
+		return 0;
 	tx = sdl_clamp(r.view.x + (int)SDL_floorf((p->wx * r.window_w / ww - r.x) * r.view.w / r.w), r.view.x, r.view.x + r.view.w - 1);
 	ty = sdl_clamp(r.view.y + (int)SDL_floorf((p->wy * r.window_h / wh - r.y) * r.view.h / r.h), r.view.y, r.view.y + r.view.h - 1);
 	*dx = sdl_pointer_counts(tx, px, r.view.x, r.view.x + r.view.w - 1);
 	*dy = sdl_pointer_counts(ty, py, r.view.y, r.view.y + r.view.h - 1);
+	return 1;
 }
 
 /* Accepted-image and state lines go to stdout only: the Disks page already lists each disk. */
@@ -470,10 +473,11 @@ static const char *sdl_state_load_window(const char *path, void (*report)(int er
 /* 0, or -1 with the fatal error printed. */
 static int sdl_boot(void (*banner)(const char *text))
 {
+	const int *drives = sdl_disks_boot_drives();
 	int i;
 	sdl_disks_attach(&machine, banner);
 	for(i = 0; i < 4; i++)
-		amiga_insert(&machine, i, game_def.drives[i]);
+		amiga_insert(&machine, i, drives[i]);
 	if(machine.fatal || amiga_boot(&machine))
 	{
 		sdl_report_fatal();
@@ -621,7 +625,7 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 					ptr.wx = e.motion.x;
 					ptr.wy = e.motion.y;
 					ptr.inside = 1;
-					if(captured && SDL_GetWindowSize(window, &ww, &wh) && ww > 0 && wh > 0 && !sdl_video_rect(window, &r))
+					if(SDL_GetWindowSize(window, &ww, &wh) && ww > 0 && wh > 0 && !sdl_video_rect(window, &r))
 					{
 						fx += e.motion.xrel * r.window_w / (float)ww * r.view.w / (float)r.w;
 						fy += e.motion.yrel * r.window_h / (float)wh * r.view.h / (float)r.h;
@@ -740,15 +744,15 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 		{
 			if(o->script)
 				dx = dy = 0;
-			else if(captured)
+			else if(!captured && sdl_pointer_step(&ptr, window, &dx, &dy))
+				fx = fy = 0;
+			else
 			{
 				dx = sdl_clamp((int)fx, -127, 127);
 				dy = sdl_clamp((int)fy, -127, 127);
 				fx -= (float)dx;
 				fy -= (float)dy;
 			}
-			else
-				sdl_pointer_step(&ptr, window, &dx, &dy);
 			amiga_mouse(&machine, dx, dy, lmb, rmb);
 			amiga_joystick(&machine, sdl_bindings_joystick());
 			machine.pointer_hidden = game_system_cursor(&machine) && !captured;
@@ -781,6 +785,8 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 				}
 			}
 		}
+		else
+			fx = fy = 0;
 
 		sdl_video_draw(window, machine.frame);
 		sdl_menu_render(window);

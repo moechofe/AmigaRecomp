@@ -12,6 +12,14 @@
 /* A frame row runs on past the capture window to the last column Denise draws, DIW x
  * 2 × AMIGA_CCK_PER_LINE (denise_render_to), so a picture the capture clips stays whole. */
 #define AMIGA_FRAME_STRIDE (AMIGA_CCK_PER_LINE * 2 + 1 - AMIGA_FRAME_DIW_X0)
+/* The first line after the PAL vertical blank: the first that sprite DMA fetches and the first
+ * the frame buffer holds. Not measured; docs/runtime.md, "Timing". */
+#define AMIGA_DISPLAY_LINE0 25
+/* The frame buffer's rows are the lines from AMIGA_DISPLAY_LINE0 to the frame's last, so a
+ * picture taller than the capture window stays whole; the capture window is AMIGA_FRAME_H of
+ * them from row AMIGA_FRAME_CAPTURE_ROW. */
+#define AMIGA_FRAME_ROWS (AMIGA_LINES - AMIGA_DISPLAY_LINE0)
+#define AMIGA_FRAME_CAPTURE_ROW (AMIGA_FRAME_LINE0 - AMIGA_DISPLAY_LINE0)
 
 /* 512 KB chip RAM at 0x000000 and 512 KB slow RAM at 0xC00000: the A500 memory map, HRM
  * "Memory Map". */
@@ -119,6 +127,7 @@ struct Denise
 	uint32_t pointer_list;
 	int line;
 	int fetched;
+	int mod_at;      /* the colour clock at which the fetched line's modulos are added; -1 added */
 	int words;
 	int first_x;
 	uint16_t plane[6][64];
@@ -274,6 +283,8 @@ struct HleDosOverlay
 struct HleDos
 {
 	uint8_t booted;
+	uint8_t cli_ended;          /* ENDCLI has closed the Initial CLI's console window */
+	uint8_t workbench;          /* Kickstart's Workbench screen is open */
 	int8_t script_drive;
 	uint32_t script_header, script_pos;
 	struct HleDosFile files[HLE_DOS_FILES];
@@ -285,6 +296,8 @@ struct HleDos
 	struct HleDosOverlay overlays[HLE_DOS_OVERLAYS];
 	uint32_t process, cli;
 	uint32_t cmd_seglist, cmd_stack, cmd_stack_size, cmd_args, cmd_args_size;
+	uint32_t cmd_in, cmd_out;   /* the command's NIL: redirections (FileHandle BPTRs), 0 none */
+	uint32_t handler[AMIGA_DRIVES]; /* DFn's handler MsgPort, which DeviceProc returns and packets go to */
 	uint32_t delay_frame;
 	uint64_t clock_ticks;       /* the system clock in 1/50 s ticks at frame clock_frame */
 	uint32_t clock_frame;
@@ -364,7 +377,7 @@ struct Amiga
 	int pointer_hidden;      /* 1: Denise does not draw game_def.pointer_sprites; set by the frontend each frame */
 	struct Hacks hacks;
 
-	uint16_t frame[AMIGA_FRAME_H][AMIGA_FRAME_STRIDE];
+	uint16_t frame[AMIGA_FRAME_ROWS][AMIGA_FRAME_STRIDE];
 
 	int fatal;
 	char fatal_msg[AMIGA_FATAL_LEN];

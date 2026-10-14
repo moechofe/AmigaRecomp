@@ -570,8 +570,11 @@ int hle_int_call(struct Amiga *m, uint32_t lvo)
 	case 72: /* CloseWindow(a0 window) */
 		int_close_window(m, A0);
 		return 0;
-	case 78: /* CloseWorkBench: "FALSE if the Workbench was not open"; this runtime never opens it */
-		D0 = 0;
+	case 78: /* CloseWorkBench: TRUE once closed; FALSE while the Initial CLI's console window is
+	          * on it or when it was not open (intuition autodoc) */
+		D0 = m->hle.dos.workbench && m->hle.dos.cli_ended ? 1 : 0;
+		if(D0)
+			m->hle.dos.workbench = 0;
 		return 0;
 	case 84: /* CurrentTime(a0 &seconds, a1 &micros): the system clock (hle_dos_time) */
 	{

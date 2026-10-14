@@ -156,8 +156,9 @@ static int hunk_reloc(struct HunkLoad *h, uint32_t at)
 	}
 }
 
-/* The hunks of slots first..last, each ending in HUNK_END. Returns the block type after the last
- * one (HUNK_OVERLAY, HUNK_BREAK), 0 at the end of the file, or -1 on failure. */
+/* The hunks of slots first..last, each ending in HUNK_END or in the next hunk's CODE, DATA or BSS
+ * block, which Kickstart 1.3's LoadSeg takes too (docs/formats/hunk.md). Returns the block type
+ * after the last one (HUNK_OVERLAY, HUNK_BREAK), 0 at the end of the file, or -1 on failure. */
 static int64_t hunk_bodies(struct HunkLoad *h)
 {
 	uint32_t n = h->first, type, size, at = 0;
@@ -182,8 +183,8 @@ static int64_t hunk_bodies(struct HunkLoad *h)
 			uint32_t room;
 			if(at)
 			{
-				amiga_fatal(h->m, "LoadSeg: hunk %u has no HUNK_END", n);
-				return -1;
+				n++;
+				at = 0;
 			}
 			if(n > h->last)
 			{

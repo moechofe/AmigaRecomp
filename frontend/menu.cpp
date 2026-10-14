@@ -309,10 +309,13 @@ void menu_disks_refresh()
 		}
 		else if(!role->adf)
 		{
-			bool needed = false;
+			bool needed = false, optional = false;
 			for(n = 0; n < 4; n++)
+			{
 				needed = needed || game_def.drives[n] == (int)r;
-			row.state = needed ? "missing, needed to start" : "missing, needed later";
+				optional = optional || (game_def.drives_optional && game_def.drives_optional[n] == (int)r);
+			}
+			row.state = needed ? "missing, needed to start" : optional ? "missing, optional" : "missing, needed later";
 		}
 		else
 		{
@@ -327,7 +330,7 @@ void menu_disks_refresh()
 	{
 		DriveRow row;
 		row.name = "DF" + std::to_string(n);
-		row.role = booted ? menu->m->drive_role[n] : game_def.drives[n];
+		row.role = booted ? menu->m->drive_role[n] : sdl_disks_boot_drives()[n];
 		row.disk = row.role < 0 ? "empty" : game_def.disks[row.role].label;
 		menu->model.drives.push_back(row);
 	}
