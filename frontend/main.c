@@ -114,7 +114,7 @@ static int sdl_help(void)
 		"  --pref DIR       the folder for settings, writable disks, shots and\n"
 		"                   states, created if missing; default the per-user folder\n"
 		"                   SDL picks for AmigaRecomp/%s\n"
-		"  --dump FILE      write the 512 KB of chip RAM to FILE at exit\n"
+		"  --dump FILE      write chip RAM (512 KB, or 1 MB) to FILE at exit\n"
 		"  --no-sprites     start with sprites hidden (a script's 'sprites on' shows\n"
 		"                   them again)\n"
 		"  --scale N        window: open at N times the game's view, N from 1 to %d,\n"

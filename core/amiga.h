@@ -21,11 +21,21 @@
 #define AMIGA_FRAME_ROWS (AMIGA_LINES - AMIGA_DISPLAY_LINE0)
 #define AMIGA_FRAME_CAPTURE_ROW (AMIGA_FRAME_LINE0 - AMIGA_DISPLAY_LINE0)
 
-/* 512 KB chip RAM at 0x000000 and 512 KB slow RAM at 0xC00000: the A500 memory map, HRM
- * "Memory Map". */
+/* Chip RAM at 0x000000 and 512 KB slow RAM at 0xC00000: the A500 memory map, HRM "Memory Map".
+ * Chip RAM is 512 KB behind the OCS Agnus, or 1 MB behind the ECS Agnus (8372A) when the game's
+ * CMakeLists asks for it (docs/game.md, item 2). */
+#ifndef AMIGA_CHIP_SIZE
 #define AMIGA_CHIP_SIZE 0x80000u
+#endif
+#if AMIGA_CHIP_SIZE != 0x80000u && AMIGA_CHIP_SIZE != 0x100000u
+#error "AMIGA_CHIP_SIZE is 512 KB or 1 MB"
+#endif
 #define AMIGA_SLOW_BASE 0xC00000u
 #define AMIGA_SLOW_SIZE 0x80000u
+
+/* VPOSR bits 14-8: VPOSR read 0x8000 at the bootblock call with the OCS Agnus and 0xA000 with
+ * the PAL ECS Agnus (docs/runtime.md, "Kickstart handoff"). */
+#define AMIGA_AGNUS_ID (AMIGA_CHIP_SIZE == 0x100000u ? 0x20u : 0u)
 
 /* PAL: 313 lines of 227 colour clocks, 454 CPU cycles a line, 142 102 a frame --
  * docs/runtime.md, "Timing". */

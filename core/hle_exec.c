@@ -46,7 +46,7 @@ static void hle_mem_header(struct Amiga *m, uint32_t mh, uint16_t attr, int8_t p
 void hle_mem_init(struct Amiga *m)
 {
 	static const uint32_t slow[4] = {0xC01808u, 0x10, 0xC04AD0u, 0x79D30u};
-	static const uint32_t chip[2] = {0x0059E8u, 0x7A618u};
+	static const uint32_t chip[2] = {0x0059E8u, AMIGA_CHIP_SIZE - 0x0059E8u};
 	hle_mem_header(m, HLE_SLOW_MEMHEADER, MEMF_PUBLIC | MEMF_FAST, 0, 0xC004E8u, 0xC7E800u);
 	hle_mem_header(m, HLE_CHIP_MEMHEADER, MEMF_PUBLIC | MEMF_CHIP, -10, 0x000420u, AMIGA_CHIP_SIZE);
 	hle_mem_set(m, HLE_SLOW_MEMHEADER, slow, 2);

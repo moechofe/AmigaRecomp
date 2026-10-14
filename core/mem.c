@@ -6,7 +6,7 @@
 
 
 /* Pointer to RAM at a 24-bit address, or NULL if it is not RAM. Chip mirrors fold onto
- * 512 KB. */
+ * AMIGA_CHIP_SIZE. */
 uint8_t *mem_ram(struct Amiga *m, uint32_t addr)
 {
 	addr &= 0xFFFFFFu;
