@@ -100,13 +100,13 @@ void amiga_mouse(struct Amiga *m, int dx, int dy, int lmb, int rmb)
 	m->paula.rmb = (uint8_t)(rmb != 0);
 }
 
-/* The joystick in port 2 (game port 1): JOY1DAT and CIA-A PRA bit 7. A stick cannot lean two
- * opposite ways, so opposite directions held together cancel. */
-void amiga_joystick(struct Amiga *m, uint8_t joy)
+/* The joystick in game port `port`: 1 is port 2 (JOY1DAT, CIA-A PRA bit 7), 0 is port 1 (JOY0DAT,
+ * PRA bit 6). A stick cannot lean two opposite ways, so opposite directions held together cancel. */
+void amiga_joystick(struct Amiga *m, int port, uint8_t joy)
 {
 	if((joy & (AmigaJoyUp | AmigaJoyDown)) == (AmigaJoyUp | AmigaJoyDown))
 		joy &= (uint8_t)~(AmigaJoyUp | AmigaJoyDown);
 	if((joy & (AmigaJoyLeft | AmigaJoyRight)) == (AmigaJoyLeft | AmigaJoyRight))
 		joy &= (uint8_t)~(AmigaJoyLeft | AmigaJoyRight);
-	m->paula.joy = joy;
+	m->paula.joy[port & 1] = joy;
 }

@@ -110,9 +110,11 @@ static uint8_t cia_port_a(const struct Amiga *m, const struct Cia *c)
 {
 	if(c == &m->cia_a)
 	{
-		/* /FIR1 7 (port-2 fire), /FIR0 6 (left mouse); /CHNG 2, /WPRO 3, /TK0 4 and /RDY 5 come
-		 * from the selected drives (disk_status); bits 1 and 0 are outputs. HRM appendix F. */
-		uint8_t in = (uint8_t)((0xC0 & ~(m->paula.lmb ? 0x40 : 0) & ~(m->paula.joy & AmigaJoyFire ? 0x80 : 0)) | disk_status(m) | 0x03);
+		/* /FIR1 7 (port-2 fire), /FIR0 6 (left mouse, or the port-1 joystick's fire); /CHNG 2,
+		 * /WPRO 3, /TK0 4 and /RDY 5 come from the selected drives (disk_status); bits 1 and 0 are
+		 * outputs. HRM appendix F. */
+		const int fir0 = m->paula.lmb || (m->paula.joy[0] & AmigaJoyFire);
+		uint8_t in = (uint8_t)((0xC0 & ~(fir0 ? 0x40 : 0) & ~(m->paula.joy[1] & AmigaJoyFire ? 0x80 : 0)) | disk_status(m) | 0x03);
 		return (uint8_t)((in & ~c->ddra) | (c->pra & c->ddra));
 	}
 	return (uint8_t)((0xFF & ~c->ddra) | (c->pra & c->ddra));

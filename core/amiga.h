@@ -212,7 +212,7 @@ struct Paula
 	uint64_t audio_cck_frac;
 	int16_t mouse_x, mouse_y;
 	uint8_t lmb, rmb;
-	uint8_t joy; /* the port-2 joystick, enum AmigaJoy bits */
+	uint8_t joy[2]; /* the joysticks, enum AmigaJoy bits: [1] port 2 (JOY1DAT), [0] port 1 (JOY0DAT) when game_def.joystick is 2 */
 };
 
 /* Paula's output stage (core/paula.c): the sums of the colour clocks the next 48 kHz frame
@@ -454,7 +454,7 @@ void amiga_logf(struct Amiga *m, const char *fmt, ...);
 void amiga_key(struct Amiga *m, uint8_t code, int up);
 void amiga_mouse(struct Amiga *m, int dx, int dy, int lmb, int rmb);
 enum AmigaJoy { AmigaJoyUp = 1, AmigaJoyDown = 2, AmigaJoyLeft = 4, AmigaJoyRight = 8, AmigaJoyFire = 16 };
-void amiga_joystick(struct Amiga *m, uint8_t joy);
+void amiga_joystick(struct Amiga *m, int port, uint8_t joy);
 uint64_t amiga_now(const struct Amiga *m);
 
 /* mem.c */

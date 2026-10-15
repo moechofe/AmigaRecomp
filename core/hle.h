@@ -360,7 +360,8 @@ enum HleFrameKind
 	HleFrameInput,
 	HleFrameLibInit,
 	HleFrameIcr,
-	HleFrameDosRequest
+	HleFrameDosRequest,
+	HleFrameFmt
 };
 
 /* hle.c */
@@ -391,6 +392,7 @@ void hle_mem_set(struct Amiga *m, uint32_t mh, const uint32_t *chunks, int count
 int32_t hle_exec_alloc_signal(struct Amiga *m, int32_t want);
 void hle_exec_free_signal(struct Amiga *m, uint32_t bit);
 void hle_exec_lib_continue(struct Amiga *m, struct HleFrame *f);
+void hle_exec_fmt_continue(struct Amiga *m, struct HleFrame *f);
 void hle_reply_msg(struct Amiga *m, uint32_t msg);
 void hle_exec_io_done(struct Amiga *m, uint32_t io);
 

@@ -47,7 +47,7 @@ struct GameDef
 	int drive_count;             /* DF0–DF(n-1): the machine's drives, which the Disks page offers, 1–4 */
 	uint8_t pointer_sprites;     /* bit n: sprite n draws part of the game's mouse pointer; steering follows the lowest; 0 none */
 	struct GameView view;        /* what the window shows; w 0: the capture window */
-	int joystick;                /* 1: keys bound on the menu's Controls page drive the port-2 joystick */
+	int joystick;                /* joysticks the game reads: 1 port 2, worked by the keys bound on the menu's Controls page and game controllers; 2 also port 1, in place of the mouse, worked by the second controller; 0 none */
 	const struct GameHack *const *hacks; uint32_t hack_count;
 	const struct GameHack *system_cursor; /* the bool hack that, while on, shows the OS cursor over the running game in place of pointer_sprites; NULL: the OS cursor always shows, beside them */
 	uint16_t menu_key;           /* USB HID usage ID of the host key that opens the menu; 0: F1 (0x3A) */

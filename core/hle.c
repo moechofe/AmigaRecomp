@@ -546,6 +546,9 @@ static void hle_continue(struct Amiga *m)
 	case HleFrameLibInit:
 		hle_exec_lib_continue(m, &f);
 		return;
+	case HleFrameFmt:
+		hle_exec_fmt_continue(m, &f);
+		return;
 #if AMIGA_A1200
 	case HleFrameIcr:
 		hle_icr_next(m, &f);

@@ -4,6 +4,7 @@
 #include "desktop.h"
 #include "game.h"
 #include "menu.h"
+#include "pad.h"
 #include "png.h"
 #include "script.h"
 #include "settings.h"
@@ -129,7 +130,11 @@ static int sdl_help(void)
 		"  Alt+Enter        fullscreen on or off\n");
 	if(game_def.joystick)
 		printf("  bound keys       the joystick in port 2, bound on the menu's Controls page;\n"
-			"                   by default the arrows and Right Ctrl (fire)\n");
+			"                   by default the arrows and Right Ctrl (fire)\n"
+			"  a controller     also the joystick in port 2: left stick or D-pad, and\n"
+			"                   A, B, X or Y (any button on a plain joystick) fires\n");
+	if(game_def.joystick >= 2)
+		printf("  2nd controller   the joystick in port 1, for player 2, in place of the mouse\n");
 	printf("\n"
 		"Exit codes\n"
 		"  0 normal end, 1 fatal runtime error, 2 usage, image or script error,\n"
@@ -557,6 +562,7 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 		fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
 		return 1;
 	}
+	sdl_pad_init();
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
@@ -628,6 +634,8 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 				running = 0;
 			else if(e.type == SDL_EVENT_DROP_FILE)
 				filled += sdl_disks_offer(e.drop.data, SdlOfferGiven, sdl_report_given);
+			else if(sdl_pad_event(&e))
+				;
 			else if(e.type == sdl_menu_action_event)
 			{
 				filled += sdl_menu_action_run(o, &e.user);
@@ -781,7 +789,9 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 				fy -= (float)dy;
 			}
 			amiga_mouse(&machine, dx, dy, lmb, rmb);
-			amiga_joystick(&machine, sdl_bindings_joystick());
+			amiga_joystick(&machine, 1, (uint8_t)(sdl_bindings_joystick() | sdl_pad_joystick(1)));
+			if(game_def.joystick >= 2)
+				amiga_joystick(&machine, 0, sdl_pad_joystick(0));
 			machine.pointer_hidden = game_system_cursor(&machine) && !captured;
 
 			if(o->script)

@@ -298,9 +298,9 @@ static int script_continue(struct Script *s, struct Amiga *m, enum ScriptResult 
 	case OpFire:
 		/* The port-2 fire button held 3 frames, then one frame released, as a click. */
 		if(s->count < 3)
-			amiga_joystick(m, (uint8_t)(m->paula.joy | AmigaJoyFire));
+			amiga_joystick(m, 1, (uint8_t)(m->paula.joy[1] | AmigaJoyFire));
 		else
-			amiga_joystick(m, (uint8_t)(m->paula.joy & ~AmigaJoyFire));
+			amiga_joystick(m, 1, (uint8_t)(m->paula.joy[1] & ~AmigaJoyFire));
 		return s->count++ < 4;
 	case OpClick:
 		/* Park in the top-left corner for 8 frames, move at most 100 counts a frame, hold

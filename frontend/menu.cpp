@@ -181,6 +181,7 @@ struct MenuModel
 	bool desktop_installed = false;
 	Rml::String desktop_note;
 	bool controls = false;
+	bool two_joysticks = false; /* game_def.joystick 2: a second controller is port 1 */
 	std::vector<CommandRow> commands;
 	int binding = -1; /* the command waiting for a key */
 	bool disk_light = false; /* a disk transfer within menu_disk_ms */
@@ -542,6 +543,7 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 	ctor.Bind("desktop_installed", &menu->model.desktop_installed);
 	ctor.Bind("desktop_note", &menu->model.desktop_note);
 	ctor.Bind("controls", &menu->model.controls);
+	ctor.Bind("two_joysticks", &menu->model.two_joysticks);
 	ctor.Bind("commands", &menu->model.commands);
 	ctor.Bind("binding", &menu->model.binding);
 	ctor.Bind("disk_light", &menu->model.disk_light);
@@ -628,6 +630,7 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 	menu->model.desktop_offered = sdl_desktop_offered() != 0;
 	menu->model.desktop_installed = sdl_desktop_installed() != 0;
 	menu->model.controls = game_def.joystick != 0;
+	menu->model.two_joysticks = game_def.joystick >= 2;
 	if(const SdlAsset *a = menu_asset("about.rml"))
 		menu->model.about.assign((const char *)a->data, a->size);
 	if(const SdlAsset *a = menu_asset("welcome.rml"))

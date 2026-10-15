@@ -1,4 +1,5 @@
 #include "amiga.h"
+#include "game.h"
 
 /* Custom chip register file, offsets from 0xDFF000 per HRM appendix A. */
 
@@ -79,12 +80,14 @@ uint16_t custom_read(struct Amiga *m, uint32_t reg)
 		hpos = sched_hpos(m, now);
 		return (uint16_t)(((line & 0xFF) << 8) | (hpos & 0xFF));
 	case REG_JOY0DAT:
-		return (uint16_t)(((m->paula.mouse_y & 0xFF) << 8) | (m->paula.mouse_x & 0xFF));
+		if(game_def.joystick < 2)
+			return (uint16_t)(((m->paula.mouse_y & 0xFF) << 8) | (m->paula.mouse_x & 0xFF));
+		/* fall through: port 1 holds a joystick */
 	case REG_JOY1DAT:
 	{
 		/* HRM, "Reading the joystick": right is bit 1, left bit 9; down is bit 1 XOR bit 0, up
 		 * bit 9 XOR bit 8. */
-		const uint8_t j = m->paula.joy;
+		const uint8_t j = m->paula.joy[reg == REG_JOY1DAT];
 		const int right = (j & AmigaJoyRight) != 0, left = (j & AmigaJoyLeft) != 0;
 		const int down = (j & AmigaJoyDown) != 0, up = (j & AmigaJoyUp) != 0;
 		return (uint16_t)((left << 9) | ((left ^ up) << 8) | (right << 1) | (right ^ down));

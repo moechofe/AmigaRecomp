@@ -50,6 +50,8 @@
 				<div class="key"><span class="label">F12</span><span class="state">screenshot of the game screen</span></div>
 				<div class="key"><span class="label">Alt+Enter</span><span class="state">fullscreen on / off</span></div>
 				<div class="key" data-if="controls"><span class="label">bound keys</span><span class="state">the joystick in port 2; see the Controls page</span></div>
+				<div class="key" data-if="controls"><span class="label">a controller</span><span class="state">the joystick in port 2 too: left stick or D-pad, A, B, X or Y fires</span></div>
+				<div class="key" data-if="two_joysticks"><span class="label">2nd controller</span><span class="state">player 2's joystick, in port 1</span></div>
 			</div>
 			<div data-if="page == 'disks'">
 				<h2>Drives</h2>
@@ -100,6 +102,7 @@
 					</span>
 				</div>
 				<p class="hint">Click a key to unbind it. {{menu_key}}, <span data-if="state_keys">F5, F9, </span>F12 and Esc stay with this program and cannot be bound.</p>
+				<p class="hint">A game controller works the joystick too, alongside these keys: the left stick or the D-pad steers, and A, B, X or Y fires (any button on a plain joystick).<span data-if="two_joysticks"> A second controller is player 2's joystick, in port 1.</span></p>
 				<div class="actions"><button data-event-click="bind_defaults">Restore defaults</button></div>
 			</div>
 			<div data-if="page == 'settings'">
