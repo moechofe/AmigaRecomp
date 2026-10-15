@@ -21,24 +21,33 @@
 #define AMIGA_FRAME_ROWS (AMIGA_LINES - AMIGA_DISPLAY_LINE0)
 #define AMIGA_FRAME_CAPTURE_ROW (AMIGA_FRAME_LINE0 - AMIGA_DISPLAY_LINE0)
 
+/* 1: the machine is an A1200 (68EC020, AGA, 2 MB chip RAM, Kickstart 3.0), chosen by the game's
+ * CMakeLists (docs/game.md, item 2); 0: an A500. */
+#ifndef AMIGA_A1200
+#define AMIGA_A1200 0
+#endif
+
 /* Chip RAM at 0x000000 and 512 KB slow RAM at 0xC00000: the A500 memory map, HRM "Memory Map".
- * Chip RAM is 512 KB behind the OCS Agnus, or 1 MB behind the ECS Agnus (8372A) when the game's
- * CMakeLists asks for it (docs/game.md, item 2). */
+ * Chip RAM is 512 KB behind the OCS Agnus, 1 MB behind the ECS Agnus (8372A) when the game's
+ * CMakeLists asks for it (docs/game.md, item 2), or the A1200's 2 MB behind Alice. On the A1200
+ * the slow-RAM range holds only the HLE's own structures: no MemHeader lists it. */
 #ifndef AMIGA_CHIP_SIZE
 #define AMIGA_CHIP_SIZE 0x80000u
 #endif
-#if AMIGA_CHIP_SIZE != 0x80000u && AMIGA_CHIP_SIZE != 0x100000u
-#error "AMIGA_CHIP_SIZE is 512 KB or 1 MB"
+#if AMIGA_A1200 ? AMIGA_CHIP_SIZE != 0x200000u : (AMIGA_CHIP_SIZE != 0x80000u && AMIGA_CHIP_SIZE != 0x100000u)
+#error "AMIGA_CHIP_SIZE is 512 KB or 1 MB on an A500, 2 MB on an A1200"
 #endif
 #define AMIGA_SLOW_BASE 0xC00000u
 #define AMIGA_SLOW_SIZE 0x80000u
 
-/* VPOSR bits 14-8: VPOSR read 0x8000 at the bootblock call with the OCS Agnus and 0xA000 with
- * the PAL ECS Agnus (docs/runtime.md, "Kickstart handoff"). */
-#define AMIGA_AGNUS_ID (AMIGA_CHIP_SIZE == 0x100000u ? 0x20u : 0u)
+/* VPOSR bits 14-8: VPOSR read 0x8000 at the bootblock call with the OCS Agnus, 0xA000 with
+ * the PAL ECS Agnus and 0xA300 with the A1200's PAL Alice (docs/runtime.md, "Kickstart
+ * handoff"). */
+#define AMIGA_AGNUS_ID (AMIGA_A1200 ? 0x23u : AMIGA_CHIP_SIZE == 0x100000u ? 0x20u : 0u)
 
-/* PAL: 313 lines of 227 colour clocks, 454 CPU cycles a line, 142 102 a frame --
- * docs/runtime.md, "Timing". */
+/* PAL: 313 lines of 227 colour clocks, 454 time-base cycles a line, 142 102 a frame --
+ * docs/runtime.md, "Timing". A time-base cycle is a clock of the A500's 68000, two per colour
+ * clock. */
 #define AMIGA_LINES 313
 #define AMIGA_CCK_PER_LINE 227
 #define AMIGA_CYCLES_PER_LINE 454
@@ -47,11 +56,17 @@
 #define AMIGA_CCK_HZ 3546895u
 #define AMIGA_AUDIO_HZ 48000u
 #define AMIGA_AUDIO_FRAMES 4096
+/* The CPU's clocks per time-base cycle, as a shift: the A1200's 68EC020 runs at 14.18758 MHz in
+ * PAL, four clocks per colour clock (Commodore, A1200 specifications), so two of its clocks are
+ * one time-base cycle. Musashi's cycle table for the CPU (m68kcpu.c, m68k_set_cpu_type). */
+#define AMIGA_CPU_SHIFT (AMIGA_A1200 ? 1 : 0)
+#define AMIGA_CPU_TABLE (AMIGA_A1200 ? 2 : 0)
 
 /* The HLE region: a JMP slot of a library jump table points at
- * 0xF00000 + (lib << 12) + (-LVO). docs/runtime.md, "HLE". */
+ * 0xF00000 + (lib << 12) + (-LVO), for 32 libraries. docs/runtime.md, "HLE". */
 #define HLE_BASE 0xF00000u
-#define HLE_END 0xF10000u
+#define HLE_END 0xF20000u
+#define HLE_LIBS 32
 #define HLE_ADDR(lib, off) (HLE_BASE + ((uint32_t)(lib) << 12) + (uint32_t)(off))
 #define HLE_LIB_EXEC 0
 #define HLE_LIB_GFX 1
@@ -65,6 +80,14 @@
 #define HLE_STUBS 7
 #define HLE_CALL_LIBS 8
 #define HLE_LIB_INTERNAL 15
+/* Kickstart 3.0's resources and devices, built on the A1200 only (core/hle_res.c). */
+#define HLE_LIB_POTGO 16
+#define HLE_LIB_CIAA 17
+#define HLE_LIB_CIAB 18
+#define HLE_LIB_TIMER 19
+#define HLE_LIB_KEYBOARD 20
+#define HLE_LIB_GAMEPORT 21
+#define HLE_TIMER_REQUESTS 16
 #define HLE_INPUT_EVENTS 16
 
 #define AMIGA_FATAL_LEN 512
@@ -117,10 +140,16 @@ struct Copper
 	uint8_t danger;
 };
 
+/* Bitplanes and colour registers: 6 and 32 on OCS, 8 and 256 on AGA (AGA.guide, "Bitplanes" and
+ * "Color Lookup Table"). */
+#define AMIGA_PLANES (AMIGA_A1200 ? 8 : 6)
+#define AMIGA_COLORS (AMIGA_A1200 ? 256 : 32)
+
 struct Sprite
 {
 	uint32_t pt;
-	uint16_t pos, ctl, data, datb;
+	uint16_t pos, ctl;
+	uint64_t data, datb; /* the image's 16, 32 or 64 bits (FMODE), right-aligned */
 	int vstart, vstop;
 	int armed;
 	int dma_state;
@@ -128,11 +157,13 @@ struct Sprite
 
 struct Denise
 {
-	uint16_t bplcon0, bplcon1, bplcon2;
+	uint16_t bplcon0, bplcon1, bplcon2, bplcon3, bplcon4;
 	int16_t bpl1mod, bpl2mod;
-	uint32_t bplpt[6];
+	uint32_t bplpt[AMIGA_PLANES];
 	uint16_t diwstrt, diwstop, ddfstrt, ddfstop;
-	uint16_t color[32];
+	uint16_t diwhigh, fmode;
+	uint8_t diwhigh_written; /* DIWHIGH written since the last DIWSTRT or DIWSTOP write */
+	uint32_t color[AMIGA_COLORS]; /* 0x00RRGGBB */
 	struct Sprite spr[8];
 	uint32_t pointer_list;
 	int line;
@@ -140,9 +171,10 @@ struct Denise
 	int mod_at;      /* the colour clock at which the fetched line's modulos are added; -1 added */
 	int words;
 	int first_x;
-	uint16_t plane[6][64];
+	int load_lead;   /* lores pixels from the plane-load grid to first_x (denise_fetch) */
+	uint16_t plane[AMIGA_PLANES][64];
 	int drawn_x;
-	uint16_t linebuf[512];
+	uint32_t linebuf[512];
 	int frame_done;
 };
 
@@ -311,6 +343,9 @@ struct HleDos
 	uint32_t delay_frame;
 	uint64_t clock_ticks;       /* the system clock in 1/50 s ticks at frame clock_frame */
 	uint32_t clock_frame;
+#if AMIGA_A1200
+	char request[32];           /* the volume a call that just failed asks the user for; "" none */
+#endif
 };
 
 /* audio.device's channels (core/hle_audio.c): queue[0] is the write that plays. */
@@ -349,6 +384,15 @@ struct Hle
 	uint32_t int_tick; /* Intuition's last IDCMP_INTUITICKS message, until it is freed; 0 none */
 	struct HleDos dos;
 	struct HleAudio audio;
+#if AMIGA_A1200
+	uint16_t potgo_bits; /* potgo.resource: the POTGO bits allocated */
+	uint16_t potgo;      /* potgo.resource: the value WritePotgo last wrote */
+	uint32_t timer_io[HLE_TIMER_REQUESTS];  /* timer.device: the queued TR_ADDREQUESTs */
+	uint64_t timer_due[HLE_TIMER_REQUESTS]; /* and when each is due, in time-base cycles */
+	int timer_count;
+	uint8_t key_matrix[16]; /* keyboard.device: one bit per raw key code, set while held */
+	uint32_t icr_vec[2][5]; /* ciaa/ciab.resource: each ICR bit's Interrupt, 0 free */
+#endif
 };
 
 struct Amiga
@@ -362,6 +406,7 @@ struct Amiga
 	uint64_t done;
 	uint32_t frame_count;
 	int in_interp;
+	uint8_t cpu_clock_odd;   /* AMIGA_CPU_SHIFT 1: a CPU clock not yet counted in `cycles` */
 	uint8_t booted;
 
 	struct Copper copper;
@@ -387,7 +432,7 @@ struct Amiga
 	int pointer_hidden;      /* 1: Denise does not draw game_def.pointer_sprites; set by the frontend each frame */
 	struct Hacks hacks;
 
-	uint16_t frame[AMIGA_FRAME_ROWS][AMIGA_FRAME_STRIDE];
+	uint32_t frame[AMIGA_FRAME_ROWS][AMIGA_FRAME_STRIDE]; /* 0x00RRGGBB */
 
 	int fatal;
 	char fatal_msg[AMIGA_FATAL_LEN];

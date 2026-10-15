@@ -66,14 +66,14 @@ unsigned int m68k_read_disassembler_32(unsigned int address)
  * instruction is seen by it and the interrupt is taken at the boundary after. */
 uint64_t amiga_now(const struct Amiga *m)
 {
-	return m->cycles + (m->in_interp ? (uint64_t)CYC_INSTRUCTION[REG_IR] : 0);
+	return m->cycles + (m->in_interp ? (uint64_t)CYC_INSTRUCTION[REG_IR] >> AMIGA_CPU_SHIFT : 0);
 }
 
 void interp_init(struct Amiga *m)
 {
 	interp_m = m;
 	m68k_init();
-	m68k_set_cpu_type(M68K_CPU_TYPE_68000);
+	m68k_set_cpu_type(AMIGA_A1200 ? M68K_CPU_TYPE_68EC020 : M68K_CPU_TYPE_68000);
 	m68k_pulse_reset();
 	/* pulse_reset leaves 40 reset cycles that the next m68k_execute would spend instead of
 	 * running an instruction. */
@@ -145,7 +145,9 @@ void interp_run(struct Amiga *m, uint32_t max_insns, uint64_t until)
 		m->in_interp = 1;
 		used = m68k_execute(1);
 		m->in_interp = 0;
-		m->cycles += (uint64_t)used;
+		used += m->cpu_clock_odd;
+		m->cpu_clock_odd = (uint8_t)(used & ((1 << AMIGA_CPU_SHIFT) - 1));
+		m->cycles += (uint64_t)(used >> AMIGA_CPU_SHIFT);
 		m->insns++;
 		if(m68ki_cpu.stopped)
 			break;

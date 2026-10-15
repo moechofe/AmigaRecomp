@@ -25,13 +25,15 @@
  *   DEALINGS IN THE SOFTWARE. */
 
 #include "amiga.h"
+#include "m68k.h"
 
-/* Musashi's 68000 cycle tables: m68ki_cycles[0] per opcode (generated m68kops.c) and
- * m68ki_exception_cycle_table[0] per vector (m68kcpu.c). */
+/* Musashi's cycle tables for the machine's CPU (AMIGA_CPU_TABLE): m68ki_cycles per opcode
+ * (generated m68kops.c) and m68ki_exception_cycle_table per vector (m68kcpu.c), in CPU clocks. */
 extern unsigned char m68ki_cycles[][0x10000];
 extern const unsigned char m68ki_exception_cycle_table[][256];
 
-#define CPU_CYC(op) ((uint64_t)m68ki_cycles[0][(op)])
+/* An opcode's cost in time-base cycles (core/amiga.h, AMIGA_CPU_SHIFT). */
+#define CPU_CYC(op) ((uint64_t)m68ki_cycles[AMIGA_CPU_TABLE][(op)] >> AMIGA_CPU_SHIFT)
 
 static inline uint16_t cpu_get_sr(const struct Cpu *c)
 {
@@ -88,23 +90,40 @@ static inline uint32_t cpu_pop32(struct Amiga *m)
 	return v;
 }
 
-/* Autovectored interrupt at `level`: vector 24 + level, mask raised to the level, and a
- * stopped CPU resumes. */
+/* An exception's stack frame: SR and PC, and on the 68020 below them the format-0 word, the
+ * vector offset (MC68020 User's Manual, "Exception Stack Frame Formats"). */
+static inline void cpu_push_frame(struct Amiga *m, uint16_t sr, uint32_t pc, int vector)
+{
+	if(AMIGA_A1200)
+		cpu_push16(m, (uint16_t)((vector * 4) & 0x0FFF));
+	cpu_push32(m, pc);
+	cpu_push16(m, sr);
+}
+
+/* Autovectored interrupt at `level`: vector 24 + level from the vector base (0 on the 68000;
+ * the 68020's VBR), mask raised to the level, and a stopped CPU resumes. */
 static inline void cpu_interrupt(struct Amiga *m, int level)
 {
 	uint16_t old = cpu_get_sr(&m->cpu);
+	uint32_t vbr = AMIGA_A1200 ? m68k_get_reg(0, M68K_REG_VBR) : 0;
 	cpu_set_sr(&m->cpu, (uint16_t)(((old | 0x2000) & 0x78FF) | (level << 8)));
-	cpu_push32(m, m->cpu.pc);
-	cpu_push16(m, old);
-	m->cpu.pc = mem_read32(m, (uint32_t)(24 + level) * 4);
+	cpu_push_frame(m, old, m->cpu.pc, 24 + level);
+	m->cpu.pc = mem_read32(m, vbr + (uint32_t)(24 + level) * 4);
 	m->cpu.stopped = 0;
-	m->cycles += m68ki_exception_cycle_table[0][24 + level];
+	m->cycles += (uint64_t)m68ki_exception_cycle_table[AMIGA_CPU_TABLE][24 + level] >> AMIGA_CPU_SHIFT;
 }
 
+/* RTE from a frame cpu_push_frame built; on the 68020 only format 0 is taken. */
 static inline void cpu_rte(struct Amiga *m)
 {
 	uint16_t sr = cpu_pop16(m);
 	uint32_t pc = cpu_pop32(m);
+	if(AMIGA_A1200)
+	{
+		uint16_t format = cpu_pop16(m);
+		if(format >> 12)
+			amiga_fatal(m, "RTE from a format %u stack frame is not implemented", (unsigned)(format >> 12));
+	}
 	cpu_set_sr(&m->cpu, sr);
 	m->cpu.pc = pc;
 }

@@ -616,6 +616,11 @@ int hle_int_call(struct Amiga *m, uint32_t lvo)
 	case 390: /* RethinkDisplay */
 		int_rethink(m);
 		return 0;
+	case 414: /* LockIBase(d0 dontknow): a value for UnlockIBase; one task runs, so nothing waits on it */
+		D0 = 0;
+		return 0;
+	case 420: /* UnlockIBase(a0 ibLock) */
+		return 0;
 	default:
 		return -1;
 	}

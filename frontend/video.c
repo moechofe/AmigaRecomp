@@ -81,7 +81,7 @@ int sdl_video_init(void)
 	glGenVertexArrays(1, &video_vao);
 	glGenTextures(1, &video_texture);
 	glBindTexture(GL_TEXTURE_2D, video_texture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, view.w, view.h, 0, GL_BGRA, GL_UNSIGNED_SHORT_4_4_4_4_REV, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, view.w, view.h, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -148,7 +148,7 @@ int sdl_video_rect(SDL_Window *window, struct SdlVideoRect *r)
 	return 0;
 }
 
-void sdl_video_draw(SDL_Window *window, const uint16_t frame[AMIGA_FRAME_ROWS][AMIGA_FRAME_STRIDE])
+void sdl_video_draw(SDL_Window *window, const uint32_t frame[AMIGA_FRAME_ROWS][AMIGA_FRAME_STRIDE])
 {
 	struct SdlVideoRect r;
 	if(sdl_video_rect(window, &r))
@@ -161,12 +161,12 @@ void sdl_video_draw(SDL_Window *window, const uint16_t frame[AMIGA_FRAME_ROWS][A
 	glClearColor(0, 0, 0, 1);
 	glClear(GL_COLOR_BUFFER_BIT);
 	glViewport(r.x, r.window_h - r.y - r.h, r.w, r.h);
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, AMIGA_FRAME_STRIDE);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, video_texture);
-	/* $0RGB is BGRA 4444 reversed: B in bits 0-3 up to an alpha nibble the shader ignores. */
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r.view.w, r.view.h, GL_BGRA, GL_UNSIGNED_SHORT_4_4_4_4_REV, &frame[r.view.y][r.view.x]);
+	/* 0x00RRGGBB is BGRA 8888 reversed: B in bits 0-7 up to an alpha byte the shader ignores. */
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r.view.w, r.view.h, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, &frame[r.view.y][r.view.x]);
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 	glUseProgram(video_program);
 	glBindVertexArray(video_vao);

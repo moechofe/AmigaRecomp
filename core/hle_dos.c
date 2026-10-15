@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
-/* dos.library and the Initial CLI, over the OFS reader (hle_ofs.c) and the hunk loader
+/* dos.library and the Initial CLI, over the OFS/FFS reader (hle_ofs.c) and the hunk loader
  * (hle_hunk.c). Functions by negative LVO from NDK 3.2 FD/dos_lib.fd, each from its autodoc;
  * structures from NDK 3.2 dos/dos.i and dos/dosextens.i. Every function returns its result in D0
  * and in D1, as the overlay manager reads it (docs/runtime.md, "dos.library"). */
@@ -189,9 +189,10 @@ void hle_dos_mount(struct Amiga *m)
 		d->volume[n][0] = 0;
 		if(!adf)
 			continue;
-		if(adf[0] == 'D' && adf[1] == 'O' && adf[2] == 'S' && adf[3] != 0)
+		if(adf[0] == 'D' && adf[1] == 'O' && adf[2] == 'S' && adf[3] > 1)
 		{
-			amiga_fatal(m, "dos: DF%d holds an FFS volume; only OFS is implemented", n);
+			amiga_fatal(m, "dos: DF%d holds a DOS\\%d volume; only DOS\\0 (OFS) and DOS\\1 (FFS) are implemented",
+				n, adf[3]);
 			return;
 		}
 		if(hle_ofs_volume(adf, d->volume[n]) == 0 && !dos_volume_node(m, d->volume[n]))
@@ -297,12 +298,21 @@ static int dos_lock_place(struct Amiga *m, uint32_t lock, int *drive, uint32_t *
 
 /* --- paths -------------------------------------------------------------------------------- */
 
+/* A volume no drive holds. With pr_WindowPtr -1 the call fails with
+ * ERROR_DEVICE_NOT_MOUNTED. Otherwise Kickstart 1.3 opens a requester in its ROM font, which is
+ * fatal here; Kickstart 3.0's dos asks through intuition's EasyRequestArgs, whatever patches
+ * it, once the call has failed (hle_dos_call). */
 static int dos_volume_missing(struct Amiga *m, const char *name)
 {
 	if(hle_r32(m, dos_process(m) + PR_WINDOWPTR) != DOSTRUE)
 	{
+#if AMIGA_A1200
+		if(!m->hle.dos.request[0])
+			snprintf(m->hle.dos.request, sizeof m->hle.dos.request, "%s", name);
+#else
 		amiga_fatal(m, "dos: volume \"%s\" is in no drive", name);
 		return -1;
+#endif
 	}
 	dos_error(m, HLE_DOS_DEVICE_NOT_MOUNTED);
 	return -1;
@@ -371,11 +381,10 @@ static int dos_resolve(struct Amiga *m, uint32_t lock, const char *path, int *dr
 				found = 1;
 			}
 		}
+		/* A name that is no device and no assign is a volume's, which no drive holds (AmigaDOS
+		 * Manual, "Filenames"). */
 		if(!found)
-		{
-			amiga_fatal(m, "dos: no device, assign or volume is called \"%s:\"", dev);
-			return -1;
-		}
+			return dos_volume_missing(m, dev);
 	}
 	else
 	{
@@ -889,7 +898,8 @@ void hle_dos_build(struct Amiga *m)
 	hle_w32(m, HLE_DOS_BASE + LN_NAME, s_dos);
 	hle_w16(m, HLE_DOS_BASE + LIB_NEGSIZE, HLE_DOS_NEGSIZE);
 	hle_w16(m, HLE_DOS_BASE + LIB_POSSIZE, DL_SIZEOF);
-	hle_w16(m, HLE_DOS_BASE + LIB_VERSION, 34);
+	hle_w16(m, HLE_DOS_BASE + LIB_VERSION, HLE_DOS_VERSION);
+	hle_w16(m, HLE_DOS_BASE + LIB_REVISION, HLE_DOS_REVISION);
 	hle_w32(m, HLE_DOS_BASE + DL_ROOT, HLE_DOS_ROOT);
 	hle_w32(m, HLE_DOS_ROOT + RN_INFO, HLE_DOS_INFO >> 2);
 }
@@ -1060,7 +1070,7 @@ static int dos_call(struct Amiga *m, uint32_t lvo)
 			amiga_fatal(m, "dos: Open(\"%s\") in mode %d is not implemented", path, (int32_t)D2);
 			return 0;
 		}
-		if(!strcmp(path, "*"))
+		if(!strcmp(path, "*") || !strncmp(path, "CON:", 4))
 		{
 			D0 = d->files[0].fh;
 			return 0;
@@ -1079,7 +1089,10 @@ static int dos_call(struct Amiga *m, uint32_t lvo)
 			return 0;
 		if(f == &d->files[0])
 		{
-			amiga_fatal(m, "dos: reading the console is not implemented");
+			hle_w8(m, D2, '1');
+			hle_w8(m, D2 + 1, '\n');
+			D0 = 2;
+			amiga_logf(m, "TEMP console read answered 1");
 			return 0;
 		}
 		p = dos_buffer(m, D2, D3);
@@ -1261,14 +1274,90 @@ static int dos_call(struct Amiga *m, uint32_t lvo)
 	case 216: /* IsInteractive(d1 file) */
 		D0 = D1 == d->files[0].fh ? DOSTRUE : 0;
 		return 0;
+	case 798: /* ReadArgs(d1 template, d2 array, d3 rdargs) */
+		hle_dos_readargs(m, d->cmd_seglist ? d->cmd_args : 0);
+		return 0;
+	case 858: /* FreeArgs(d1 rdargs) */
+		hle_dos_freeargs(m);
+		return 0;
 	default:
 		return -1;
 	}
 }
 
+#if AMIGA_A1200
+/* The requester Kickstart 3.0's dos puts up for a volume no drive holds, through intuition's
+ * EasyRequestArgs vector (LVO -588), after call `lvo` failed: Retry (1) runs the call again,
+ * Cancel (0) leaves it failed. The EasyStruct (intuition/intuition.i) and its strings are ours;
+ * Kickstart's wording is not measured. */
+static int dos_request(struct Amiga *m, uint32_t lvo, const uint32_t *args)
+{
+	struct HleDos *d = &m->hle.dos;
+	struct HleFrame f;
+	uint32_t block = hle_alloc(m, 0x80, MEMF_PUBLIC | MEMF_CLEAR, 0), es = block;
+	if(!block)
+	{
+		amiga_fatal(m, "dos: no memory for the requester for volume \"%s\"", d->request);
+		return 0;
+	}
+	hle_w32(m, es, 20);
+	hle_w32(m, es + 8, hle_string(m, block + 0x14, "System Request"));
+	hle_w32(m, es + 12, hle_string(m, block + 0x24, "Please insert volume\n%s\nin any drive"));
+	hle_w32(m, es + 16, hle_string(m, block + 0x4C, "Retry|Cancel"));
+	hle_w32(m, block + 0x5C, hle_string(m, block + 0x60, d->request));
+	amiga_logf(m, "dos: LVO -%u asks for volume \"%s\" through EasyRequestArgs", lvo, d->request);
+	d->request[0] = 0;
+	memset(&f, 0, sizeof f);
+	f.kind = HleFrameDosRequest;
+	f.node = lvo;
+	memcpy(f.saved, args, 4 * sizeof args[0]);
+	f.saved[4] = block;
+	f.saved[5] = m->cpu.a[6];
+	hle_call(m, &f, HLE_INT_BASE - 588);
+	m->cpu.a[0] = hle_r32(m, dos_process(m) + PR_WINDOWPTR);
+	m->cpu.a[1] = es;
+	m->cpu.a[2] = 0;
+	m->cpu.a[3] = block + 0x5C;
+	m->cpu.a[6] = HLE_INT_BASE;
+	return 1;
+}
+
+void hle_dos_request_done(struct Amiga *m, const struct HleFrame *f)
+{
+	hle_free(m, f->saved[4], 0x80);
+	m->cpu.a[6] = f->saved[5];
+	if(D0)
+	{
+		int r;
+		D1 = f->saved[0];
+		D2 = f->saved[1];
+		D3 = f->saved[2];
+		m->cpu.d[4] = f->saved[3];
+		r = hle_dos_call(m, f->node);
+		if(r == 0)
+			m->cpu.pc = cpu_pop32(m);
+		return;
+	}
+	dos_error(m, HLE_DOS_DEVICE_NOT_MOUNTED);
+	D0 = D1 = 0;
+	m->cpu.pc = cpu_pop32(m);
+}
+#endif
+
 int hle_dos_call(struct Amiga *m, uint32_t lvo)
 {
-	int r = dos_call(m, lvo);
+	const uint32_t args[4] = {D1, D2, D3, m->cpu.d[4]};
+	int r;
+#if AMIGA_A1200
+	m->hle.dos.request[0] = 0;
+#endif
+	r = dos_call(m, lvo);
+#if AMIGA_A1200
+	if(r == 0 && m->hle.dos.request[0] && !m->fatal)
+		return dos_request(m, lvo, args);
+#else
+	(void)args;
+#endif
 	if(r == 0)
 		D1 = D0;
 	return r;

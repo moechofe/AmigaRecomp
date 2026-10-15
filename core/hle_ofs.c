@@ -2,12 +2,13 @@
 
 #include <string.h>
 
-/* The Old File System on a double-density ADF, read straight from the image. Block layout per
- * docs/formats/adf.md, "OFS files and directories". */
+/* The Old and Fast File Systems (DOS\0, DOS\1) on a double-density ADF, read straight from the
+ * image. Block layout per docs/formats/adf.md, "OFS and FFS files and directories". */
 
 #define OFS_BSIZE 512u
 #define OFS_ROOT 880u
 #define OFS_DATA 488u
+#define FFS_DATA 512u
 #define OFS_TABLE 72u
 #define OFS_T_HEADER 2u
 #define OFS_T_DATA 8u
@@ -22,6 +23,16 @@ static uint32_t ofs_l(const uint8_t *adf, uint32_t block, uint32_t off)
 static int ofs_valid(uint32_t block)
 {
 	return block >= 2 && block < AMIGA_ADF_SIZE / OFS_BSIZE;
+}
+
+static int ofs_ffs(const uint8_t *adf)
+{
+	return adf[3] == 1;
+}
+
+static uint32_t ofs_data_size(const uint8_t *adf)
+{
+	return ofs_ffs(adf) ? FFS_DATA : OFS_DATA;
 }
 
 static int ofs_upper(int c)
@@ -49,7 +60,7 @@ static void ofs_bstr(const uint8_t *adf, uint32_t block, uint32_t off, char *out
 
 int hle_ofs_volume(const uint8_t *adf, char name[32])
 {
-	if(adf[0] != 'D' || adf[1] != 'O' || adf[2] != 'S' || adf[3] != 0)
+	if(adf[0] != 'D' || adf[1] != 'O' || adf[2] != 'S' || adf[3] > 1)
 		return -1;
 	if(ofs_l(adf, OFS_ROOT, 0) != OFS_T_HEADER || ofs_l(adf, OFS_ROOT, 508) != 1)
 		return -1;
@@ -104,13 +115,14 @@ int hle_ofs_entry(const uint8_t *adf, uint32_t block, struct HleOfsEntry *e)
 	e->mins = ofs_l(adf, block, 424);
 	e->ticks = ofs_l(adf, block, 428);
 	e->parent = ofs_l(adf, block, 500);
-	e->blocks = e->type < 0 ? (e->size + OFS_DATA - 1) / OFS_DATA : 0;
+	e->blocks = e->type < 0 ? (e->size + ofs_data_size(adf) - 1) / ofs_data_size(adf) : 0;
 	ofs_bstr(adf, block, 432, e->name, sizeof e->name);
 	ofs_bstr(adf, block, 328, e->comment, sizeof e->comment);
 	return 0;
 }
 
-/* The data block holding byte k * 488 of the file: the header's table, then the extension chain. */
+/* The data block holding byte k * (488 OFS, 512 FFS) of the file: the header's table, then the
+ * extension chain. */
 static uint32_t ofs_data_block(const uint8_t *adf, uint32_t header, uint32_t k)
 {
 	uint32_t b = header, n;
@@ -124,14 +136,14 @@ static uint32_t ofs_data_block(const uint8_t *adf, uint32_t header, uint32_t k)
 	if(k >= ofs_l(adf, b, 8))
 		return 0;
 	n = ofs_l(adf, b, 308 - 4 * k);
-	if(!ofs_valid(n) || ofs_l(adf, n, 0) != OFS_T_DATA)
+	if(!ofs_valid(n) || (!ofs_ffs(adf) && ofs_l(adf, n, 0) != OFS_T_DATA))
 		return 0;
 	return n;
 }
 
 uint32_t hle_ofs_read(const uint8_t *adf, uint32_t header, uint32_t pos, uint8_t *out, uint32_t n)
 {
-	uint32_t size, done = 0;
+	uint32_t size, bsize = ofs_data_size(adf), done = 0;
 	if(!ofs_valid(header) || ofs_l(adf, header, 0) != OFS_T_HEADER || (int32_t)ofs_l(adf, header, 508) >= 0)
 		return 0;
 	size = ofs_l(adf, header, 324);
@@ -141,16 +153,16 @@ uint32_t hle_ofs_read(const uint8_t *adf, uint32_t header, uint32_t pos, uint8_t
 		n = size - pos;
 	while(done < n)
 	{
-		uint32_t at = pos + done, off = at % OFS_DATA, blk = ofs_data_block(adf, header, at / OFS_DATA), have, take;
+		uint32_t at = pos + done, off = at % bsize, k = at / bsize, blk = ofs_data_block(adf, header, k), have, take;
 		if(!blk)
 			break;
-		have = ofs_l(adf, blk, 12);
-		if(have > OFS_DATA || off >= have)
+		have = ofs_ffs(adf) ? (size - k * FFS_DATA < FFS_DATA ? size - k * FFS_DATA : FFS_DATA) : ofs_l(adf, blk, 12);
+		if(have > bsize || off >= have)
 			break;
 		take = have - off;
 		if(take > n - done)
 			take = n - done;
-		memcpy(out + done, adf + blk * OFS_BSIZE + 24 + off, take);
+		memcpy(out + done, adf + blk * OFS_BSIZE + (ofs_ffs(adf) ? 0 : 24) + off, take);
 		done += take;
 	}
 	return done;

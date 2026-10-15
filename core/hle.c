@@ -154,20 +154,21 @@ void hle_build(struct Amiga *m)
 	hle_w8(m, eb + LIB_FLAGS, 0x04);
 	hle_w16(m, eb + LIB_NEGSIZE, HLE_EXEC_NEGSIZE);
 	hle_w16(m, eb + LIB_POSSIZE, HLE_EXEC_POSSIZE);
-	hle_w16(m, eb + LIB_VERSION, 34);
-	hle_w16(m, eb + LIB_REVISION, 2);
+	hle_w16(m, eb + LIB_VERSION, HLE_EXEC_VERSION);
+	hle_w16(m, eb + LIB_REVISION, HLE_EXEC_REVISION);
 	hle_w16(m, eb + LIB_OPENCNT, 2);
 	hle_w32(m, eb + EB_CHKBASE, ~eb);
 	hle_w32(m, eb + EB_SYSSTKUPPER, HLE_SSP);
 	hle_w32(m, eb + EB_SYSSTKLOWER, 0xC7E800u);
 	hle_w32(m, eb + EB_MAXLOCMEM, AMIGA_CHIP_SIZE);
-	hle_w32(m, eb + EB_MAXEXTMEM, AMIGA_SLOW_BASE + AMIGA_SLOW_SIZE);
+	hle_w32(m, eb + EB_MAXEXTMEM, AMIGA_A1200 ? 0 : AMIGA_SLOW_BASE + AMIGA_SLOW_SIZE);
 	hle_w16(m, eb + 0x52, hle_exec_chksum(m));
 	hle_w32(m, eb + EB_THISTASK, HLE_THIS_TASK);
 	hle_w16(m, eb + 0x120, 0x0010);
 	hle_w8(m, eb + EB_IDNESTCNT, 0xFF);
 	hle_w8(m, eb + EB_TDNESTCNT, 0xFF);
-	hle_w16(m, eb + EB_ATTNFLAGS, 0);
+	/* AttnFlags: none on the 68000; AFF_68010 | AFF_68020 on the A1200 (exec/execbase.i). */
+	hle_w16(m, eb + EB_ATTNFLAGS, AMIGA_A1200 ? 0x0003 : 0);
 	hle_w32(m, eb + 0x13C, 0x0000FFFFu);
 	hle_w16(m, eb + 0x140, 0x8000);
 	hle_w8(m, eb + EB_VBLANKFREQ, 50);
@@ -190,9 +191,9 @@ void hle_build(struct Amiga *m)
 	hle_w8(m, HLE_EXP_BASE + LN_TYPE, NT_LIBRARY);
 	hle_w32(m, HLE_EXP_BASE + LN_NAME, s_exp);
 	hle_w16(m, HLE_EXP_BASE + LIB_NEGSIZE, HLE_EXP_NEGSIZE);
-	hle_w16(m, HLE_EXP_BASE + LIB_POSSIZE, 0x1C8);
-	hle_w16(m, HLE_EXP_BASE + LIB_VERSION, 34);
-	hle_w16(m, HLE_EXP_BASE + LIB_REVISION, 1);
+	hle_w16(m, HLE_EXP_BASE + LIB_POSSIZE, HLE_EXP_POSSIZE);
+	hle_w16(m, HLE_EXP_BASE + LIB_VERSION, HLE_EXP_VERSION);
+	hle_w16(m, HLE_EXP_BASE + LIB_REVISION, HLE_EXP_REVISION);
 	hle_add_tail(m, eb + EB_LIBLIST, HLE_EXP_BASE);
 	m->hle.stub_base[0] = HLE_EXP_BASE;
 	m->hle.stub_count = 1;
@@ -216,21 +217,29 @@ void hle_build(struct Amiga *m)
 	hle_w8(m, HLE_GFX_BASE + LN_TYPE, NT_LIBRARY);
 	hle_w32(m, HLE_GFX_BASE + LN_NAME, s_gfx);
 	hle_w16(m, HLE_GFX_BASE + LIB_NEGSIZE, HLE_GFX_NEGSIZE);
-	hle_w16(m, HLE_GFX_BASE + LIB_POSSIZE, 0x148);
-	hle_w16(m, HLE_GFX_BASE + LIB_VERSION, 34);
-	hle_w16(m, HLE_GFX_BASE + LIB_REVISION, 1);
+	hle_w16(m, HLE_GFX_BASE + LIB_POSSIZE, HLE_GFX_POSSIZE);
+	hle_w16(m, HLE_GFX_BASE + LIB_VERSION, HLE_GFX_VERSION);
+	hle_w16(m, HLE_GFX_BASE + LIB_REVISION, HLE_GFX_REVISION);
 	hle_add_tail(m, eb + EB_LIBLIST, HLE_GFX_BASE);
-	/* gb_DisplayFlags PAL and graphics' display limits, as the PAL machine holds them
-	 * (docs/runtime.md, "Kickstart handoff"). */
+	/* gb_DisplayFlags and graphics' display limits, as the PAL machine holds them; on the
+	 * A1200 also gb_ChipRevBits0 (docs/runtime.md, "Kickstart handoff"). */
+#if AMIGA_A1200
+	hle_w16(m, HLE_GFX_BASE + GB_DISPLAYFLAGS, 0x0014);
+	hle_w16(m, HLE_GFX_BASE + 0xD4, 0x0000);
+	hle_w16(m, HLE_GFX_BASE + 0xD6, 0x01C7);
+	hle_w16(m, HLE_GFX_BASE + 0xEA, 0x005D);
+	hle_w8(m, HLE_GFX_BASE + 0xEC, 0x13);
+#else
 	hle_w16(m, HLE_GFX_BASE + GB_DISPLAYFLAGS, 0x0004);
 	hle_w16(m, HLE_GFX_BASE + 0xD4, 0x0137);
 	hle_w16(m, HLE_GFX_BASE + 0xD6, 0x01D1);
+	hle_w16(m, HLE_GFX_BASE + 0xEA, 0x0030);
+#endif
 	hle_w16(m, HLE_GFX_BASE + 0xD8, 0x0100);
 	hle_w16(m, HLE_GFX_BASE + 0xDA, 0x0280);
 	hle_w16(m, HLE_GFX_BASE + 0xDC, 0x04CA);
 	hle_w16(m, HLE_GFX_BASE + 0xDE, 0x0513);
 	hle_w16(m, HLE_GFX_BASE + 0xE8, 0x3F9D);
-	hle_w16(m, HLE_GFX_BASE + 0xEA, 0x0030);
 
 	/* gb_copinit and the null sprite as they stand when the bootblock returns, and graphics'
 	 * vertical-blank server at priority 10: graphics.library 34 / Kickstart 1.3 behaviour
@@ -291,9 +300,11 @@ void hle_build(struct Amiga *m)
 	hle_w32(m, HLE_INT_BASE + LN_NAME, s_int);
 	hle_w16(m, HLE_INT_BASE + LIB_NEGSIZE, HLE_INT_NEGSIZE);
 	hle_w16(m, HLE_INT_BASE + LIB_POSSIZE, LIB_SIZE);
-	hle_w16(m, HLE_INT_BASE + LIB_VERSION, 34);
+	hle_w16(m, HLE_INT_BASE + LIB_VERSION, HLE_INT_VERSION);
+	hle_w16(m, HLE_INT_BASE + LIB_REVISION, HLE_INT_REVISION);
 	hle_add_tail(m, eb + EB_LIBLIST, HLE_INT_BASE);
 	hle_int_build(m);
+	hle_res_build(m);
 
 	/* The ROM's IORequest, opened on unit 0, and its reply port. */
 	hle_w8(m, HLE_BOOT_PORT + LN_TYPE, NT_MSGPORT);
@@ -456,6 +467,37 @@ static void hle_interrupt(struct Amiga *m, int level)
 	hle_call_guest(m, &f, code, data);
 }
 
+#if AMIGA_A1200
+/* A CIA's server (level 0 CIA-A, 1 CIA-B): the owner of each ICR bit in `bit` in turn, guest
+ * code by exec's interrupt conventions (cia.doc), the HLE's own at once; then the server returns
+ * with Z set. */
+static void hle_icr_next(struct Amiga *m, struct HleFrame *f)
+{
+	uint32_t pending = (uint32_t)f->bit;
+	uint32_t node = hle_res_icr_next(m, f->level, &pending);
+	f->bit = (int)pending;
+	if(node)
+	{
+		hle_call_guest(m, f, hle_r32(m, node + IS_CODE), hle_r32(m, node + IS_DATA));
+		return;
+	}
+	m->cpu.z = 1;
+	m->cpu.pc = cpu_pop32(m);
+}
+
+static void hle_icr_server(struct Amiga *m, int which)
+{
+	struct Cia *c = which ? &m->cia_b : &m->cia_a;
+	struct HleFrame f;
+	uint8_t enabled = c->icr_mask;
+	memset(&f, 0, sizeof f);
+	f.kind = HleFrameIcr;
+	f.level = which;
+	f.bit = cia_read(m, c, 0xD) & enabled & 0x1F;
+	hle_icr_next(m, &f);
+}
+#endif
+
 static void hle_continue(struct Amiga *m)
 {
 	struct HleFrame f;
@@ -504,6 +546,14 @@ static void hle_continue(struct Amiga *m)
 	case HleFrameLibInit:
 		hle_exec_lib_continue(m, &f);
 		return;
+#if AMIGA_A1200
+	case HleFrameIcr:
+		hle_icr_next(m, &f);
+		return;
+	case HleFrameDosRequest:
+		hle_dos_request_done(m, &f);
+		return;
+#endif
 	default:
 		amiga_fatal(m, "bad HLE frame kind %d", f.kind);
 		return;
@@ -542,18 +592,24 @@ static int hle_internal(struct Amiga *m, uint32_t off)
 		hle_continue(m);
 		return 0;
 	case 0x410:
-		/* graphics', gameport's and Intuition's vertical-blank work. */
+		/* graphics', gameport's, Intuition's and timer.device's vertical-blank work. */
 		hle_gfx_vblank(m);
 		hle_input_vblank(m);
 		hle_int_vblank(m);
+		hle_timer_vblank(m);
 		m->cpu.z = 1;
 		m->cpu.pc = cpu_pop32(m);
 		return 0;
 	case 0x414:
 	{
 		/* cia.resource acknowledges CIA-A by reading ICR; a serial-port interrupt is a key
-		 * for keyboard.device. */
-		uint8_t icr = cia_read(m, &m->cia_a, 0xD);
+		 * for keyboard.device. On the A1200 each ICR bit goes to its owner (hle_res.c). */
+		uint8_t icr;
+#if AMIGA_A1200
+		hle_icr_server(m, 0);
+		return 0;
+#endif
+		icr = cia_read(m, &m->cia_a, 0xD);
 		if(icr & 0x08)
 			hle_input_key(m, m->cia_a.sdr);
 		m->cpu.z = 1;
@@ -561,6 +617,10 @@ static int hle_internal(struct Amiga *m, uint32_t off)
 		return 0;
 	}
 	case 0x418:
+#if AMIGA_A1200
+		hle_icr_server(m, 1);
+		return 0;
+#endif
 		cia_read(m, &m->cia_b, 0xD);
 		m->cpu.z = 1;
 		m->cpu.pc = cpu_pop32(m);
@@ -618,6 +678,15 @@ static int hle_internal(struct Amiga *m, uint32_t off)
 		hle_audio_interrupt(m, (int)(m->cpu.a[1] & 3));
 		m->cpu.pc = cpu_pop32(m);
 		return 0;
+	case 0x434:
+		/* keyboard.device's serial-port interrupt, called as its ICR vector's code. */
+		hle_input_key(m, m->cia_a.sdr);
+		m->cpu.pc = cpu_pop32(m);
+		return 0;
+	case 0x438:
+		/* An ICR owner whose work the HLE does elsewhere. */
+		m->cpu.pc = cpu_pop32(m);
+		return 0;
 	default:
 		amiga_fatal(m, "jump to internal HLE entry 0x%03X", (unsigned)off);
 		return 0;
@@ -628,7 +697,7 @@ static int hle_internal(struct Amiga *m, uint32_t off)
 int hle_dispatch(struct Amiga *m)
 {
 	uint32_t pc = m->cpu.pc & 0xFFFFFFu;
-	int lib = (int)((pc >> 12) & 15);
+	int lib = (int)((pc >> 12) & (HLE_LIBS - 1));
 	uint32_t off = pc & 0xFFF;
 	uint32_t caller = mem_read32(m, m->cpu.a[7]);
 	int done;
@@ -646,17 +715,17 @@ int hle_dispatch(struct Amiga *m)
 	case HLE_LIB_DOS: done = hle_dos_call(m, off); break;
 	case HLE_LIB_LAYERS: done = hle_layers_call(m, off); break;
 	case HLE_LIB_AUDIO: done = hle_audio_call(m, off); break;
-	default: done = -1; break;
+	default: done = lib >= HLE_LIB_POTGO ? hle_res_call(m, lib, off) : -1; break;
 	}
 	if(done < 0)
 	{
-		static const char *names[HLE_CALL_LIBS] = {"exec.library", "graphics.library", "trackdisk.device", "input.device",
-			"intuition.library", "dos.library", "layers.library", "audio.device"};
+		static const char *names[HLE_LIBS] = {"exec.library", "graphics.library", "trackdisk.device", "input.device",
+			"intuition.library", "dos.library", "layers.library", "audio.device", [HLE_LIB_POTGO] = "potgo.resource",
+			[HLE_LIB_CIAA] = "ciaa.resource", [HLE_LIB_CIAB] = "ciab.resource", [HLE_LIB_TIMER] = "timer.device",
+			[HLE_LIB_KEYBOARD] = "keyboard.device", [HLE_LIB_GAMEPORT] = "gameport.device"};
 		char buf[64];
-		const char *who = "unknown library";
-		if(lib < HLE_CALL_LIBS)
-			who = names[lib];
-		else if(lib >= HLE_LIB_STUB && lib - HLE_LIB_STUB < m->hle.stub_count)
+		const char *who = names[lib] ? names[lib] : "unknown library";
+		if(lib >= HLE_LIB_STUB && lib - HLE_LIB_STUB < m->hle.stub_count)
 		{
 			hle_name(m, hle_r32(m, m->hle.stub_base[lib - HLE_LIB_STUB] + LN_NAME), buf);
 			who = buf;

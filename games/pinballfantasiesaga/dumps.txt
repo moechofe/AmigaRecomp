@@ -1,0 +1,5 @@
+# docs/game.md, item 4.
+708fc612 disk1 known Pinball Fantasies (1993)(21st Century)(AGA)(Disk 1 of 4)[cr PDY]
+eced3e6c disk2 known Pinball Fantasies (1993)(21st Century)(AGA)(Disk 2 of 4)
+ff04b00c disk3 known Pinball Fantasies (1993)(21st Century)(AGA)(Disk 3 of 4)
+912a609f disk4 known Pinball Fantasies (1993)(21st Century)(AGA)(Disk 4 of 4)

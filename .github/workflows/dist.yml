@@ -2,6 +2,11 @@ name: dist
 
 on:
   workflow_dispatch:
+    inputs:
+      games:
+        description: Game ids to build, separated by spaces (nothing is released)
+        required: true
+        type: string
   push:
     tags: ['v*']
 
@@ -15,13 +20,61 @@ env:
   MACOS_MIN: '11.0'
 
 jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      games: ${{ steps.games.outputs.games }}
+      version: ${{ steps.games.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the games to build from the tag or the dispatch input
+        id: games
+        env:
+          INPUT_GAMES: ${{ inputs.games }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tag=$GITHUB_REF_NAME
+            version=${tag%%-*}
+            [[ $version =~ ^v[0-9]+(\.[0-9]+)*$ ]] || fail "tag $tag is not v<version>-<id>[-<id>...]"
+            rest=${tag:${#version}}
+            [ -n "$rest" ] || fail "tag $tag names no game: v<version>-<id>[-<id>...]"
+            read -ra ids <<< "${rest//-/ }"
+            tags=$(git ls-remote --tags --refs origin)
+            while read -r _ ref; do
+              other=${ref#refs/tags/}
+              if [ "$other" != "$tag" ] && [ "${other%%-*}" = "$version" ]; then
+                fail "version $version is already used by tag $other"
+              fi
+            done <<< "$tags"
+          else
+            version=
+            read -ra ids <<< "$INPUT_GAMES"
+          fi
+          games=()
+          for id in "${ids[@]}"; do
+            [[ $id =~ ^[a-z0-9_]+$ ]] || fail "'$id' is not a game id"
+            [ -f "games/$id/CMakeLists.txt" ] || fail "games/$id/CMakeLists.txt does not exist"
+            for seen in "${games[@]}"; do
+              [ "$seen" != "$id" ] || fail "$id is named twice"
+            done
+            games+=("$id")
+          done
+          [ "${#games[@]}" -gt 0 ] || fail "no game to build"
+          echo "games: ${games[*]}"
+          echo "version: $version"
+          echo "games=$(printf '%s\n' "${games[@]}" | jq -Rsc 'split("\n")[:-1]')" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
   linux:
+    needs: prepare
     runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     container: debian:11
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros, lemmings, lotus2, pinballfantasies, pirates, settlers]
+        game: ${{ fromJSON(needs.prepare.outputs.games) }}
         arch: [x86_64, aarch64]
     defaults:
       run:
@@ -124,13 +177,13 @@ jobs:
           if-no-files-found: error
 
   linux-run:
-    needs: appimage
+    needs: [prepare, appimage]
     runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     container: ubuntu:20.04
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros, lemmings, lotus2, pinballfantasies, pirates, settlers]
+        game: ${{ fromJSON(needs.prepare.outputs.games) }}
         arch: [x86_64, aarch64]
     defaults:
       run:
@@ -163,11 +216,12 @@ jobs:
           [ "$code" = 2 ] && grep -q ' is missing: ' err.txt
 
   windows:
+    needs: prepare
     runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros, lemmings, lotus2, pinballfantasies, pirates, settlers]
+        game: ${{ fromJSON(needs.prepare.outputs.games) }}
     defaults:
       run:
         shell: msys2 {0}
@@ -229,11 +283,12 @@ jobs:
           if-no-files-found: error
 
   macos:
+    needs: prepare
     runs-on: macos-15
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros, lemmings, lotus2, pinballfantasies, pirates, settlers]
+        game: ${{ fromJSON(needs.prepare.outputs.games) }}
     env:
       GAME: ${{ matrix.game }}
     steps:
@@ -302,12 +357,12 @@ jobs:
           if-no-files-found: error
 
   macos-run:
-    needs: macos
+    needs: [prepare, macos]
     runs-on: macos-15-intel
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros, lemmings, lotus2, pinballfantasies, pirates, settlers]
+        game: ${{ fromJSON(needs.prepare.outputs.games) }}
     env:
       GAME: ${{ matrix.game }}
     steps:
@@ -337,12 +392,12 @@ jobs:
           grep -q ' is missing: ' open-err.txt
 
   appimage:
-    needs: linux
+    needs: [prepare, linux]
     runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros, lemmings, lotus2, pinballfantasies, pirates, settlers]
+        game: ${{ fromJSON(needs.prepare.outputs.games) }}
         arch: [x86_64, aarch64]
     env:
       GAME: ${{ matrix.game }}
@@ -376,14 +431,25 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [appimage, linux-run, windows, macos-run]
+    needs: [prepare, appimage, linux-run, windows, macos-run]
     runs-on: ubuntu-24.04
+    # Each release copies from the latest one, so two must never be made at once.
+    concurrency:
+      group: release
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+      REPO: ${{ github.repository }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      GAMES: ${{ join(fromJSON(needs.prepare.outputs.games), ' ') }}
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: release/note.md
+          sparse-checkout: |
+            release/note.md
+            games/*/packaging/*.desktop
           sparse-checkout-cone-mode: false
 
       - uses: actions/download-artifact@v4
@@ -392,12 +458,68 @@ jobs:
           merge-multiple: true
           path: assets
 
-      - name: Publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-          REPO: ${{ github.repository }}
+      - name: List the files built here in the manifest
         run: |
+          for game in $GAMES; do
+            for file in "$game-windows-x86_64.exe" "$game-linux-x86_64.AppImage" "$game-linux-aarch64.AppImage" "$game-macos-universal.zip"; do
+              if [ ! -f "assets/$file" ]; then
+                echo "::error::$file was not built"
+                exit 1
+              fi
+            done
+          done
+          for path in assets/*; do
+            echo "$(sha256sum "$path" | cut -d' ' -f1) ${path#assets/} $TAG $GITHUB_SHA"
+          done > "$RUNNER_TEMP/manifest.txt"
+
+      - name: Copy the other games' files from the latest release
+        run: |
+          if ! prev=$(gh api "repos/$REPO/releases/latest" --jq .tag_name 2> "$RUNNER_TEMP/latest-err.txt"); then
+            cat "$RUNNER_TEMP/latest-err.txt"
+            grep -q 'HTTP 404' "$RUNNER_TEMP/latest-err.txt"
+            echo "no release yet: nothing to copy"
+            exit 0
+          fi
+          echo "latest release: $prev"
+          gh release download "$prev" --repo "$REPO" --dir "$RUNNER_TEMP/prev"
+          old="$RUNNER_TEMP/prev/manifest.txt"
+          if [ ! -f "$old" ]; then
+            # A release from before the manifest: every file was built from its tag's commit.
+            commit=$(gh api "repos/$REPO/commits/$prev" --jq .sha)
+            old="$RUNNER_TEMP/prev-manifest.txt"
+            for path in "$RUNNER_TEMP"/prev/*; do
+              echo "$(sha256sum "$path" | cut -d' ' -f1) ${path##*/} $prev $commit"
+            done > "$old"
+          fi
+          for path in "$RUNNER_TEMP"/prev/*; do
+            file=${path##*/}
+            [ "$file" != manifest.txt ] || continue
+            case " $GAMES " in *" ${file%%-*} "*) continue ;; esac
+            line=$(awk -v file="$file" '$2 == file' "$old")
+            if [ -z "$line" ]; then
+              echo "::error::$prev's manifest has no line for $file"
+              exit 1
+            fi
+            if [ "$(sha256sum "$path" | cut -d' ' -f1)" != "${line%% *}" ]; then
+              echo "::error::$file does not match $prev's manifest"
+              exit 1
+            fi
+            cp "$path" assets/
+            echo "$line" >> "$RUNNER_TEMP/manifest.txt"
+          done
+
+      - name: Publish
+        run: |
+          sort -k2 "$RUNNER_TEMP/manifest.txt" > assets/manifest.txt
+          cat assets/manifest.txt
+          titles=()
+          for game in $GAMES; do
+            titles+=("$(sed -n 's/^Name=//p' "games/$game/packaging/$game.desktop")")
+          done
+          REBUILT=$(printf '%s, ' "${titles[@]}")
+          export REBUILT=${REBUILT%, }
+          envsubst '$TAG $REPO $REBUILT' < release/note.md > "$RUNNER_TEMP/note.md"
           ls -l assets
-          envsubst '$TAG $REPO' < release/note.md > "$RUNNER_TEMP/note.md"
-          gh release create "$TAG" assets/* --repo "$REPO" --title "$TAG" --notes-file "$RUNNER_TEMP/note.md" --generate-notes
+          # A draft stays hidden until every file is uploaded.
+          gh release create "$TAG" assets/* --repo "$REPO" --draft --title "$VERSION" --notes-file "$RUNNER_TEMP/note.md" --generate-notes
+          gh release edit "$TAG" --repo "$REPO" --draft=false --latest

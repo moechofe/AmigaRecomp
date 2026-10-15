@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Pinball Fantasies AGA
+Comment=Amiga game running natively from your own disks
+Exec=pinballfantasiesaga %F
+Icon=pinballfantasiesaga
+Terminal=false
+Categories=Game;ArcadeGame;
+StartupWMClass=pinballfantasiesaga

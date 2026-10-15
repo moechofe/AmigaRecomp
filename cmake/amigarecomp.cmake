@@ -145,12 +145,19 @@ amiga_warnings(amiga_frontend)
 
 # --- one executable per game -------------------------------------------------------------------
 
-# amiga_add_game(<id> [CHIP_1MB]): CHIP_1MB builds the machine, core and tests included, with
-# 1 MB of chip RAM behind the ECS Agnus instead of 512 KB behind the OCS one.
+# amiga_add_game(<id> [CHIP_1MB | A1200]): CHIP_1MB builds the machine, core and tests included,
+# with 1 MB of chip RAM behind the ECS Agnus instead of 512 KB behind the OCS one. A1200 builds
+# an A1200 instead: a 68EC020, the AGA chipset and 2 MB of chip RAM, with Kickstart 3.0's HLE.
 function(amiga_add_game id)
-	cmake_parse_arguments(PARSE_ARGV 1 game "CHIP_1MB" "" "")
+	cmake_parse_arguments(PARSE_ARGV 1 game "CHIP_1MB;A1200" "" "")
+	if(game_CHIP_1MB AND game_A1200)
+		message(FATAL_ERROR "amiga_add_game(${id}): CHIP_1MB and A1200 exclude each other")
+	endif()
 	if(game_CHIP_1MB)
 		target_compile_definitions(amiga_core PUBLIC AMIGA_CHIP_SIZE=0x100000u)
+	endif()
+	if(game_A1200)
+		target_compile_definitions(amiga_core PUBLIC AMIGA_A1200=1 AMIGA_CHIP_SIZE=0x200000u)
 	endif()
 	if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/dumps.txt")
 		message(FATAL_ERROR "${CMAKE_CURRENT_SOURCE_DIR}/dumps.txt is missing (docs/game.md, item 4)")

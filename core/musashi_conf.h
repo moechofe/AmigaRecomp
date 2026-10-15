@@ -9,9 +9,13 @@
 
 #define M68K_COMPILE_FOR_MAME      M68K_OPT_OFF
 
-/* The A500's CPU is a plain 68000. */
+/* The A500's CPU is a plain 68000, the A1200's a 68EC020 (AMIGA_A1200, core/amiga.h). */
 #define M68K_EMULATE_010           M68K_OPT_OFF
+#if defined(AMIGA_A1200) && AMIGA_A1200
+#define M68K_EMULATE_EC020         M68K_OPT_ON
+#else
 #define M68K_EMULATE_EC020         M68K_OPT_OFF
+#endif
 #define M68K_EMULATE_020           M68K_OPT_OFF
 #define M68K_EMULATE_030           M68K_OPT_OFF
 #define M68K_EMULATE_040           M68K_OPT_OFF

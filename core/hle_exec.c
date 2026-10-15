@@ -42,14 +42,22 @@ static void hle_mem_header(struct Amiga *m, uint32_t mh, uint16_t attr, int8_t p
 }
 
 /* Both MemHeaders and their free lists exactly as Kickstart 1.3 left them at the bootblock
- * call, walked chunk by chunk under WinUAE: docs/runtime.md, "Kickstart handoff". */
+ * call, walked chunk by chunk under WinUAE: docs/runtime.md, "Kickstart handoff". The A1200 has
+ * the chip MemHeader alone, with Kickstart 3.0's attributes (MEMF_PUBLIC | MEMF_CHIP |
+ * MEMF_LOCAL | MEMF_24BITDMA | MEMF_KICK); its free list is ours, the A500's chunk running on
+ * to the end of chip RAM, since Kickstart 3.0 keeps its own structures in chip RAM where the
+ * HLE keeps them in the slow-RAM range (docs/runtime.md, "Kickstart handoff"). */
 void hle_mem_init(struct Amiga *m)
 {
-	static const uint32_t slow[4] = {0xC01808u, 0x10, 0xC04AD0u, 0x79D30u};
 	static const uint32_t chip[2] = {0x0059E8u, AMIGA_CHIP_SIZE - 0x0059E8u};
+#if AMIGA_A1200
+	hle_mem_header(m, HLE_CHIP_MEMHEADER, 0x0703, -10, 0x000420u, AMIGA_CHIP_SIZE);
+#else
+	static const uint32_t slow[4] = {0xC01808u, 0x10, 0xC04AD0u, 0x79D30u};
 	hle_mem_header(m, HLE_SLOW_MEMHEADER, MEMF_PUBLIC | MEMF_FAST, 0, 0xC004E8u, 0xC7E800u);
 	hle_mem_header(m, HLE_CHIP_MEMHEADER, MEMF_PUBLIC | MEMF_CHIP, -10, 0x000420u, AMIGA_CHIP_SIZE);
 	hle_mem_set(m, HLE_SLOW_MEMHEADER, slow, 2);
+#endif
 	hle_mem_set(m, HLE_CHIP_MEMHEADER, chip, 1);
 }
 
@@ -212,6 +220,15 @@ static int hle_begin_io(struct Amiga *m, uint32_t io)
 		if(!hle_audio_io(m, io))
 			return 0;
 	}
+#if AMIGA_A1200
+	else if(dev == HLE_TIMER_BASE)
+	{
+		if(!hle_timer_io(m, io))
+			return 0;
+	}
+	else if(dev == HLE_KBD_BASE)
+		hle_kbd_io(m, io);
+#endif
 	else
 	{
 		amiga_fatal(m, "I/O on device 0x%06X, which this runtime does not provide", dev);
@@ -450,6 +467,134 @@ void hle_exec_lib_continue(struct Amiga *m, struct HleFrame *f)
 	m->cpu.a[6] = base;
 }
 
+/* RawDoFmt's output, formatted here (exec autodoc, RawDoFmt: %[-][0][width][.limit][l]type with
+ * types b, c, d, s, u, x and X; data words unless `l`, pointers for s and b), into a buffer the
+ * HLE allocates, ended by the NUL the autodoc also hands to putChProc. Returns the buffer and
+ * sets *len (with the NUL) and *next (the data after the last argument), or 0. */
+static uint32_t hle_fmt(struct Amiga *m, uint32_t fmt, uint32_t data, uint32_t *len, uint32_t *next)
+{
+	static char out[1024];
+	uint32_t n = 0, buf, i;
+	for(;;)
+	{
+		char c = (char)hle_r8(m, fmt++), num[16], pad = ' ';
+		const char *s = num;
+		int left = 0, width = 0, limit = -1, lng = 0, k = 0, slen;
+		uint32_t v = 0, at = 0;
+		if(!c)
+			break;
+		if(c != '%')
+		{
+			if(n < sizeof out - 1)
+				out[n++] = c;
+			continue;
+		}
+		c = (char)hle_r8(m, fmt++);
+		if(c == '-')
+		{
+			left = 1;
+			c = (char)hle_r8(m, fmt++);
+		}
+		if(c == '0')
+			pad = '0';
+		for(; c >= '0' && c <= '9'; c = (char)hle_r8(m, fmt++))
+			width = width * 10 + (c - '0');
+		if(c == '.')
+			for(limit = 0, c = (char)hle_r8(m, fmt++); c >= '0' && c <= '9'; c = (char)hle_r8(m, fmt++))
+				limit = limit * 10 + (c - '0');
+		if(c == 'l')
+		{
+			lng = 1;
+			c = (char)hle_r8(m, fmt++);
+		}
+		switch(c)
+		{
+		case 'd': case 'u': case 'x': case 'X': case 'c':
+			v = lng ? hle_r32(m, data) : hle_r16(m, data);
+			data += lng ? 4 : 2;
+			if(c == 'd' && !lng)
+				v = (uint32_t)(int32_t)(int16_t)v;
+			if(c == 'c')
+			{
+				num[0] = (char)v;
+				num[1] = 0;
+			}
+			else
+				snprintf(num, sizeof num, c == 'd' ? "%d" : c == 'u' ? "%u" : c == 'x' ? "%x" : "%X", v);
+			break;
+		case 's':
+		case 'b':
+			at = hle_r32(m, data);
+			data += 4;
+			s = 0;
+			break;
+		case '%':
+			num[0] = '%';
+			num[1] = 0;
+			break;
+		default:
+			amiga_fatal(m, "exec RawDoFmt: format type '%c' is not implemented", c);
+			return 0;
+		}
+		if(!s)
+		{
+			/* %b is a BSTR: a BPTR to a length byte and the characters. */
+			uint32_t from = c == 'b' ? (at << 2) + 1 : at, count = c == 'b' ? hle_r8(m, at << 2) : 0xFFFFFFFFu;
+			for(slen = 0; (uint32_t)slen < count && hle_r8(m, from + (uint32_t)slen) && (limit < 0 || slen < limit); slen++)
+				;
+			for(k = 0; !left && k < width - slen; k++)
+				if(n < sizeof out - 1)
+					out[n++] = ' ';
+			for(i = 0; i < (uint32_t)slen; i++)
+				if(n < sizeof out - 1)
+					out[n++] = (char)hle_r8(m, from + i);
+		}
+		else
+		{
+			slen = (int)strlen(s);
+			for(k = 0; !left && k < width - slen; k++)
+				if(n < sizeof out - 1)
+					out[n++] = pad;
+			for(i = 0; s[i]; i++)
+				if(n < sizeof out - 1)
+					out[n++] = s[i];
+		}
+		for(; left && k < width - slen; k++)
+			if(n < sizeof out - 1)
+				out[n++] = ' ';
+	}
+	out[n++] = 0;
+	buf = hle_alloc(m, n, MEMF_PUBLIC, 0);
+	if(!buf)
+	{
+		amiga_fatal(m, "exec RawDoFmt: no memory for %u characters", n);
+		return 0;
+	}
+	for(i = 0; i < n; i++)
+		hle_w8(m, buf + i, (uint8_t)out[i]);
+	*len = n;
+	*next = data;
+	return buf;
+}
+
+/* RawDoFmt's next character to putChProc (D0 the character, A3 putChData as the last call
+ * left it), and after the NUL its return: D0 the data after the arguments, A3 as it was. */
+void hle_exec_fmt_continue(struct Amiga *m, struct HleFrame *f)
+{
+	uint32_t buf = f->saved[0], i = f->saved[1], len = f->saved[2];
+	if(i == len)
+	{
+		hle_free(m, buf, len);
+		D0 = f->saved[3];
+		m->cpu.a[3] = f->node;
+		m->cpu.pc = cpu_pop32(m);
+		return;
+	}
+	f->saved[1] = i + 1;
+	hle_call(m, f, f->saved[4]);
+	D0 = hle_r8(m, buf + i);
+}
+
 /* OpenLibrary of a library exec does not hold: one already in the list, or LIBS:<name> loaded
  * through dos and set up by its ROMTag, as ramlib does. Returns 1 when guest code now runs, 0
  * when there is no such library (D0 untouched), -1 after a fatal. */
@@ -510,6 +655,18 @@ static int hle_open_disk_library(struct Amiga *m, uint32_t name_at, uint32_t ver
 		amiga_fatal(m, "OpenLibrary(\"%s\"): no memory for the library", name);
 		return -1;
 	}
+	/* The ROMTag's node type, name, version and ID string fill what the data table left 0, so a
+	 * library with no data table opens at its version: nonvolatile.library 40.31 has none and
+	 * its init leaves lib_Version 0, yet a program opens it at version 39 on the A1200 oracle
+	 * [INFERENCE: InitResident fills them; the autodoc does not say]. */
+	if(!hle_r8(m, base + LN_TYPE))
+		hle_w8(m, base + LN_TYPE, hle_r8(m, rt + 0x0C));
+	if(!hle_r32(m, base + LN_NAME))
+		hle_w32(m, base + LN_NAME, hle_r32(m, rt + 0x0E));
+	if(!hle_r16(m, base + LIB_VERSION))
+		hle_w16(m, base + LIB_VERSION, hle_r8(m, rt + 0x0B));
+	if(!hle_r32(m, base + LIB_IDSTRING))
+		hle_w32(m, base + LIB_IDSTRING, hle_r32(m, rt + 0x12));
 	amiga_logf(m, "OpenLibrary(\"%s\"): loaded from LIBS:, version %u", name, hle_r16(m, base + LIB_VERSION));
 	f.node = base;
 	initfn = hle_r32(m, init + 12);
@@ -542,6 +699,73 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo)
 		hle_w32(m, pred + LN_SUCC, A1);
 		return 0;
 	}
+	case 684: /* AllocVec(d0 size, d1 requirements): the size is kept in the longword before the block */
+	{
+		uint32_t p = hle_alloc(m, D0 + 4, D1, 0);
+		if(p)
+		{
+			hle_w32(m, p, D0 + 4);
+			p += 4;
+		}
+		D0 = p;
+		return 0;
+	}
+	case 690: /* FreeVec(a1 memoryBlock) */
+		if(A1)
+			hle_free(m, A1 - 4, hle_r32(m, A1 - 4));
+		return 0;
+	case 522: /* RawDoFmt(a0 format, a1 data, a2 putChProc, a3 putChData): each character,
+	           * the NUL too, to putChProc; D0 the data after the arguments */
+	{
+		struct HleFrame f;
+		uint32_t len, next, buf;
+		if(!m->cpu.a[2])
+		{
+			amiga_fatal(m, "exec RawDoFmt with no putChProc is not implemented");
+			return 0;
+		}
+		buf = hle_fmt(m, A0, A1, &len, &next);
+		if(!buf)
+			return 0;
+		memset(&f, 0, sizeof f);
+		f.kind = HleFrameFmt;
+		f.node = m->cpu.a[3];
+		f.saved[0] = buf;
+		f.saved[2] = len;
+		f.saved[3] = next;
+		f.saved[4] = m->cpu.a[2];
+		hle_exec_fmt_continue(m, &f);
+		return 1;
+	}
+	case 498: /* OpenResource(a1 name): on the ResourceList, which the A500's HLE does not build */
+	{
+		char name[64];
+		uint32_t n;
+		if(!AMIGA_A1200)
+			return -1;
+		hle_name(m, A1, name);
+		for(n = hle_r32(m, eb + EB_RESLIST + LH_HEAD); hle_r32(m, n + LN_SUCC); n = hle_r32(m, n + LN_SUCC))
+			if(!hle_strcmp(m, hle_r32(m, n + LN_NAME), name))
+				break;
+		if(!hle_r32(m, n + LN_SUCC))
+		{
+			amiga_fatal(m, "exec OpenResource(\"%s\"): the HLE has no such resource", name);
+			return 0;
+		}
+		D0 = n;
+		return 0;
+	}
+	case 390: /* FindPort(a1 name): on the PortList */
+	{
+		char name[64];
+		uint32_t n;
+		hle_name(m, A1, name);
+		for(n = hle_r32(m, eb + EB_PORTLIST + LH_HEAD); hle_r32(m, n + LN_SUCC); n = hle_r32(m, n + LN_SUCC))
+			if(hle_r32(m, n + LN_NAME) && !hle_strcmp(m, hle_r32(m, n + LN_NAME), name))
+				break;
+		D0 = hle_r32(m, n + LN_SUCC) ? n : 0;
+		return 0;
+	}
 	case 240: /* AddHead(a0 list, a1 node) */
 	{
 		uint32_t head = hle_r32(m, A0 + LH_HEAD);
@@ -554,6 +778,83 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo)
 	case 246: /* AddTail(a0 list, a1 node) */
 		hle_add_tail(m, A0, A1);
 		return 0;
+	case 420: /* SetFunction(a1 library, a0.w funcOffset, d0 newFunction): the old function; the
+	           * slot becomes a JMP to the new one, and the library is marked LIBF_CHANGED */
+	{
+		int16_t offset = (int16_t)(A0 & 0xFFFF);
+		uint32_t slot = A1 + (uint32_t)(int32_t)offset;
+		uint32_t old = hle_r16(m, slot) == 0x4EF9 ? hle_r32(m, slot + 2) : 0;
+		if(!old)
+		{
+			amiga_fatal(m, "exec SetFunction: library 0x%06X offset %d is not a JMP slot", A1, offset);
+			return 0;
+		}
+		hle_w16(m, slot, 0x4EF9);
+		hle_w32(m, slot + 2, D0);
+		hle_w8(m, A1 + LIB_FLAGS, (uint8_t)(hle_r8(m, A1 + LIB_FLAGS) | 0x02));
+		D0 = old;
+		return 0;
+	}
+	/* Semaphores (exec autodoc, V33-V39). One task runs, so a semaphore is free or held by
+	 * it; one another task holds would never be released, and is fatal. */
+	case 558: /* InitSemaphore(a0 semaphore) */
+	{
+		for(t = LN_PRI; t < SS_SIZE; t++)
+			hle_w8(m, A0 + t, 0);
+		hle_w8(m, A0 + LN_TYPE, NT_SIGNALSEM);
+		hle_new_list(m, A0 + SS_WAITQUEUE, 0);
+		hle_w16(m, A0 + SS_QUEUECOUNT, 0xFFFF);
+		return 0;
+	}
+	case 564: /* ObtainSemaphore(a0 semaphore) */
+	case 576: /* AttemptSemaphore(a0 semaphore): 1, obtained */
+	case 678: /* ObtainSemaphoreShared(a0 semaphore) */
+	case 720: /* AttemptSemaphoreShared(a0 semaphore): 1, obtained */
+	{
+		uint32_t me = hle_r32(m, eb + EB_THISTASK), owner = hle_r32(m, A0 + SS_OWNER);
+		if(owner && owner != me)
+		{
+			amiga_fatal(m, "exec: semaphore 0x%06X is held by task 0x%06X; only one task runs", A0, owner);
+			return 0;
+		}
+		hle_w32(m, A0 + SS_OWNER, me);
+		hle_w16(m, A0 + SS_NESTCOUNT, (uint16_t)(hle_r16(m, A0 + SS_NESTCOUNT) + 1));
+		hle_w16(m, A0 + SS_QUEUECOUNT, (uint16_t)(hle_r16(m, A0 + SS_QUEUECOUNT) + 1));
+		D0 = 1;
+		return 0;
+	}
+	case 570: /* ReleaseSemaphore(a0 semaphore) */
+	{
+		uint16_t nest = (uint16_t)(hle_r16(m, A0 + SS_NESTCOUNT) - 1);
+		hle_w16(m, A0 + SS_NESTCOUNT, nest);
+		hle_w16(m, A0 + SS_QUEUECOUNT, (uint16_t)(hle_r16(m, A0 + SS_QUEUECOUNT) - 1));
+		if(!nest)
+			hle_w32(m, A0 + SS_OWNER, 0);
+		return 0;
+	}
+	case 600: /* AddSemaphore(a1 semaphore): initialised, then enqueued on the SemaphoreList */
+	{
+		uint32_t a0 = A0;
+		A0 = A1;
+		hle_exec_call(m, 558);
+		A0 = a0;
+		hle_enqueue(m, eb + EB_SEMLIST, A1);
+		return 0;
+	}
+	case 606: /* RemSemaphore(a1 semaphore) */
+		hle_remove(m, A1);
+		return 0;
+	case 594: /* FindSemaphore(a1 name): on the SemaphoreList */
+	{
+		char name[64];
+		uint32_t n;
+		hle_name(m, A1, name);
+		for(n = hle_r32(m, eb + EB_SEMLIST + LH_HEAD); hle_r32(m, n + LN_SUCC); n = hle_r32(m, n + LN_SUCC))
+			if(hle_r32(m, n + LN_NAME) && !hle_strcmp(m, hle_r32(m, n + LN_NAME), name))
+				break;
+		D0 = hle_r32(m, n + LN_SUCC) ? n : 0;
+		return 0;
+	}
 	case 252: /* Remove(a1 node) */
 		hle_remove(m, A1);
 		return 0;
@@ -588,6 +889,17 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo)
 		for(t = 0; t < D0; t++)
 			hle_w8(m, A1 + t, hle_r8(m, A0 + t));
 		return 0;
+	case 636: /* CacheClearU: no CPU cache is modelled, so there is nothing to flush */
+	case 642: /* CacheClearE(a0 address, d0 length, d1 caches): the same */
+		return 0;
+	case 648: /* CacheControl(d0 cacheBits, d1 cacheMask): the old bits; CACRF_EnableI and the
+	           * other bits are the 68020's CACR, which Musashi holds and does not act on */
+	{
+		uint32_t old = m68k_get_reg(0, M68K_REG_CACR);
+		m68k_set_reg(M68K_REG_CACR, (old & ~D1) | (D0 & D1));
+		D0 = old;
+		return 0;
+	}
 	case 120: /* Disable */
 		hle_w16(m, 0xDFF09A, 0x4000);
 		hle_w8(m, eb + EB_IDNESTCNT, (uint8_t)(hle_r8(m, eb + EB_IDNESTCNT) + 1));
@@ -604,13 +916,12 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo)
 	case 138: /* Permit */
 		hle_w8(m, eb + EB_TDNESTCNT, (uint8_t)(hle_r8(m, eb + EB_TDNESTCNT) - 1));
 		return 0;
-	case 30: /* Supervisor(a5 userFunction): it runs in supervisor mode on an exception frame, and its RTE returns to the caller */
+	case 30: /* Supervisor(a5 userFunction): it runs in supervisor mode on the frame of a privilege violation (vector 8), and its RTE returns to the caller */
 	{
 		uint32_t ret = cpu_pop32(m);
 		uint16_t old = cpu_get_sr(&m->cpu);
 		cpu_set_sr(&m->cpu, (uint16_t)(old | 0x2000));
-		cpu_push32(m, ret);
-		cpu_push16(m, old);
+		cpu_push_frame(m, old, ret, 8);
 		m->cpu.pc = m->cpu.a[5];
 		return 1;
 	}
@@ -804,7 +1115,9 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo)
 	{
 		uint32_t lib, want = D0;
 		int builtin = 1;
-		if(!hle_strcmp(m, A1, "graphics.library"))
+		if(!hle_strcmp(m, A1, "exec.library"))
+			lib = HLE_EXEC_BASE;
+		else if(!hle_strcmp(m, A1, "graphics.library"))
 			lib = HLE_GFX_BASE;
 		else if(!hle_strcmp(m, A1, "intuition.library"))
 			lib = HLE_INT_BASE;
@@ -861,6 +1174,15 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo)
 			D0 = (uint32_t)(int32_t)hle_audio_open(m, A1);
 			return 0;
 		}
+#if AMIGA_A1200
+		else if(!hle_strcmp(m, A0, "timer.device") && hle_timer_open(m, D0))
+		{
+			dev = HLE_TIMER_BASE;
+			unit = D0;
+		}
+		else if(!hle_strcmp(m, A0, "keyboard.device") && D0 == 0)
+			dev = HLE_KBD_BASE;
+#endif
 		if(!dev)
 		{
 			char name[64];
@@ -902,6 +1224,10 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo)
 	case 480: /* AbortIO(a1 ioRequest) */
 		if(hle_r32(m, A1 + IO_DEVICE) == HLE_AUDIO_BASE)
 			hle_audio_abort(m, A1);
+#if AMIGA_A1200
+		if(hle_r32(m, A1 + IO_DEVICE) == HLE_TIMER_BASE)
+			hle_timer_abort(m, A1);
+#endif
 		D0 = 0;
 		return 0;
 	default:

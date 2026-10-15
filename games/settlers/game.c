@@ -29,11 +29,11 @@ static const struct GameDisk settlers_disks[] = {
 	{"disk3", "Disk 3 (Game)", 0, settlers_identify_disk3},
 };
 
-/* Disk 3 starts the game, and with 1 MB of chip RAM it asks for Disk 2 in DF0 after the title,
- * for its music, so Disk 2 waits in DF1. Disk 1 is the intro: given it, the game boots from
- * Disk 1 with Disk 2 in DF1, the intro asks for Disk 2 and then Disk 3 in DF0, and its loader
- * starts the game from Disk 3 (docs/format.md, "Boot chains"). */
-static const int settlers_intro_drives[4] = {0, 1, -1, -1};
+/* One drive: every program reads only DF0 and asks there for the disk it wants. Disk 3 starts
+ * the game, which with 1 MB of chip RAM asks for Disk 2 after the title, for its music. Disk 1
+ * is the intro: given it, the game boots from Disk 1, the intro asks for Disk 2 and then Disk 3,
+ * and its loader starts the game from Disk 3 (docs/format.md, "Boot chains"). */
+static const int settlers_intro_drives[4] = {0, -1, -1, -1};
 
 extern const struct GameHack settlers_hack_system_cursor;
 
@@ -44,9 +44,9 @@ const struct GameDef game_def = {
 	.title = "The Settlers",
 	.disks = settlers_disks,
 	.disk_count = 3,
-	.drives = {2, 1, -1, -1},
+	.drives = {2, -1, -1, -1},
 	.drives_optional = settlers_intro_drives,
-	.drive_count = 2,
+	.drive_count = 1,
 	.pointer_sprites = 0x01,
 	.view = {120, 32, 335, 273},
 	.hacks = settlers_hacks,

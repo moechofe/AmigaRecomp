@@ -61,6 +61,9 @@ void hle_input_key(struct Amiga *m, uint8_t sdr)
 	uint8_t raw = (uint8_t)~sdr;
 	uint8_t code = (uint8_t)((raw >> 1) | (raw << 7));
 	int key = code & 0x7F, up = code & 0x80;
+#if AMIGA_A1200
+	hle_kbd_key(m, code);
+#endif
 	if(!m->hle.input.open)
 		return;
 	if(key >= 0x60 && key <= 0x67)

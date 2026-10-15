@@ -43,23 +43,30 @@ void script_init(struct Script *s, const char *text)
 	s->text = text;
 }
 
+/* One bit per 24-bit colour, all clear between calls: each call clears the bits it set. */
+static uint8_t script_seen[(1u << 24) / 8];
+
 int script_colours(const struct Amiga *m)
 {
-	static uint8_t seen[4096 / 8];
 	int x, y, n = 0;
-	memset(seen, 0, sizeof seen);
 	for(y = 0; y < AMIGA_FRAME_H; y++)
 	{
 		for(x = 0; x < AMIGA_FRAME_W; x++)
 		{
-			uint16_t c = m->frame[AMIGA_FRAME_CAPTURE_ROW + y][x] & 0xFFF;
-			if(!(seen[c >> 3] & (1u << (c & 7))))
+			uint32_t c = m->frame[AMIGA_FRAME_CAPTURE_ROW + y][x] & 0xFFFFFF;
+			if(!(script_seen[c >> 3] & (1u << (c & 7))))
 			{
-				seen[c >> 3] |= (uint8_t)(1u << (c & 7));
+				script_seen[c >> 3] |= (uint8_t)(1u << (c & 7));
 				n++;
 			}
 		}
 	}
+	for(y = 0; y < AMIGA_FRAME_H; y++)
+		for(x = 0; x < AMIGA_FRAME_W; x++)
+		{
+			uint32_t c = m->frame[AMIGA_FRAME_CAPTURE_ROW + y][x] & 0xFFFFFF;
+			script_seen[c >> 3] &= (uint8_t)~(1u << (c & 7));
+		}
 	return n;
 }
 

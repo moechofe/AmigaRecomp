@@ -4,9 +4,9 @@
 #include <stdio.h>
 #include <string.h>
 
-/* The OFS reader and the hunk loader over synthetic images: a volume built here block by block
- * (docs/formats/adf.md, "OFS files and directories") and load files built longword by longword
- * (docs/formats/hunk.md). No game bytes. */
+/* The OFS/FFS reader and the hunk loader over synthetic images: volumes built here block by block
+ * (docs/formats/adf.md, "OFS and FFS files and directories") and load files built longword by
+ * longword (docs/formats/hunk.md). No game bytes. */
 
 const struct GameDef game_def = {
 	.id = "test",
@@ -17,6 +17,7 @@ static int failures;
 static struct Amiga m;
 static uint8_t adf[AMIGA_ADF_SIZE];
 static uint32_t next_block = 881;
+static uint32_t data_size = 488;
 
 static void check(int ok, const char *name)
 {
@@ -69,14 +70,15 @@ static uint8_t file_byte(uint32_t i)
 	return (uint8_t)(i * 7 + i / 488);
 }
 
-/* A file of `size` bytes: data blocks of 488 bytes, 72 to the header and to each extension. */
+/* A file of `size` bytes: data blocks of `data_size` bytes (488 OFS with a header, 512 FFS bare),
+ * 72 to the header and to each extension. */
 static uint32_t file(uint32_t dir, const char *name, uint32_t size)
 {
-	uint32_t h = entry(dir, name, (uint32_t)-3), table = h, k, count = (size + 487) / 488;
+	uint32_t h = entry(dir, name, (uint32_t)-3), table = h, k, count = (size + data_size - 1) / data_size;
 	put32(blk(h) + 324, size);
 	for(k = 0; k < count; k++)
 	{
-		uint32_t d = next_block++, n = size - k * 488 < 488 ? size - k * 488 : 488, i;
+		uint32_t d = next_block++, n = size - k * data_size < data_size ? size - k * data_size : data_size, i;
 		if(k && k % 72 == 0)
 		{
 			uint32_t e = d;
@@ -88,12 +90,20 @@ static uint32_t file(uint32_t dir, const char *name, uint32_t size)
 			put32(blk(table) + 504, e);
 			table = e;
 		}
-		put32(blk(d), 8);
-		put32(blk(d) + 4, h);
-		put32(blk(d) + 8, k + 1);
-		put32(blk(d) + 12, n);
-		for(i = 0; i < n; i++)
-			blk(d)[24 + i] = file_byte(k * 488 + i);
+		if(data_size == 512)
+		{
+			for(i = 0; i < n; i++)
+				blk(d)[i] = file_byte(k * 512 + i);
+		}
+		else
+		{
+			put32(blk(d), 8);
+			put32(blk(d) + 4, h);
+			put32(blk(d) + 8, k + 1);
+			put32(blk(d) + 12, n);
+			for(i = 0; i < n; i++)
+				blk(d)[24 + i] = file_byte(k * 488 + i);
+		}
 		put32(blk(table) + 308 - 4 * (k % 72), d);
 		put32(blk(table) + 8, k % 72 + 1);
 	}
@@ -124,8 +134,8 @@ static void test_ofs(void)
 	}
 
 	check(hle_ofs_volume(adf, vol) == 0 && !strcmp(vol, "Synthetic"), "the volume name is read");
-	adf[3] = 1;
-	check(hle_ofs_volume(adf, vol) < 0, "an FFS volume is refused");
+	adf[3] = 2;
+	check(hle_ofs_volume(adf, vol) < 0, "a DOS\\2 volume is refused");
 	adf[3] = 0;
 	check(collide && hle_ofs_lookup(adf, 880, "Alpha") == (int32_t)alpha && hle_ofs_lookup(adf, 880, other) == (int32_t)collide,
 		"two names in one hash slot are both found through the chain");
@@ -148,6 +158,48 @@ static void test_ofs(void)
 	check(hle_ofs_read(adf, big, 39990, out, 100) == 10 && out[9] == file_byte(39999), "a read stops at the end of the file");
 	check(hle_ofs_read(adf, big, 40000, out, 1) == 0, "a read at the end of the file copies nothing");
 	check(hle_ofs_read(adf, s, 0, out, 1) == 0, "a directory reads as nothing");
+}
+
+static void test_ffs(void)
+{
+	static uint8_t out[80000];
+	char vol[32];
+	uint32_t s, big, seq, n, i, ok;
+	struct HleOfsEntry e;
+
+	memset(adf, 0, sizeof adf);
+	next_block = 881;
+	data_size = 512;
+	memcpy(adf, "DOS\1", 4);
+	put32(blk(880), 2);
+	put32(blk(880) + 12, 72);
+	put32(blk(880) + 508, 1);
+	set_name(880, "Fast");
+	s = entry(880, "s", 2);
+	seq = file(s, "Startup-Sequence", 25);
+	big = file(880, "Big", 80000);
+
+	check(hle_ofs_volume(adf, vol) == 0 && !strcmp(vol, "Fast"), "an FFS volume name is read");
+	check(hle_ofs_lookup(adf, (uint32_t)hle_ofs_lookup(adf, 880, "S"), "startup-SEQUENCE") == (int32_t)seq,
+		"an FFS lookup finds the file in a subdirectory");
+	check(hle_ofs_entry(adf, s, &e) == 0 && e.type == 2 && e.parent == 880, "an FFS directory's entry gives its type and parent");
+	check(hle_ofs_entry(adf, big, &e) == 0 && e.type == -3 && e.size == 80000 && e.blocks == 157,
+		"an FFS file's entry counts 512-byte data blocks");
+	check(hle_ofs_read(adf, seq, 0, out, sizeof out) == 25 && out[0] == file_byte(0) && out[24] == file_byte(24),
+		"a small FFS file reads whole");
+
+	n = hle_ofs_read(adf, big, 0, out, sizeof out);
+	for(i = 0, ok = 1; i < n; i++)
+		ok &= out[i] == file_byte(i);
+	check(n == 80000 && ok, "a whole FFS read through two extension blocks is byte-exact");
+	n = hle_ofs_read(adf, big, 144 * 512 - 10, out, 20);
+	for(i = 0, ok = 1; i < n; i++)
+		ok &= out[i] == file_byte(144 * 512 - 10 + i);
+	check(n == 20 && ok, "an FFS read across the second extension's boundary is byte-exact");
+	n = hle_ofs_read(adf, big, 1000, out, 1);
+	check(n == 1 && out[0] == file_byte(1000), "an FFS read inside a block starts at its offset");
+	check(hle_ofs_read(adf, big, 79990, out, 100) == 10 && out[9] == file_byte(79999), "an FFS read stops at the end of the file");
+	check(hle_ofs_read(adf, big, 80000, out, 1) == 0, "an FFS read at the end of the file copies nothing");
 }
 
 /* --- hunks ---------------------------------------------------------------------------------- */
@@ -204,7 +256,8 @@ static void test_hunks(void)
 	h1 = seg ? seg_data(hle_r32(&m, seg << 2)) : 0;
 	h2 = h1 ? seg_data(hle_r32(&m, h1 - 4)) : 0;
 	check(seg && !err && !o.table && h2 && !hle_r32(&m, h2 - 4), "a three-hunk file loads as a chain of three segments");
-	check(h0 >= AMIGA_SLOW_BASE && h1 < AMIGA_CHIP_SIZE, "the chip hunk lands in chip RAM, the others in slow RAM");
+	check((AMIGA_A1200 ? h0 < AMIGA_CHIP_SIZE : h0 >= AMIGA_SLOW_BASE) && h1 < AMIGA_CHIP_SIZE,
+		AMIGA_A1200 ? "every hunk lands in chip RAM, the A1200's only RAM" : "the chip hunk lands in chip RAM, the others in slow RAM");
 	check(hle_r32(&m, h0) == h2 + 0x10 && hle_r32(&m, h0 + 4) == h1 + 4, "RELOC32 adds each target hunk's address");
 	check(hle_r32(&m, h1) == 0xCAFEBABE && hle_r32(&m, h2 + 12) == 0, "data is copied and BSS is clear");
 	check(hle_r32(&m, h0 - 8) == 2 * 4 + 8, "a segment records its allocation size before its next-pointer");
@@ -259,6 +312,7 @@ static void test_hunks(void)
 int main(void)
 {
 	test_ofs();
+	test_ffs();
 	test_hunks();
 	return failures ? 1 : 0;
 }

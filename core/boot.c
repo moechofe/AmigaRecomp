@@ -43,6 +43,13 @@ int amiga_boot(struct Amiga *m)
 	m->paula.intena = 0x602C;
 	m->paula.dmacon = 0x02D0;
 	m->paula.intreq = 0x1000;
+	/* Kickstart 3.0 leaves BPLCON3 0x0C00 and BPLCON4 0x0011 (sprite colours from 16, as on
+	 * OCS), read on the A1200 oracle at the cracktro (docs/runtime.md, "Kickstart handoff"). */
+	if(AMIGA_A1200)
+	{
+		custom_write(m, 0x106, 0x0C00, 0);
+		custom_write(m, 0x10C, 0x0011, 0);
+	}
 
 	m->cpu.sr = 0x0000;
 	m->cpu.z = 1;

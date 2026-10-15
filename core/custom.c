@@ -109,7 +109,8 @@ uint16_t custom_read(struct Amiga *m, uint32_t reg)
 	case REG_INTREQR:
 		return m->paula.intreq;
 	case REG_DENISEID:
-		return 0xFFFF;
+		/* The A1200's Lisa reads 0x00F8 (FS-UAE oracle, docs/runtime.md, "Kickstart handoff"). */
+		return AMIGA_A1200 ? 0x00F8 : 0xFFFF;
 	case REG_COPJMP1:
 	case REG_COPJMP2:
 		/* OCS writes the chip-bus latch into a write-only register on a read; strobes ignore the data. WinUAE custom.cpp. */
@@ -234,7 +235,7 @@ void custom_write(struct Amiga *m, uint32_t reg, uint16_t v, int from_copper)
 		paula_audio_write(m, (int)((reg - REG_AUD0LCH) >> 4), (int)((reg - REG_AUD0LCH) & 0xF), v);
 		return;
 	}
-	if((reg >= REG_DIWSTRT && reg <= 0x094) || (reg >= REG_BPL1PTH && reg <= 0x1BE))
+	if((reg >= REG_DIWSTRT && reg <= 0x094) || (reg >= REG_BPL1PTH && reg <= 0x1BE) || (AMIGA_A1200 && (reg == 0x1E4 || reg == 0x1FC)))
 	{
 		custom_display(m, reg, v, from_copper);
 		return;

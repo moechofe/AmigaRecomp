@@ -13,7 +13,8 @@ void hle_layers_build(struct Amiga *m)
 	hle_w32(m, HLE_LAYERS_BASE + LN_NAME, hle_string(m, HLE_STRINGS2 + 0x20, "layers.library"));
 	hle_w16(m, HLE_LAYERS_BASE + LIB_NEGSIZE, HLE_LAYERS_NEGSIZE);
 	hle_w16(m, HLE_LAYERS_BASE + LIB_POSSIZE, LIB_SIZE);
-	hle_w16(m, HLE_LAYERS_BASE + LIB_VERSION, 34);
+	hle_w16(m, HLE_LAYERS_BASE + LIB_VERSION, HLE_LAYERS_VERSION);
+	hle_w16(m, HLE_LAYERS_BASE + LIB_REVISION, HLE_LAYERS_REVISION);
 }
 
 int hle_layers_call(struct Amiga *m, uint32_t lvo)

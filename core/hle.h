@@ -6,10 +6,17 @@
 /* Guest-memory layout of the emulated Kickstart. ExecBase, its jump table, the boot task's
  * stack, the ROM's IORequest and ThisTask sit where Kickstart 1.3 had them at the bootblock
  * call (docs/runtime.md, "Kickstart handoff"); everything else the HLE
- * owns lives above 0xC02000, clear of them. */
-#define HLE_EXEC_BASE 0xC00276u
+ * owns lives above 0xC02000, clear of them. The A1200's Kickstart 3.0 libraries have longer
+ * jump tables (their measured negative sizes), so their tables and bases sit higher, in the
+ * slow-RAM range that no A1200 MemHeader lists. */
+#if AMIGA_A1200
+#define HLE_EXEC_NEGSIZE 0x32Au
+#define HLE_EXEC_POSSIZE 0x278u
+#else
 #define HLE_EXEC_NEGSIZE 0x276u
 #define HLE_EXEC_POSSIZE 0x24Cu
+#endif
+#define HLE_EXEC_BASE (0xC00000u + HLE_EXEC_NEGSIZE)
 #define HLE_SLOW_MEMHEADER 0xC004C2u
 #define HLE_BOOT_USP 0xC014B2u
 #define HLE_BOOT_IOREQ 0xC014E2u
@@ -17,8 +24,23 @@
 #define HLE_SSP 0xC80000u
 #define HLE_CHIP_MEMHEADER 0x000400u
 
+#if AMIGA_A1200
+#define HLE_GFX_TABLE 0xC05000u
+#define HLE_GFX_NEGSIZE 0x434u
+#define HLE_GFX_POSSIZE 0x1F1u
+#define HLE_INT_TABLE 0xC05800u
+#define HLE_INT_NEGSIZE 0x33Cu
+#define HLE_EXP_NEGSIZE 0xA4u
+#define HLE_EXP_POSSIZE 0x186u
+#else
 #define HLE_GFX_TABLE 0xC02000u
 #define HLE_GFX_NEGSIZE 0x28Eu
+#define HLE_GFX_POSSIZE 0x148u
+#define HLE_INT_TABLE 0xC03100u
+#define HLE_INT_NEGSIZE 0x1D4u
+#define HLE_EXP_NEGSIZE 0x96u
+#define HLE_EXP_POSSIZE 0x1C8u
+#endif
 #define HLE_GFX_BASE (HLE_GFX_TABLE + HLE_GFX_NEGSIZE)
 #define HLE_TD_TABLE 0xC02A00u
 #define HLE_TD_NEGSIZE 0x24u
@@ -35,36 +57,75 @@
 #define HLE_IN_BASE (HLE_IN_TABLE + HLE_IN_NEGSIZE)
 #define HLE_INPUT_HANDLERS 0xC02E70u
 #define HLE_INPUT_EVENTS_AT 0xC02F00u
-#define HLE_INT_TABLE 0xC03100u
-#define HLE_INT_NEGSIZE 0x1D4u
 #define HLE_INT_BASE (HLE_INT_TABLE + HLE_INT_NEGSIZE)
 #define HLE_EXP_TABLE 0xC03400u
-#define HLE_EXP_NEGSIZE 0x96u
 #define HLE_EXP_BASE (HLE_EXP_TABLE + HLE_EXP_NEGSIZE)
 #define HLE_STUB_NEGSIZE 0xFFCu
 
-/* dos.library: its Resident, jump table (the V34 table, ending at LVO -222 Execute, NDK 3.2
- * FD/dos_lib.fd), DosLibrary, RootNode and DosInfo. */
+/* dos.library: its Resident, jump table (on the A500 the V34 table, ending at LVO -222
+ * Execute, NDK 3.2 FD/dos_lib.fd; on the A1200 Kickstart 3.0's), DosLibrary, RootNode and
+ * DosInfo. */
 #define HLE_DOS_RESIDENT 0xC03700u
+#if AMIGA_A1200
+#define HLE_DOS_TABLE 0xC06000u
+#define HLE_DOS_NEGSIZE 0x414u
+#else
 #define HLE_DOS_TABLE 0xC03740u
 #define HLE_DOS_NEGSIZE 0xDEu
+#endif
 #define HLE_DOS_BASE (HLE_DOS_TABLE + HLE_DOS_NEGSIZE)
 #define HLE_DOS_ROOT 0xC03860u
 #define HLE_DOS_INFO 0xC03880u
 
 /* audio.device and layers.library: jump tables (devices: Open to AbortIO, exec/devices.i;
- * layers: the V34 table, ending at LVO -174 InstallClipRegion, NDK 3.2 FD/layers_lib.fd) and
- * bases, and their names from HLE_STRINGS2 in steps of 0x20. */
+ * layers: on the A500 the V34 table, ending at LVO -174 InstallClipRegion, NDK 3.2
+ * FD/layers_lib.fd; on the A1200 Kickstart 3.0's) and bases, and their names from
+ * HLE_STRINGS2 in steps of 0x20. */
 #define HLE_AUDIO_TABLE 0xC03900u
 #define HLE_AUDIO_NEGSIZE 0x24u
 #define HLE_AUDIO_BASE (HLE_AUDIO_TABLE + HLE_AUDIO_NEGSIZE)
+#if AMIGA_A1200
+#define HLE_LAYERS_TABLE 0xC06800u
+#define HLE_LAYERS_NEGSIZE 0xD8u
+#else
 #define HLE_LAYERS_TABLE 0xC03980u
 #define HLE_LAYERS_NEGSIZE 0xAEu
+#endif
 #define HLE_LAYERS_BASE (HLE_LAYERS_TABLE + HLE_LAYERS_NEGSIZE)
 #define HLE_STRINGS2 0xC04A00u
 /* Intuition's input handler node (an Interrupt), after layers.library's base. */
 #define HLE_INT_INPUT_NODE 0xC03A60u
 
+/* The libraries' versions and revisions: the A500's are Kickstart 1.3's (or ours, for dos,
+ * layers and audio.device; docs/runtime.md, "HLE"), the A1200's those Kickstart 3.0 rev 39.106
+ * lists (docs/runtime.md, "Kickstart handoff"). */
+#if AMIGA_A1200
+#define HLE_EXEC_VERSION 39
+#define HLE_EXEC_REVISION 47
+#define HLE_GFX_VERSION 39
+#define HLE_GFX_REVISION 89
+#define HLE_INT_VERSION 39
+#define HLE_INT_REVISION 2084
+#define HLE_EXP_VERSION 39
+#define HLE_EXP_REVISION 7
+#define HLE_DOS_VERSION 39
+#define HLE_DOS_REVISION 23
+#define HLE_LAYERS_VERSION 39
+#define HLE_LAYERS_REVISION 61
+#else
+#define HLE_EXEC_VERSION 34
+#define HLE_EXEC_REVISION 2
+#define HLE_GFX_VERSION 34
+#define HLE_GFX_REVISION 1
+#define HLE_INT_VERSION 34
+#define HLE_INT_REVISION 0
+#define HLE_EXP_VERSION 34
+#define HLE_EXP_REVISION 1
+#define HLE_DOS_VERSION 34
+#define HLE_DOS_REVISION 0
+#define HLE_LAYERS_VERSION 34
+#define HLE_LAYERS_REVISION 0
+#endif
 /* Internal entries in the HLE region, library 15. */
 #define HLE_EXCEPTION(n) HLE_ADDR(HLE_LIB_INTERNAL, (n) * 4)
 #define HLE_BOOT_RETURN HLE_ADDR(HLE_LIB_INTERNAL, 0x400)
@@ -80,6 +141,10 @@
 #define HLE_WAIT_PARK HLE_ADDR(HLE_LIB_INTERNAL, 0x428)
 #define HLE_INT_HANDLER HLE_ADDR(HLE_LIB_INTERNAL, 0x42C)
 #define HLE_AUDIO_INT HLE_ADDR(HLE_LIB_INTERNAL, 0x430)
+/* On the A1200: keyboard.device's CIA-A serial-port interrupt, and the code of the ICR owners
+ * (timer.device, graphics, disk.resource) whose work the HLE does elsewhere. */
+#define HLE_KBD_INT HLE_ADDR(HLE_LIB_INTERNAL, 0x434)
+#define HLE_ICR_NOP HLE_ADDR(HLE_LIB_INTERNAL, 0x438)
 
 /* Interrupt nodes the HLE owns: cia.resource's PORTS and EXTER servers. */
 #define HLE_CIAA_NODE 0xC02D40u
@@ -187,6 +252,7 @@
 #define LIB_POSSIZE 0x12
 #define LIB_VERSION 0x14
 #define LIB_REVISION 0x16
+#define LIB_IDSTRING 0x18
 #define LIB_OPENCNT 0x20
 #define LIB_SIZE 0x22
 #define EB_CHKBASE 0x26
@@ -206,6 +272,7 @@
 #define EB_MEMLIST 0x142
 #define EB_DEVICELIST 0x15E
 #define EB_LIBLIST 0x17A
+#define EB_RESLIST 0x150
 #define EB_PORTLIST 0x188
 #define EB_VBLANKFREQ 0x212
 #define EB_POWERFREQ 0x213
@@ -248,11 +315,21 @@
 #define NT_LIBRARY 9
 #define NT_MEMORY 10
 #define NT_INTERRUPT 2
+#define NT_RESOURCE 8
 #define MEMF_PUBLIC 0x1u
 #define MEMF_CHIP 0x2u
 #define MEMF_FAST 0x4u
 #define MEMF_CLEAR 0x10000u
 #define NT_PROCESS 13
+#define NT_SIGNALSEM 15
+
+/* exec/semaphores.i: a SignalSemaphore, and ExecBase's SemaphoreList. */
+#define EB_SEMLIST 0x214
+#define SS_NESTCOUNT 0x0E
+#define SS_WAITQUEUE 0x10
+#define SS_OWNER 0x28
+#define SS_QUEUECOUNT 0x2C
+#define SS_SIZE 0x2E
 #define TC_SPREG 0x36
 #define TC_SPLOWER 0x3A
 #define TC_SPUPPER 0x3E
@@ -281,7 +358,9 @@ enum HleFrameKind
 	HleFrameServer,
 	HleFrameSoft,
 	HleFrameInput,
-	HleFrameLibInit
+	HleFrameLibInit,
+	HleFrameIcr,
+	HleFrameDosRequest
 };
 
 /* hle.c */
@@ -359,6 +438,32 @@ void hle_int_vblank(struct Amiga *m);
 void hle_layers_build(struct Amiga *m);
 int hle_layers_call(struct Amiga *m, uint32_t lvo);
 
+/* hle_res.c: Kickstart 3.0's resources, on the A1200 only, in the slow-RAM range no A1200
+ * MemHeader lists. */
+#define HLE_POTGO_BASE 0xC07014u
+#define HLE_CIAA_BASE 0xC07098u
+#define HLE_CIAB_BASE 0xC07158u
+#define HLE_RES_STRINGS 0xC07300u
+#define HLE_ICR_NODES 0xC07700u
+void hle_res_build(struct Amiga *m);
+int hle_res_call(struct Amiga *m, int lib, uint32_t lvo);
+uint32_t hle_res_icr_next(struct Amiga *m, int which, uint32_t *pending);
+
+/* hle_timer.c: timer.device, on the A1200 only (hle_timer_vblank does nothing on the A500). */
+#define HLE_TIMER_BASE 0xC07444u
+void hle_timer_build(struct Amiga *m);
+int hle_timer_open(struct Amiga *m, uint32_t unit);
+int hle_timer_io(struct Amiga *m, uint32_t io);
+void hle_timer_abort(struct Amiga *m, uint32_t io);
+void hle_timer_vblank(struct Amiga *m);
+int hle_timer_call(struct Amiga *m, uint32_t lvo);
+
+/* hle_kbd.c: keyboard.device, on the A1200 only. */
+#define HLE_KBD_BASE 0xC07624u
+void hle_kbd_build(struct Amiga *m);
+void hle_kbd_key(struct Amiga *m, uint8_t code);
+void hle_kbd_io(struct Amiga *m, uint32_t io);
+
 /* hle_audio.c */
 void hle_audio_build(struct Amiga *m);
 int hle_audio_call(struct Amiga *m, uint32_t lvo);
@@ -373,11 +478,16 @@ void hle_dos_boot(struct Amiga *m);
 void hle_dos_mount(struct Amiga *m);
 void hle_dos_cli_return(struct Amiga *m);
 int hle_dos_call(struct Amiga *m, uint32_t lvo);
+void hle_dos_request_done(struct Amiga *m, const struct HleFrame *f);
 uint32_t hle_dos_loadseg(struct Amiga *m, const char *path);
 int hle_dos_packet(struct Amiga *m, uint32_t port, uint32_t msg);
 void hle_dos_time(struct Amiga *m, uint32_t *secs, uint32_t *micros);
 
-/* hle_ofs.c: the Old File System, read from an ADF image. */
+/* hle_args.c: ReadArgs over `args_line` (0: none) and FreeArgs, with the CPU's registers. */
+void hle_dos_readargs(struct Amiga *m, uint32_t args_line);
+void hle_dos_freeargs(struct Amiga *m);
+
+/* hle_ofs.c: the Old and Fast File Systems (DOS\0, DOS\1), read from an ADF image. */
 struct HleOfsEntry
 {
 	int32_t type;        /* sec_type: 1 root, 2 directory, -3 file */

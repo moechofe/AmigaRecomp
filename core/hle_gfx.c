@@ -550,6 +550,18 @@ int hle_gfx_call(struct Amiga *m, uint32_t lvo)
 	case 582: /* GetRGB4(a0 colormap, d0 entry): -1 outside the map */
 		D0 = A0 && D0 < hle_r16(m, A0 + CM_COUNT) ? hle_r16(m, hle_r32(m, A0 + CM_COLORTABLE) + 2 * D0) : 0xFFFFFFFFu;
 		return 0;
+	case 888: /* SetChipRev(d0 want): SETCHIPREV_BEST (-1) turns on everything the chips have;
+	           * on the A1200 oracle it left gb_ChipRevBits0 0x1F and gb_MemType 0x03 (docs/runtime.md,
+	           * "Kickstart handoff") */
+		if(D0 != 0xFFFFFFFFu)
+		{
+			amiga_fatal(m, "graphics SetChipRev(0x%08X) is not implemented; only SETCHIPREV_BEST is", D0);
+			return 0;
+		}
+		hle_w8(m, HLE_GFX_BASE + 0xEC, 0x1F);
+		hle_w8(m, HLE_GFX_BASE + 0xED, 0x03);
+		D0 = 0x1F;
+		return 0;
 	default:
 		return hle_draw_call(m, lvo);
 	}
