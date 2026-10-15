@@ -33,6 +33,10 @@ void sdl_menu_refresh(int booted);
  * a scancode binds that key to the waiting command, -1 cancels. */
 int sdl_menu_binding(void);
 void sdl_menu_bind(int scancode);
+/* The welcome card, at the window's top left while the menu is closed, shows from launch until
+ * its Close button, and at every launch until a Close with Remember ticked stores `welcome=0` in
+ * settings.ini. While the mouse is not captured, the mouse goes to the card when it is over it. */
+int sdl_menu_welcome_hover(void);
 void sdl_menu_render(SDL_Window *window);
 
 #ifdef __cplusplus

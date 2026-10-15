@@ -1,0 +1,4 @@
+<h2>{{title}}</h2>
+<p>Played with the mouse</p>
+<div class="row"><span class="label">{{menu_key}}</span><span>recomp menu</span></div>
+<div class="row"><span class="label">F5 / F9</span><span>quick save / quick load</span></div>

@@ -696,6 +696,20 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo)
 		if(A1 && D0)
 			hle_free(m, A1, D0);
 		return 0;
+	case 228: /* FreeEntry(a0 memList): FreeMem of each MemEntry, then of the MemList itself,
+	           * which AllocEntry allocated (NDK 3.2 exec.doc, AllocEntry and FreeEntry;
+	           * exec/memory.h: ml_NumEntries at 0x0E, ml_ME at 0x10, 8 bytes each) */
+	{
+		uint32_t list = A0, n = hle_r16(m, list + 0x0E), i;
+		for(i = 0; i < n; i++)
+		{
+			uint32_t addr = hle_r32(m, list + 0x10 + 8 * i), len = hle_r32(m, list + 0x14 + 8 * i);
+			if(addr && len)
+				hle_free(m, addr, len);
+		}
+		hle_free(m, list, 0x10 + 8 * n);
+		return 0;
+	}
 	case 216: /* AvailMem(d1 requirements): free bytes, or the largest chunk with MEMF_LARGEST */
 	{
 		uint32_t mh = hle_r32(m, eb + EB_MEMLIST + LH_HEAD), total = 0;

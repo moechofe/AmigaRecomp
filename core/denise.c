@@ -148,11 +148,11 @@ void denise_begin_line(struct Amiga *m, int line)
 	denise_sprite_dma(m, line);
 }
 
-/* The colour clock of the first fetch block: blocks fall on multiples of 8, and DDFSTRT starts
- * the block it falls in, in lores, or the next one, in hires (docs/runtime.md, "Timing"). */
+/* The colour clock of the first fetch block: in lores the block starts at DDFSTRT, in hires
+ * blocks fall on multiples of 8 and DDFSTRT starts the next one (docs/runtime.md, "Timing"). */
 static int denise_ddf_start(const struct Denise *d)
 {
-	return (d->bplcon0 & 0x8000) ? (d->ddfstrt + 7) & 0xF8 : d->ddfstrt & 0xF8;
+	return (d->bplcon0 & 0x8000) ? (d->ddfstrt + 7) & 0xF8 : d->ddfstrt & 0xFC;
 }
 
 static void denise_fetch(struct Amiga *m)
@@ -189,9 +189,10 @@ static void denise_fetch(struct Amiga *m)
 	for(; p < 6; p++)
 		for(w = 0; w < d->words; w++)
 			d->plane[p][w] = 0;
-	/* First pixel at DIW block * 2 + 17 lores, + 1 hires: DDFSTRT 0x38 lores and 0x3C hires
-	 * give 0x81 (HRM; docs/runtime.md, "Timing"). */
-	d->first_x = start * 2 + (hires ? 1 : 17);
+	/* First pixel at DIW block * 2 + 17 in lores, so DDFSTRT 0x38 gives 0x81; in hires at
+	 * DDFSTRT * 2 + 9, in steps of 4 colour clocks, so 0x3C gives 0x81 and 0x38 0x79 (HRM;
+	 * docs/runtime.md, "Timing"). */
+	d->first_x = hires ? (d->ddfstrt & 0xFC) * 2 + 9 : start * 2 + 17;
 	d->fetched = 1;
 }
 
@@ -206,11 +207,21 @@ static int denise_playfield(const struct Denise *d, int x)
 		bpu = 6;
 	for(p = 0; p < bpu; p++)
 	{
-		/* BPLCON1 delays in lores pixels in both resolutions. HRM. */
-		int delay = (p & 1) ? (d->bplcon1 >> 4) & 15 : d->bplcon1 & 15;
-		int px = x - d->first_x - delay;
+		/* BPLCON1 delays in lores pixels in both resolutions; in hires a word arrives every 8
+		 * of them, so only the low 3 bits count. In lores the planes start every 16 pixels
+		 * from DIW 0x81 plus the delay, at the first such start at or after the first block's
+		 * pixel (docs/runtime.md, "Timing"). */
+		int delay = ((p & 1) ? d->bplcon1 >> 4 : d->bplcon1) & (hires ? 7 : 15);
+		int px;
 		if(hires)
-			px = px * 2 + DENISE_HIRES_PIXEL;
+			px = (x - d->first_x - delay) * 2 + DENISE_HIRES_PIXEL;
+		else
+		{
+			int from = d->first_x - ((d->first_x - 0x81) & 15) + delay;
+			if(from < d->first_x)
+				from += 16;
+			px = x - from;
+		}
 		if(px < 0 || px >= d->words * 16)
 			continue;
 		idx |= ((d->plane[p][px >> 4] >> (15 - (px & 15))) & 1) << p;

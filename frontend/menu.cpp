@@ -160,6 +160,8 @@ struct CommandRow
 struct MenuModel
 {
 	Rml::String title;
+	Rml::String menu_key;
+	bool state_keys = true;
 	bool open = false;
 	bool booted = false;
 	Rml::String page = "about";
@@ -168,6 +170,9 @@ struct MenuModel
 	std::vector<Rml::String> messages;
 	Rml::String banner;
 	bool banner_on = false;
+	Rml::String welcome;
+	bool welcome_on = false;
+	bool welcome_remember = false;
 	std::vector<NoteRow> notes;
 	std::vector<OptionRow> settings, hacks;
 	std::vector<DriveRow> drives;
@@ -189,6 +194,7 @@ struct Menu
 	Rml::Context *context = nullptr;
 	Rml::ElementDocument *doc = nullptr;
 	Rml::Element *panel = nullptr;
+	Rml::Element *welcome = nullptr;
 	Rml::DataModelHandle handle;
 	MenuModel model;
 	SDL_Window *window = nullptr;
@@ -517,6 +523,8 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 	}
 	ctor.RegisterArray<std::vector<CommandRow>>();
 	ctor.Bind("title", &menu->model.title);
+	ctor.Bind("menu_key", &menu->model.menu_key);
+	ctor.Bind("state_keys", &menu->model.state_keys);
 	ctor.Bind("open", &menu->model.open);
 	ctor.Bind("booted", &menu->model.booted);
 	ctor.Bind("page", &menu->model.page);
@@ -537,6 +545,9 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 	ctor.Bind("commands", &menu->model.commands);
 	ctor.Bind("binding", &menu->model.binding);
 	ctor.Bind("disk_light", &menu->model.disk_light);
+	ctor.Bind("welcome", &menu->model.welcome);
+	ctor.Bind("welcome_on", &menu->model.welcome_on);
+	ctor.Bind("welcome_remember", &menu->model.welcome_remember);
 	ctor.BindEventCallback("desktop", [](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &args) {
 		char msg[1200];
 		if(args.size() != 1)
@@ -577,6 +588,12 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 			page->SetScrollTop(0);
 	});
 	ctor.BindEventCallback("close", [](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) { sdl_menu_show(0); });
+	ctor.BindEventCallback("welcome_close", [](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) {
+		menu->model.welcome_on = false;
+		menu->handle.DirtyVariable("welcome_on");
+		if(menu->model.welcome_remember && sdl_settings_set("welcome", "0"))
+			sdl_settings_save();
+	});
 	ctor.BindEventCallback("choose", [](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &args) {
 		if(args.size() != 3)
 			return;
@@ -606,11 +623,19 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 	});
 	menu->handle = ctor.GetModelHandle();
 	menu->model.title = game_def.title;
+	menu->model.menu_key = SDL_GetScancodeName((SDL_Scancode)sdl_menu_key());
+	menu->model.state_keys = game_def.no_state_keys == 0;
 	menu->model.desktop_offered = sdl_desktop_offered() != 0;
 	menu->model.desktop_installed = sdl_desktop_installed() != 0;
 	menu->model.controls = game_def.joystick != 0;
 	if(const SdlAsset *a = menu_asset("about.rml"))
 		menu->model.about.assign((const char *)a->data, a->size);
+	if(const SdlAsset *a = menu_asset("welcome.rml"))
+	{
+		const char *shown = sdl_settings_get("welcome");
+		menu->model.welcome.assign((const char *)a->data, a->size);
+		menu->model.welcome_on = !shown || std::strcmp(shown, "0") != 0;
+	}
 
 	menu->doc = menu->context->LoadDocument("menu.rml");
 	if(!menu->doc)
@@ -618,6 +643,7 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 	menu->panel = menu->doc->GetElementById("panel");
 	if(!menu->panel)
 		return menu_fail("#panel in menu.rml");
+	menu->welcome = menu->doc->GetElementById("welcome");
 	menu->doc->Show();
 	menu_options_refresh();
 	menu_controls_refresh();
@@ -665,6 +691,15 @@ void sdl_menu_bind(int scancode)
 		sdl_bindings_add(scancode, (SdlCommand)menu->model.binding);
 	menu_binding_set(-1);
 	menu_controls_refresh();
+}
+
+int sdl_menu_welcome_hover(void)
+{
+	Rml::Element *e = menu && menu->model.welcome_on && !menu->model.open ? menu->context->GetHoverElement() : nullptr;
+	for(; e; e = e->GetParentNode())
+		if(e == menu->welcome)
+			return 1;
+	return 0;
 }
 
 void sdl_menu_event(SDL_Event *e)

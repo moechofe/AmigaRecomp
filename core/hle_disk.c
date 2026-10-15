@@ -168,9 +168,9 @@ void hle_td_io(struct Amiga *m, uint32_t io)
  * and the new count is written where a caller reads it (io_Unit's tdu_Counter). */
 void amiga_insert(struct Amiga *m, int drive, int role)
 {
-	if(drive < 0 || drive >= AMIGA_DRIVES)
+	if(drive < 0 || drive >= AMIGA_DRIVES || (role >= 0 && drive >= game_def.drive_count))
 	{
-		amiga_fatal(m, "DF%d: the machine has %d drives", drive, AMIGA_DRIVES);
+		amiga_fatal(m, "DF%d: the machine has %d drives", drive, game_def.drive_count);
 		return;
 	}
 	if(role < -1 || role >= (int)game_def.disk_count || (role >= 0 && !m->disks[role].image))

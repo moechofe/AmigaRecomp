@@ -46,7 +46,8 @@ static void sdl_chunk(FILE *f, const char *type, const uint8_t *data, uint32_t l
 	crc = sdl_crc(crc, data, len);
 	sdl_be32(tail, crc);
 	fwrite(head, 1, 8, f);
-	fwrite(data, 1, len, f);
+	if(len)
+		fwrite(data, 1, len, f);
 	fwrite(tail, 1, 4, f);
 }
 

@@ -256,7 +256,10 @@ void disk_prb_changed(struct Amiga *m, uint8_t old_pins, uint8_t new_pins)
 	}
 }
 
-/* CIA-A PRA bits 2-5 for the selected drives: each drive pulls its lines low, wired-OR. */
+/* CIA-A PRA bits 2-5 for the selected drives: each drive pulls its lines low, wired-OR. /RDY
+ * with the motor on: a disk is in; with it off, the drive's serial ID, active low, of which
+ * DF0–DF(drive_count-1) send the standard 3.5" drive's $FFFFFFFF and the rest, absent, $00000000
+ * (HRM appendix H, "RDY-" and "Device I.D."). */
 uint8_t disk_status(const struct Amiga *m)
 {
 	uint8_t pins = disk_pins(m);
@@ -267,7 +270,7 @@ uint8_t disk_status(const struct Amiga *m)
 		int role = m->drive_role[n];
 		if(pins & (0x08 << n))
 			continue;
-		if(role >= 0)
+		if(m->floppy.motor[n] ? role >= 0 : n < game_def.drive_count)
 			bits &= (uint8_t)~PRA_RDY;
 		if(m->floppy.cyl[n] == 0)
 			bits &= (uint8_t)~PRA_TK0;

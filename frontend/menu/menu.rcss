@@ -13,14 +13,81 @@ body
 	word-break: break-word;
 }
 
-#banner
+#top
 {
 	position: absolute;
 	top: 0;
 	left: 0;
 	right: 0;
+}
+
+#banner
+{
 	padding: 8dp 16dp;
 	background-color: #202020f0;
+}
+
+#welcome
+{
+	width: 320dp;
+	margin: 12dp;
+	padding: 12dp 16dp;
+	box-sizing: border-box;
+	border: 1dp #606060;
+	border-radius: 6dp;
+	background-color: #202020f0;
+	font-size: 15dp;
+}
+
+#welcome h2
+{
+	margin-top: 0;
+}
+
+#welcome .row
+{
+	display: flex;
+	margin-top: 4dp;
+}
+
+#welcome .row span
+{
+	flex: 1 1 auto;
+}
+
+#welcome .row .label
+{
+	flex: 0 0 90dp;
+}
+
+#welcome .foot
+{
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-top: 12dp;
+}
+
+#welcome .foot button
+{
+	margin: 0;
+	padding: 4dp 14dp;
+}
+
+input.checkbox
+{
+	width: 14dp;
+	height: 14dp;
+	margin-right: 8dp;
+	vertical-align: middle;
+	border: 1dp #808080;
+	background-color: #303030;
+}
+
+input.checkbox:checked
+{
+	background-color: #e0e0e0;
+	border-color: #e0e0e0;
 }
 
 #panel

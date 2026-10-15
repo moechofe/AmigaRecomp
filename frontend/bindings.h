@@ -26,6 +26,10 @@ int sdl_bindings_add(int scancode, enum SdlCommand command);
 void sdl_bindings_remove(int scancode);
 void sdl_bindings_reset(void);
 
+/* The host key that opens the menu, an SDL scancode: game_def.menu_key, a USB HID usage ID,
+ * which SDL's scancodes are; F1 when the game names none. */
+int sdl_menu_key(void);
+
 /* A key event while the game runs: 1 when the key is bound and so taken from the Amiga. */
 int sdl_bindings_key(int scancode, int down);
 void sdl_bindings_release(void);  /* every bound key up */

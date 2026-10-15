@@ -27,6 +27,11 @@ static struct SdlBinding bind_table[SDL_BINDINGS_MAX];
 static int bind_count = -1;  /* -1: the defaults, not yet copied */
 static uint8_t bind_held[SDL_SCANCODE_COUNT];
 
+int sdl_menu_key(void)
+{
+	return game_def.menu_key ? game_def.menu_key : SDL_SCANCODE_F1;
+}
+
 static void bind_ready(void)
 {
 	if(bind_count >= 0)

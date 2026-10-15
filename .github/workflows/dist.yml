@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros, lemmings, lotus2, pirates, settlers]
+        game: [deuteros, lemmings, lotus2, pinballfantasies, pirates, settlers]
         arch: [x86_64, aarch64]
     defaults:
       run:
@@ -91,7 +91,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros, lemmings, lotus2, pirates, settlers]
+        game: [deuteros, lemmings, lotus2, pinballfantasies, pirates, settlers]
         arch: [x86_64, aarch64]
     defaults:
       run:
@@ -128,7 +128,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros, lemmings, lotus2, pirates, settlers]
+        game: [deuteros, lemmings, lotus2, pinballfantasies, pirates, settlers]
     defaults:
       run:
         shell: msys2 {0}
@@ -194,7 +194,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros, lemmings, lotus2, pirates, settlers]
+        game: [deuteros, lemmings, lotus2, pinballfantasies, pirates, settlers]
     env:
       GAME: ${{ matrix.game }}
     steps:
@@ -268,7 +268,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros, lemmings, lotus2, pirates, settlers]
+        game: [deuteros, lemmings, lotus2, pinballfantasies, pirates, settlers]
     env:
       GAME: ${{ matrix.game }}
     steps:
@@ -303,7 +303,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        game: [deuteros, lemmings, lotus2, pirates, settlers]
+        game: [deuteros, lemmings, lotus2, pinballfantasies, pirates, settlers]
         arch: [x86_64, aarch64]
     env:
       GAME: ${{ matrix.game }}

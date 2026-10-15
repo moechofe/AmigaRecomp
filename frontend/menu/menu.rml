@@ -5,9 +5,18 @@
 	<link type="text/rcss" href="game.rcss"/>
 </head>
 <body data-model="menu">
-	<div id="banner" data-if="banner_on">{{banner}}</div>
+	<div id="top">
+		<div id="banner" data-if="banner_on">{{banner}}</div>
+		<div id="welcome" data-if="welcome_on && !open">
+			<div data-rml="welcome"></div>
+			<div class="foot">
+				<label><input type="checkbox" data-checked="welcome_remember"/>Remember</label>
+				<button data-event-click="welcome_close">Close</button>
+			</div>
+		</div>
+	</div>
 	<div id="panel" data-if="open">
-		<button id="resume" data-if="booted" data-event-click="close"><span class="cap">F1</span>Resume</button>
+		<button id="resume" data-if="booted" data-event-click="close"><span class="cap">{{menu_key}}</span>Resume</button>
 		<div id="head">
 			<h1>{{title}}</h1>
 			<div id="nav">
@@ -36,8 +45,8 @@
 				<p>AmigaRecomp runs Amiga games natively, one program per game. The game's code runs on the Musashi 68000 interpreter plus a recreated Amiga chipset (copper, bitplanes, sprites, blitter, CIAs and Paula audio) written by Claude AI. Kickstart 1.3 is replaced by C code, so no ROM is needed.</p>
 				<p>The project contains <span class="underline">no game code and no game data</span>. Some optional hacks slightly improve the experience.</p>
 				<h2>Keys</h2>
-				<div class="key"><span class="label">F1</span><span class="state">this menu; F1 or Esc closes it once the game runs</span></div>
-				<div class="key"><span class="label">F5 / F9</span><span class="state">quick save / quick load</span></div>
+				<div class="key"><span class="label">{{menu_key}}</span><span class="state">this menu; {{menu_key}} or Esc closes it once the game runs</span></div>
+				<div class="key" data-if="state_keys"><span class="label">F5 / F9</span><span class="state">quick save / quick load</span></div>
 				<div class="key"><span class="label">F12</span><span class="state">screenshot of the game screen</span></div>
 				<div class="key"><span class="label">Alt+Enter</span><span class="state">fullscreen on / off</span></div>
 				<div class="key" data-if="controls"><span class="label">bound keys</span><span class="state">the joystick in port 2; see the Controls page</span></div>
@@ -90,7 +99,7 @@
 						<span class="waiting" data-if="binding == i">Press a key (Esc cancels)</span>
 					</span>
 				</div>
-				<p class="hint">Click a key to unbind it. F1, F5, F9, F12 and Esc stay with this program and cannot be bound.</p>
+				<p class="hint">Click a key to unbind it. {{menu_key}}, <span data-if="state_keys">F5, F9, </span>F12 and Esc stay with this program and cannot be bound.</p>
 				<div class="actions"><button data-event-click="bind_defaults">Restore defaults</button></div>
 			</div>
 			<div data-if="page == 'settings'">

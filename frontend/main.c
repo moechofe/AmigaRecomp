@@ -96,7 +96,7 @@ static int sdl_help(void)
 		if(game_def.disks[r].writable)
 			printf("  %s is not given: it is kept in <pref>%s.adf.\n", game_def.disks[r].label, game_def.disks[r].id);
 	printf("  In a window, images can also be dropped on it or opened from the menu\n"
-		"  (F1), and the paths are remembered in <pref>settings.ini.\n\n"
+		"  (%s), and the paths are remembered in <pref>settings.ini.\n\n"
 		"Options\n"
 		"  -h, --help       show this help and exit\n"
 		"  --headless       no window, audio or pacing: run as fast as the host\n"
@@ -109,7 +109,7 @@ static int sdl_help(void)
 		"                   the script alone moves the pointer and hacks stay off\n"
 		"  --shot-dir DIR   where screenshots go (F12, a script's 'shot');\n"
 		"                   default <pref>shots\n"
-		"  --state PATH     the save-state file (F5/F9, a script's 'state');\n"
+		"  --state PATH     the save-state file (quick save / load, a script's 'state');\n"
 		"                   default <pref>state.sav\n"
 		"  --pref DIR       the folder for settings, writable disks, shots and\n"
 		"                   states, created if missing; default the per-user folder\n"
@@ -121,11 +121,12 @@ static int sdl_help(void)
 		"                   and draw at that whole multiple, or the largest that fits;\n"
 		"                   overrides the 'scale' setting until it is changed in the menu\n\n"
 		"Keys in the window\n"
-		"  F1               menu (disks, settings and hacks); pauses the game\n"
-		"  F5 / F9          save / load the state file\n"
-		"  F12              screenshot into the shot directory\n"
-		"  Alt+Enter        fullscreen on or off\n",
-		game_def.id, SDL_MAX_SCALE);
+		"  %-16s menu (disks, settings and hacks); pauses the game\n",
+		SDL_GetScancodeName((SDL_Scancode)sdl_menu_key()), game_def.id, SDL_MAX_SCALE, SDL_GetScancodeName((SDL_Scancode)sdl_menu_key()));
+	if(!game_def.no_state_keys)
+		printf("  F5 / F9          save / load the state file\n");
+	printf("  F12              screenshot into the shot directory\n"
+		"  Alt+Enter        fullscreen on or off\n");
 	if(game_def.joystick)
 		printf("  bound keys       the joystick in port 2, bound on the menu's Controls page;\n"
 			"                   by default the arrows and Right Ctrl (fire)\n");
@@ -310,12 +311,16 @@ static int sdl_script_step(const struct SdlOptions *o)
 	}
 }
 
-/* SDL scancode to Amiga raw keycode, HRM appendix H. */
+/* SDL scancode to Amiga raw keycode, HRM appendix H; game_def.keys first. */
 static int sdl_amiga_key(SDL_Scancode sc)
 {
 	static const uint8_t letters[26] = {
 		0x20, 0x35, 0x33, 0x22, 0x12, 0x23, 0x24, 0x25, 0x17, 0x26, 0x27, 0x28, 0x37,
 		0x36, 0x18, 0x19, 0x10, 0x13, 0x21, 0x14, 0x16, 0x34, 0x11, 0x32, 0x15, 0x31};
+	uint32_t i;
+	for(i = 0; i < game_def.key_count; i++)
+		if(game_def.keys[i].host == sc)
+			return game_def.keys[i].amiga;
 	if(sc >= SDL_SCANCODE_A && sc <= SDL_SCANCODE_Z)
 		return letters[sc - SDL_SCANCODE_A];
 	if(sc >= SDL_SCANCODE_1 && sc <= SDL_SCANCODE_0)
@@ -343,10 +348,16 @@ static int sdl_amiga_key(SDL_Scancode sc)
 	}
 }
 
+/* F5 or F9, unless the game takes them (game_def.no_state_keys). */
+static int sdl_state_key(SDL_Scancode sc)
+{
+	return !game_def.no_state_keys && (sc == SDL_SCANCODE_F5 || sc == SDL_SCANCODE_F9);
+}
+
 /* The keys the window loop takes for itself while the game runs; they cannot be bound. */
 static int sdl_frontend_key(SDL_Scancode sc)
 {
-	return sc == SDL_SCANCODE_F1 || sc == SDL_SCANCODE_F5 || sc == SDL_SCANCODE_F9 || sc == SDL_SCANCODE_F12;
+	return sc == (SDL_Scancode)sdl_menu_key() || sdl_state_key(sc) || sc == SDL_SCANCODE_F12;
 }
 
 static int sdl_headless(const struct SdlOptions *o)
@@ -486,6 +497,19 @@ static int sdl_boot(void (*banner)(const char *text))
 	return 0;
 }
 
+/* sdl_boot for the window: once booted, a notification names the menu key. */
+static int sdl_boot_window(void)
+{
+	char text[64];
+	if(sdl_boot(sdl_banner_window))
+		return -1;
+	sdl_booted = 1;
+	sdl_disks_remember();
+	snprintf(text, sizeof text, "Press %s for the menu", SDL_GetScancodeName((SDL_Scancode)sdl_menu_key()));
+	sdl_menu_notify(text, 0);
+	return 0;
+}
+
 /* One action from the menu; returns the number of roles filled. */
 static int sdl_menu_action_run(const struct SdlOptions *o, const SDL_UserEvent *u)
 {
@@ -524,7 +548,7 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 	struct SdlPointer ptr;
 	uint64_t next;
 	uint32_t audio_read = 0;
-	int running = 1, code = 0, lmb = 0, rmb = 0, cursor_shown = -1, captured = 0, fullscreen, want, i;
+	int running = 1, code = 0, lmb = 0, rmb = 0, cursor_shown = -1, captured = 0, grabbed = 0, fullscreen, want, i;
 	float fx = 0, fy = 0;
 	struct SdlView view;
 
@@ -582,15 +606,10 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 	sdl_disks_offer_remembered(sdl_report_window);
 	if(sdl_disks_ready())
 	{
-		if(sdl_boot(sdl_banner_window))
+		if(sdl_boot_window())
 		{
 			running = 0;
 			code = 1;
-		}
-		else
-		{
-			sdl_booted = 1;
-			sdl_disks_remember();
 		}
 	}
 	else
@@ -631,7 +650,7 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 						fy += e.motion.yrel * r.window_h / (float)wh * r.view.h / (float)r.h;
 					}
 				}
-				if(open)
+				if(open || !captured)
 					sdl_menu_event(&e);
 			}
 			else if((e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP) && (e.key.mod & SDL_KMOD_ALT)
@@ -651,14 +670,18 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 						sdl_menu_bind(sdl_frontend_key(e.key.scancode) || e.key.scancode == SDL_SCANCODE_ESCAPE ? -1 : (int)e.key.scancode);
 				}
 				else if(e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && sdl_booted
-					&& (e.key.scancode == SDL_SCANCODE_F1 || e.key.scancode == SDL_SCANCODE_ESCAPE))
+					&& (e.key.scancode == (SDL_Scancode)sdl_menu_key() || e.key.scancode == SDL_SCANCODE_ESCAPE))
 					sdl_menu_show(0);
 				else
 					sdl_menu_event(&e);
 			}
 			else if(e.type == SDL_EVENT_MOUSE_BUTTON_DOWN || e.type == SDL_EVENT_MOUSE_BUTTON_UP)
 			{
-				int down = e.type == SDL_EVENT_MOUSE_BUTTON_DOWN;
+				int down = e.type == SDL_EVENT_MOUSE_BUTTON_DOWN, card = !captured && sdl_menu_welcome_hover();
+				if(card || (!down && !captured))
+					sdl_menu_event(&e);
+				if(card && down)
+					continue;
 				if(e.button.button == SDL_BUTTON_LEFT)
 					lmb = down;
 				else if(e.button.button == SDL_BUTTON_RIGHT)
@@ -667,7 +690,7 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 			else if((e.type == SDL_EVENT_KEY_DOWN || e.type == SDL_EVENT_KEY_UP) && !e.key.repeat)
 			{
 				int down = e.type == SDL_EVENT_KEY_DOWN, k;
-				if(e.key.scancode == SDL_SCANCODE_F1)
+				if(e.key.scancode == (SDL_Scancode)sdl_menu_key())
 				{
 					if(down)
 						sdl_menu_show(1);
@@ -681,7 +704,7 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 						sdl_shot(o, name);
 					}
 				}
-				else if(e.key.scancode == SDL_SCANCODE_F5 || e.key.scancode == SDL_SCANCODE_F9)
+				else if(sdl_state_key(e.key.scancode))
 				{
 					if(down && e.key.scancode == SDL_SCANCODE_F5)
 						sdl_state_save_window(o->state, sdl_report_headless);
@@ -697,13 +720,11 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 		{
 			if(!sdl_booted && sdl_disks_ready())
 			{
-				if(sdl_boot(sdl_banner_window))
+				if(sdl_boot_window())
 				{
 					code = 1;
 					break;
 				}
-				sdl_booted = 1;
-				sdl_disks_remember();
 				sdl_menu_show(0);
 			}
 			else if(sdl_booted)
@@ -718,7 +739,7 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 			lmb = rmb = 0;
 			sdl_bindings_release();
 		}
-		want = sdl_menu_is_open() || (game_system_cursor(&machine) && !captured);
+		want = sdl_menu_is_open() || (!captured && (!game_def.system_cursor || game_system_cursor(&machine) || sdl_menu_welcome_hover()));
 		if(want != cursor_shown)
 		{
 			cursor_shown = want;
@@ -739,6 +760,12 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 			SDL_SetWindowRelativeMouseMode(window, want != 0);
 			captured = want != 0;
 			fx = fy = 0;
+		}
+		want = sdl_booted && !sdl_menu_is_open() && !o->script && game_def.grab_keyboard;
+		if(want != grabbed)
+		{
+			SDL_SetWindowKeyboardGrab(window, want != 0);
+			grabbed = want != 0;
 		}
 		if(sdl_booted && !sdl_menu_is_open())
 		{

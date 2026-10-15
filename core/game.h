@@ -37,18 +37,23 @@ struct GameDisk
 	int (*identify)(const uint8_t *adf, uint32_t size); /* unknown dumps: 1 = this role; NULL for writable roles */
 };
 struct GameView { int x, y, w, h; }; /* the game's picture: DIW x (lores) of its first column, its first scanline, its size */
+struct GameKey { uint16_t host; uint8_t amiga; }; /* a host key, by its USB HID usage ID, and the Amiga raw key code it sends */
 struct GameDef
 {
 	const char *id, *title;
 	const struct GameDisk *disks; uint32_t disk_count;
 	int drives[4];               /* role index in DF0–DF3 at boot, -1 empty */
 	const int *drives_optional;  /* NULL, or 4 role indexes (-1 empty): DF0–DF3 at boot in place of drives[] when every role they name has an image; drives[] alone decides when the machine boots */
-	int drive_count;             /* DF0–DF(n-1): the drives the Disks page offers, 1–4 */
+	int drive_count;             /* DF0–DF(n-1): the machine's drives, which the Disks page offers, 1–4 */
 	uint8_t pointer_sprites;     /* bit n: sprite n draws part of the game's mouse pointer; steering follows the lowest; 0 none */
 	struct GameView view;        /* what the window shows; w 0: the capture window */
 	int joystick;                /* 1: keys bound on the menu's Controls page drive the port-2 joystick */
 	const struct GameHack *const *hacks; uint32_t hack_count;
-	const struct GameHack *system_cursor; /* the bool hack that, while on, shows the OS cursor over the running game in place of pointer_sprites; NULL none */
+	const struct GameHack *system_cursor; /* the bool hack that, while on, shows the OS cursor over the running game in place of pointer_sprites; NULL: the OS cursor always shows, beside them */
+	uint16_t menu_key;           /* USB HID usage ID of the host key that opens the menu; 0: F1 (0x3A) */
+	int no_state_keys;           /* 1: F5 and F9 reach the game, and states are saved and loaded from the menu alone; 0: F5 saves, F9 loads */
+	const struct GameKey *keys; uint32_t key_count; /* host keys that send another Amiga key than their own; NULL none */
+	int grab_keyboard;           /* 1: while the game runs, the window grabs the keyboard, so desktop shortcuts such as Alt+Space reach the game */
 };
 extern const struct GameDef game_def;
 int game_anchor_ok(const struct Amiga *m, const struct GameAnchor *a);
