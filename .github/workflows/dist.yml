@@ -39,12 +39,51 @@ jobs:
             > /etc/apt/sources.list
           rm -f /etc/apt/sources.list.d/*
           apt-get update
-          apt-get install -y --no-install-recommends \
-            ca-certificates git build-essential binutils ninja-build pkg-config python3-pip \
-            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev \
-            libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols \
-            libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev libdrm-dev libgbm-dev \
+          pkgs=(
+            ca-certificates git build-essential binutils ninja-build pkg-config python3-pip
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev
+            libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols
+            libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev libdrm-dev libgbm-dev
             libasound2-dev libpulse-dev libdbus-1-dev libudev-dev
+          )
+          # apt asks for "+" in a file name as %2b. archive.debian.org's CDN answers 404 for either
+          # spelling of "+" on an edge node that has not cached that one, so fetch what apt could
+          # not by trying both, with perl (the only HTTP-capable tool in debian:11). apt verifies
+          # the hashes when it installs from its cache.
+          cat > /tmp/fetch.pl <<'EOF'
+          use strict; use warnings; use IO::Socket::INET;
+          my ($url, $dest) = @ARGV;
+          (my $plain = $url) =~ s/%2b/+/gi;
+          (my $escaped = $plain) =~ s/\+/%2b/g;
+          my $error;
+          for my $try ($plain, $escaped) {
+            $try =~ m{^http://([^/]+)(/.*)$} or die "bad url $try\n";
+            my ($host, $path) = ($1, $2);
+            my $s = IO::Socket::INET->new(PeerAddr => "$host:80") or die "connect $host: $!\n";
+            binmode $s;
+            print $s "GET $path HTTP/1.0\r\nHost: $host\r\nConnection: close\r\n\r\n";
+            my $reply = do { local $/; <$s> };
+            my ($head, $body) = split /\r\n\r\n/, $reply, 2;
+            if ($head !~ m{^HTTP/1\.\d 200 }) {
+              $error = "$try: " . (split /\r\n/, $head)[0] . "\n";
+              next;
+            }
+            open my $out, '>:raw', "$dest.part" or die "$dest: $!\n";
+            print $out $body or die "$dest: $!\n";
+            close $out or die "$dest: $!\n";
+            rename "$dest.part", $dest or die "$dest: $!\n";
+            exit 0;
+          }
+          die $error;
+          EOF
+          if ! apt-get install -y --no-install-recommends --download-only "${pkgs[@]}"; then
+            apt-get install -y --no-install-recommends --print-uris "${pkgs[@]}" |
+              sed -n "s/^'\([^']*\)' \([^ ]*\) .*/\1 \2/p" |
+              while read -r url name; do
+                [ -f "/var/cache/apt/archives/$name" ] || perl /tmp/fetch.pl "$url" "/var/cache/apt/archives/$name"
+              done
+          fi
+          apt-get install -y --no-install-recommends "${pkgs[@]}"
           python3 -m pip install 'cmake>=3.24'
           cmake --version
           gcc --version
