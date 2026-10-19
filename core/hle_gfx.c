@@ -348,7 +348,19 @@ void hle_gfx_load_view(struct Amiga *m, uint32_t view)
 	hle_w32(m, HLE_GFX_BASE + GB_ACTIVIEW, view);
 	if(!view)
 	{
-		amiga_log_once(m, 0xC0000000u | 222, "LoadView(NULL): ActiView cleared, copper left alone");
+		/* On the A1200 the console's View may be the one shown. LoadView(NULL) blanks the
+		 * display (graphics autodoc, LoadView), so its list stops being loaded and COP2LC points
+		 * at the endless WAIT that ends gb_copinit; otherwise a program that took the display
+		 * would run the console's list, FMODE 3 and all, from its first COPJMP2 [INFERENCE: what
+		 * Kickstart loads instead is not measured]. */
+		if(AMIGA_A1200)
+		{
+			hle_w32(m, HLE_GFX_BASE + GB_LOFLIST, 0);
+			hle_w16(m, 0xDFF084, (uint16_t)(HLE_COPINIT_END >> 16));
+			hle_w16(m, 0xDFF086, (uint16_t)HLE_COPINIT_END);
+		}
+		amiga_log_once(m, 0xC0000000u | 222, AMIGA_A1200 ? "LoadView(NULL): ActiView cleared, COP2LC blank"
+			: "LoadView(NULL): ActiView cleared, copper left alone");
 		return;
 	}
 	if(hle_r32(m, view + V_LOFCPRLIST))

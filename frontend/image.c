@@ -234,6 +234,7 @@ void sdl_image_identify(const uint8_t *adf, struct SdlIdentity *id)
 	id->role = -1;
 	id->rank = SdlRankNone;
 	id->name = 0;
+	id->set = 0;
 	id->error[0] = 0;
 	for(i = 0; i < sdl_dump_count; i++)
 		if(sdl_dumps[i].crc == crc)
@@ -260,6 +261,7 @@ void sdl_image_identify(const uint8_t *adf, struct SdlIdentity *id)
 		id->role = (int)i;
 		id->rank = dump->status == SdlDumpStatusVerified ? SdlRankVerified : SdlRankKnown;
 		id->name = dump->name;
+		id->set = dump->set;
 		return;
 	}
 	for(r = 0; r < (int)game_def.disk_count; r++)

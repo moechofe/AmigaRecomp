@@ -257,6 +257,9 @@ void menu_dialog(SdlMenuAction action, int role)
 	case SdlMenuStateSave:
 		SDL_ShowSaveFileDialog(menu_dialog_done, d, menu->window, &state_filter, 1, nullptr);
 		break;
+	case SdlMenuReset:
+		delete d;
+		break;
 	}
 }
 
@@ -572,6 +575,7 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 	ctor.BindEventCallback("state_load", [](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) { menu_push(SdlMenuStateLoad, nullptr, -1); });
 	ctor.BindEventCallback("state_save_as", [](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) { menu_dialog(SdlMenuStateSave, -1); });
 	ctor.BindEventCallback("state_load_from", [](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) { menu_dialog(SdlMenuStateLoad, -1); });
+	ctor.BindEventCallback("reset", [](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) { menu_push(SdlMenuReset, nullptr, -1); });
 	ctor.BindEventCallback("quit", [](Rml::DataModelHandle, Rml::Event &, const Rml::VariantList &) {
 		SDL_Event e;
 		SDL_zero(e);

@@ -1,5 +1,13 @@
 # docs/game.md, item 4.
-708fc612 disk1 known Pinball Fantasies (1993)(21st Century)(AGA)(Disk 1 of 4)[cr PDY]
-eced3e6c disk2 known Pinball Fantasies (1993)(21st Century)(AGA)(Disk 2 of 4)
-ff04b00c disk3 known Pinball Fantasies (1993)(21st Century)(AGA)(Disk 3 of 4)
-912a609f disk4 known Pinball Fantasies (1993)(21st Century)(AGA)(Disk 4 of 4)
+708fc612 disk1@four known Pinball Fantasies (1993)(21st Century)(AGA)(Disk 1 of 4)[cr PDY]
+eced3e6c disk2@four known Pinball Fantasies (1993)(21st Century)(AGA)(Disk 2 of 4)
+ff04b00c disk3@four known Pinball Fantasies (1993)(21st Century)(AGA)(Disk 3 of 4)
+912a609f disk4@four known Pinball Fantasies (1993)(21st Century)(AGA)(Disk 4 of 4)
+d917e8da disk1@four known Pinball Fantasies (1993)(21st Century)(AGA)(Disk 1 of 4)[cr PDY][a]
+24774eb1 disk2@four known Pinball Fantasies (1993)(21st Century)(AGA)(Disk 2 of 4)[h]
+ee409e83 disk3@four known Pinball Fantasies (1993)(21st Century)(AGA)(Disk 3 of 4)[h]
+3a08cb49 disk4@four known Pinball Fantasies (1993)(21st Century)(AGA)(Disk 4 of 4)[h]
+53fb98d9 disk1@hcc known Pinball Fantasies (1993)(21st Century)(AGA)(Disk 1 of 2)[cr PDY][h HCC]
+8527b454 disk2@hcc known Pinball Fantasies (1993)(21st Century)(AGA)(Disk 2 of 2)[cr PDY][h HCC]
+b9ff5c62 disk1 refused This two-disk repack starts the game from its own launcher, an Intuition window on the Workbench screen, which this runtime does not draw. Give the four-disk set or the HCC two-disk repack
+ede3a7f9 disk2 refused This two-disk repack starts the game from its own launcher, an Intuition window on the Workbench screen, which this runtime does not draw. Give the four-disk set or the HCC two-disk repack

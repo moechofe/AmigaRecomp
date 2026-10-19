@@ -145,6 +145,12 @@
  * (timer.device, graphics, disk.resource) whose work the HLE does elsewhere. */
 #define HLE_KBD_INT HLE_ADDR(HLE_LIB_INTERNAL, 0x434)
 #define HLE_ICR_NOP HLE_ADDR(HLE_LIB_INTERNAL, 0x438)
+/* On the A1200: a Read of the CON: window waiting for Return; an EasyRequestArgs requester
+ * waiting for its answer. */
+#define HLE_CON_PARK HLE_ADDR(HLE_LIB_INTERNAL, 0x43C)
+#define HLE_REQ_PARK HLE_ADDR(HLE_LIB_INTERNAL, 0x440)
+/* intuition/intuition.i */
+#define IDCMP_DISKINSERTED 0x00008000u
 
 /* Interrupt nodes the HLE owns: cia.resource's PORTS and EXTER servers. */
 #define HLE_CIAA_NODE 0xC02D40u
@@ -152,6 +158,8 @@
 
 /* Kickstart's copper start-up list and null sprite, gb_copinit. */
 #define HLE_COPINIT 0x000420u
+/* gb_copinit's last instruction, a WAIT for a position never reached (hle.c, hle_copinit). */
+#define HLE_COPINIT_END (HLE_COPINIT + 84u)
 #define HLE_NULL_SPRITE 0x000478u
 
 /* NDK 3.2 graphics/gfxbase.i, view.i, gfx.i, copper.i. */
@@ -343,7 +351,10 @@
 #define PR_COS 0xA0
 #define PR_CLI 0xAC
 #define PR_WINDOWPTR 0xB8
-#define PR_SIZEOF 0xBC
+/* The V34 Process on the A500; Kickstart 3.0's, with pr_HomeDir and the V36 fields after it, on
+ * the A1200 (NDK 3.2 dos/dosextens.i). */
+#define PR_HOMEDIR 0xBC
+#define PR_SIZEOF (AMIGA_A1200 ? 0xE4 : 0xBC)
 /* dos error codes, NDK 3.2 dos/dos.i. */
 #define HLE_DOS_NO_FREE_STORE 103
 #define HLE_DOS_OBJECT_IN_USE 202
@@ -388,6 +399,8 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo);
 void hle_mem_init(struct Amiga *m);
 uint32_t hle_alloc(struct Amiga *m, uint32_t size, uint32_t req, uint32_t at);
 void hle_free(struct Amiga *m, uint32_t block, uint32_t size);
+/* RawDoFmt's formatting into a buffer hle_alloc gave (hle_exec.c). */
+uint32_t hle_fmt(struct Amiga *m, uint32_t fmt, uint32_t data, uint32_t *len, uint32_t *next);
 void hle_mem_set(struct Amiga *m, uint32_t mh, const uint32_t *chunks, int count);
 int32_t hle_exec_alloc_signal(struct Amiga *m, int32_t want);
 void hle_exec_free_signal(struct Amiga *m, uint32_t bit);
@@ -465,6 +478,22 @@ int hle_timer_call(struct Amiga *m, uint32_t lvo);
 void hle_kbd_build(struct Amiga *m);
 void hle_kbd_key(struct Amiga *m, uint8_t code);
 void hle_kbd_io(struct Amiga *m, uint32_t io);
+
+/* utility.library, on the A1200 only (hle_res.c): its table from 0xC06C00. */
+#define HLE_UTIL_BASE 0xC06D28u
+
+/* hle_con.c: the Workbench screen and a CON: window, on the A1200 only; hle_font.c: the font. */
+extern const uint8_t hle_font8[96][8];
+int hle_con_open(struct Amiga *m, const char *spec);
+void hle_con_close(struct Amiga *m);
+void hle_con_write(struct Amiga *m, uint32_t buf, uint32_t len);
+int32_t hle_con_read(struct Amiga *m, uint32_t buf, uint32_t len);
+int hle_con_park(struct Amiga *m);
+void hle_con_key(struct Amiga *m, uint8_t code);
+int hle_con_request(struct Amiga *m, uint32_t window, uint32_t es, uint32_t idcmp, uint32_t args);
+int hle_con_request_park(struct Amiga *m);
+void hle_con_disk_inserted(struct Amiga *m);
+void hle_con_vblank(struct Amiga *m);
 
 /* hle_audio.c */
 void hle_audio_build(struct Amiga *m);

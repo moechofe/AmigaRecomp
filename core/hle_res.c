@@ -41,6 +41,16 @@ void hle_res_build(struct Amiga *m)
 	hle_timer_build(m);
 	hle_kbd_build(m);
 
+	/* utility.library 39.10, in the library list (docs/runtime.md, "Kickstart handoff"). */
+	hle_jump_table(m, HLE_UTIL_BASE, 0x128, HLE_LIB_UTILITY);
+	hle_w8(m, HLE_UTIL_BASE + LN_TYPE, NT_LIBRARY);
+	hle_w32(m, HLE_UTIL_BASE + LN_NAME, hle_string(m, HLE_RES_STRINGS + 0xC0, "utility.library"));
+	hle_w16(m, HLE_UTIL_BASE + LIB_NEGSIZE, 0x128);
+	hle_w16(m, HLE_UTIL_BASE + LIB_POSSIZE, 0x34);
+	hle_w16(m, HLE_UTIL_BASE + LIB_VERSION, 39);
+	hle_w16(m, HLE_UTIL_BASE + LIB_REVISION, 10);
+	hle_add_tail(m, HLE_EXEC_BASE + EB_LIBLIST, HLE_UTIL_BASE);
+
 	/* The ICR bits' owners in the Kickstart 3.0 resources at the cracktro (docs/runtime.md,
 	 * "Kickstart handoff"): CIA-A timer A, timer B and the alarm timer.device, the serial port
 	 * keyboard.device, the flag none; CIA-B the alarm graphics.library, the flag disk.resource,
@@ -71,6 +81,66 @@ static int res_potgo(struct Amiga *m, uint32_t lvo)
 	default:
 		return -1;
 	}
+}
+
+static int res_lower(int c)
+{
+	return c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c;
+}
+
+/* utility.library's arithmetic and string functions (utility.doc); the others are fatal. */
+static int res_utility(struct Amiga *m, uint32_t lvo)
+{
+	switch(lvo)
+	{
+	case 138: /* SMult32(d0, d1): the low 32 bits of the product */
+	case 144: /* UMult32(d0, d1) */
+		D0 = D0 * D1;
+		return 0;
+	case 150: /* SDivMod32(d0 dividend, d1 divisor): d0 the quotient, d1 the remainder */
+		if(!D1)
+			break;
+		{
+			int32_t a = (int32_t)D0, b = (int32_t)D1;
+			D0 = (uint32_t)(a / b);
+			D1 = (uint32_t)(a % b);
+		}
+		return 0;
+	case 156: /* UDivMod32(d0 dividend, d1 divisor) */
+		if(!D1)
+			break;
+		{
+			uint32_t a = D0, b = D1;
+			D0 = a / b;
+			D1 = a % b;
+		}
+		return 0;
+	case 162: /* Stricmp(a0, a1): <0, 0 or >0, case ignored */
+	case 168: /* Strnicmp(a0, a1, d0 length) */
+	{
+		uint32_t i, n = lvo == 168 ? D0 : 0xFFFFFFFFu;
+		int c1 = 0, c2 = 0;
+		for(i = 0; i < n; i++)
+		{
+			c1 = res_lower(hle_r8(m, m->cpu.a[0] + i));
+			c2 = res_lower(hle_r8(m, m->cpu.a[1] + i));
+			if(c1 != c2 || !c1)
+				break;
+		}
+		D0 = (uint32_t)(i == n ? 0 : c1 - c2);
+		return 0;
+	}
+	case 174: /* ToUpper(d0 character) */
+		D0 = (D0 & 0xFF) >= 'a' && (D0 & 0xFF) <= 'z' ? (D0 & 0xFF) - 'a' + 'A' : D0 & 0xFF;
+		return 0;
+	case 180: /* ToLower(d0 character) */
+		D0 = (uint32_t)res_lower((int)(D0 & 0xFF));
+		return 0;
+	default:
+		return -1;
+	}
+	amiga_fatal(m, "utility.library: division by zero (LVO -%u)", lvo);
+	return 0;
 }
 
 /* ciaa.resource (`which` 0) and ciab.resource (1). */
@@ -161,6 +231,7 @@ int hle_res_call(struct Amiga *m, int lib, uint32_t lvo)
 	case HLE_LIB_CIAA: return res_cia(m, 0, lvo);
 	case HLE_LIB_CIAB: return res_cia(m, 1, lvo);
 	case HLE_LIB_TIMER: return hle_timer_call(m, lvo);
+	case HLE_LIB_UTILITY: return res_utility(m, lvo);
 	default: return -1;
 	}
 }

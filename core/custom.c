@@ -82,7 +82,7 @@ uint16_t custom_read(struct Amiga *m, uint32_t reg)
 	case REG_JOY0DAT:
 		if(game_def.joystick < 2)
 			return (uint16_t)(((m->paula.mouse_y & 0xFF) << 8) | (m->paula.mouse_x & 0xFF));
-		/* fall through: port 1 holds a joystick */
+		/* fall through */
 	case REG_JOY1DAT:
 	{
 		/* HRM, "Reading the joystick": right is bit 1, left bit 9; down is bit 1 XOR bit 0, up

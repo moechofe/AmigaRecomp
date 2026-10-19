@@ -471,7 +471,7 @@ void hle_exec_lib_continue(struct Amiga *m, struct HleFrame *f)
  * types b, c, d, s, u, x and X; data words unless `l`, pointers for s and b), into a buffer the
  * HLE allocates, ended by the NUL the autodoc also hands to putChProc. Returns the buffer and
  * sets *len (with the NUL) and *next (the data after the last argument), or 0. */
-static uint32_t hle_fmt(struct Amiga *m, uint32_t fmt, uint32_t data, uint32_t *len, uint32_t *next)
+uint32_t hle_fmt(struct Amiga *m, uint32_t fmt, uint32_t data, uint32_t *len, uint32_t *next)
 {
 	static char out[1024];
 	uint32_t n = 0, buf, i;
@@ -1117,6 +1117,8 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo)
 		int builtin = 1;
 		if(!hle_strcmp(m, A1, "exec.library"))
 			lib = HLE_EXEC_BASE;
+		else if(AMIGA_A1200 && !hle_strcmp(m, A1, "utility.library"))
+			lib = HLE_UTIL_BASE;
 		else if(!hle_strcmp(m, A1, "graphics.library"))
 			lib = HLE_GFX_BASE;
 		else if(!hle_strcmp(m, A1, "intuition.library"))

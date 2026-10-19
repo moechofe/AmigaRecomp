@@ -5,15 +5,20 @@
 #include <stdio.h>
 #include <string.h>
 
+static const struct GameDisk disks[] = {{.id = "disk1", .label = "Disk 1"}, {.id = "disk2", .label = "Disk 2"}};
+
 const struct GameDef game_def = {
 	.id = "test",
 	.title = "Test Game",
+	.disks = disks,
+	.disk_count = 2,
+	.drive_count = 2,
 };
 
 static int failures;
 static struct Amiga a, b;
-static uint8_t buf[STATE_MAX + 1];
-static uint8_t image[AMIGA_ADF_SIZE];
+static uint8_t buf[STATE_MAX + 1], fresh[STATE_MAX + 1];
+static uint8_t image[AMIGA_ADF_SIZE], image2[AMIGA_ADF_SIZE];
 
 static void check(int ok, const char *name, const char *detail)
 {
@@ -90,6 +95,38 @@ int main(void)
 	why = state_load(&b, buf, n);
 	check(why && !strcmp(why, "state was saved with different disk images"), "different read-only disks are refused",
 		why ? why : "accepted");
+
+	/* A reset after a disk swap and some play is the cold boot of a machine started with the
+	 * swapped disks. */
+	memset(image, 0x11, sizeof image);
+	memset(image2, 0x22, sizeof image2);
+	amiga_init(&b);
+	amiga_attach(&b, 0, image, 0);
+	amiga_attach(&b, 1, image2, 1);
+	amiga_insert(&b, 0, 1);
+	amiga_insert(&b, 1, 0);
+	amiga_insert(&b, 2, -1);
+	amiga_insert(&b, 3, -1);
+	amiga_boot(&b);
+	b.hle.calls[0][1] = 9;
+	n = state_save(&b, fresh);
+	amiga_init(&a);
+	amiga_attach(&a, 0, image, 0);
+	amiga_attach(&a, 1, image2, 1);
+	amiga_insert(&a, 0, 0);
+	amiga_boot(&a);
+	amiga_insert(&a, 0, 1);
+	amiga_insert(&a, 1, 0);
+	a.cpu.pc = 0x4321;
+	a.chip[0x2000] = 0xA5;
+	a.frame_count = 500;
+	a.disks[1].dirty = 1;
+	a.sprites_enabled = 0;
+	a.hle.calls[0][1] = 9;
+	check(!amiga_reset(&a) && state_save(&a, buf) == n && !memcmp(buf, fresh, n), "a reset is a cold boot with the drives' disks",
+		a.fatal ? a.fatal_msg : "the state differs from a fresh boot");
+	check(a.drive_role[0] == 1 && a.drive_role[1] == 0 && a.disks[1].rw == image2 && a.disks[1].dirty && !a.sprites_enabled
+		&& a.hle.calls[0][1] == 9, "a reset keeps the disks and host fields", "a host field was cleared");
 
 	return failures ? 1 : 0;
 }

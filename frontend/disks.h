@@ -16,6 +16,7 @@ struct SdlRole
 	uint8_t *adf;       /* AMIGA_ADF_SIZE bytes, or NULL */
 	enum SdlRank rank;  /* SdlRankNone for writable roles */
 	char name[256];     /* dumps.txt name, or the candidate name of an unknown dump */
+	const char *set;    /* dumps.txt set, NULL for none */
 	char source[1024];  /* absolute path given (the container for a ZIP member); <pref><id>.adf for writable */
 	int attached;       /* handed to the machine with amiga_attach */
 };
@@ -25,8 +26,14 @@ enum SdlOffer { SdlOfferGiven, SdlOfferRemembered };
 
 int sdl_disks_init(const char *pref);  /* 0, or -1 with the message printed */
 /* Reads, expands and identifies `path`. `report` gets one line per candidate: error 1 when it is
- * rejected, 0 when accepted or outranked. Returns the number of roles filled. */
+ * rejected, 0 when accepted or outranked. A dump of another set than one already held is refused
+ * when given and skipped when remembered. Before boot only. Returns the number of roles filled. */
 int sdl_disks_offer(const char *path, enum SdlOffer how, void (*report)(int error, const char *text));
+/* Open Disk… and a file dropped on the window: as sdl_disks_offer, but each image replaces the
+ * one its role holds, whatever its rank, and the roles holding another set are emptied and
+ * forgotten. A role `m` holds gets the new image, or leaves `m` and its drives; *swapped is then
+ * set, and the machine must boot again. */
+int sdl_disks_open(struct Amiga *m, const char *path, int *swapped, void (*report)(int error, const char *text));
 void sdl_disks_offer_remembered(void (*report)(int error, const char *text));
 /* Copies the ADF at `path` into the writable role `role`: first into its file
  * (sdl_roles[role].source), then into the image in memory. `report` gets one line.

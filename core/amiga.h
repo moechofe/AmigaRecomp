@@ -86,7 +86,7 @@
 #define HLE_LIB_CIAB 18
 #define HLE_LIB_TIMER 19
 #define HLE_LIB_KEYBOARD 20
-#define HLE_LIB_GAMEPORT 21
+#define HLE_LIB_UTILITY 21
 #define HLE_TIMER_REQUESTS 16
 #define HLE_INPUT_EVENTS 16
 
@@ -367,6 +367,35 @@ struct HleAudio
 	uint16_t next_key;
 };
 
+/* The gadgets an EasyRequestArgs requester may have; this runtime's capacity. */
+#define HLE_REQ_GADGETS 8
+
+/* The A1200's Workbench screen and its CON: window (core/hle_con.c). */
+struct HleCon
+{
+	uint32_t bitmap, copper, view; /* the screen's planes and copper list (chip RAM) and View; 0 not open */
+	uint8_t open, reading, ready, cursor_on, shift, esc, space;
+	int wx0, wy0, wx1, wy1;     /* the window, on the screen */
+	int x0, y0, cols, rows;     /* its text area: first pixel, and size in characters */
+	int col, row;               /* the cursor */
+	int args, arg[4];           /* the CSI sequence being read */
+	char line[128];             /* typed and not yet read; ready once it ends with Return */
+	int line_len;
+	uint32_t read_buf, read_len; /* the parked Read's buffer and length */
+	uint32_t req_save;          /* an EasyRequestArgs requester's backdrop, saved (guest memory); 0 none up */
+	uint32_t req_idcmp;         /* its IDCMP_ptr, 0 none */
+	uint32_t req_behind;        /* the View shown before it moved the screen to the front */
+	int32_t req_answer;         /* its result, once req_done */
+	uint8_t req_front, req_done, req_gadgets;
+	int req_w, req_h;           /* its window, at the screen's top left; req_w a multiple of 8 */
+	int req_gadget_y;           /* its gadgets' top, and each one's left and width */
+	int16_t req_gadget_x[HLE_REQ_GADGETS], req_gadget_w[HLE_REQ_GADGETS];
+	int8_t req_pressed;         /* the gadget the left button went down on, -1 none */
+	uint8_t req_mx, req_my, req_lmb; /* the mouse counters and left button at the last frame */
+	uint32_t sprite;            /* chip RAM: a null sprite, then the pointer's; 0 until the first requester */
+	int ptr_x, ptr_y;           /* the pointer's hot spot on the screen */
+};
+
 struct Hle
 {
 	uint32_t change_count[AMIGA_DRIVES];
@@ -392,6 +421,7 @@ struct Hle
 	int timer_count;
 	uint8_t key_matrix[16]; /* keyboard.device: one bit per raw key code, set while held */
 	uint32_t icr_vec[2][5]; /* ciaa/ciab.resource: each ICR bit's Interrupt, 0 free */
+	struct HleCon con;
 #endif
 };
 
@@ -430,6 +460,7 @@ struct Amiga
 	int key_head, key_tail;
 	int sprites_enabled;
 	int pointer_hidden;      /* 1: Denise does not draw game_def.pointer_sprites; set by the frontend each frame */
+	int os_cursor;           /* 1: the OS cursor shows over the running game, so the HLE's own pointer is not drawn; set by the frontend each frame */
 	struct Hacks hacks;
 
 	uint32_t frame[AMIGA_FRAME_ROWS][AMIGA_FRAME_STRIDE]; /* 0x00RRGGBB */
@@ -490,6 +521,11 @@ void denise_render_to(struct Amiga *m, int hpos);
 void denise_end_line(struct Amiga *m);
 void denise_write(struct Amiga *m, uint32_t reg, uint16_t v);
 int denise_pointer(struct Amiga *m, int *x, int *y);
+#if AMIGA_A1200
+/* hle_con.c: an EasyRequestArgs requester's pointer, its hot spot at DIW x *x on line *y; 0 when
+ * no requester is up. */
+int hle_con_pointer(const struct Amiga *m, int *x, int *y);
+#endif
 
 /* blitter.c */
 void blit_start(struct Amiga *m, uint16_t bltsize);
@@ -565,5 +601,6 @@ struct StateSection
 
 uint32_t state_save(const struct Amiga *m, uint8_t *out);
 const char *state_load(struct Amiga *m, const uint8_t *in, uint32_t len);
+int amiga_reset(struct Amiga *m);
 
 #endif

@@ -44,6 +44,7 @@ void hle_timer_build(struct Amiga *m)
 
 int hle_timer_open(struct Amiga *m, uint32_t unit)
 {
+	(void)m;
 	return unit <= UNIT_WAITECLOCK;
 }
 

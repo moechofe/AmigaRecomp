@@ -43,8 +43,9 @@ static const struct GameDisk pinballfantasiesaga_disks[] = {
 	{"disk4", "Disk 4", 0, pinballfantasiesaga_identify_disk4},
 };
 
-/* The two-disk repacks hold every table on PF1 and PF2; the four-disk set needs PF3 and PF4 too,
- * each in a drive of its own (docs/format.md, "Disks and drives"). */
+/* The two-disk repack holds every table on PF1 and PF2; the four-disk set needs PF3 and PF4 too,
+ * each in a drive of its own. dumps.txt keeps the two sets apart (docs/format.md, "Disks and
+ * drives"). */
 static const int pinballfantasiesaga_drives_all[4] = {0, 1, 2, 3};
 
 /* A table's game starts on the function keys (F1: one player; docs/format.md, "Controls"), so
@@ -58,7 +59,7 @@ const struct GameDef game_def = {
 	.drives = {0, 1, -1, -1},
 	.drives_optional = pinballfantasiesaga_drives_all,
 	.drive_count = 4,
-	.view = {129, 28, 320, 274},
+	.view = {129, 40, 320, 262},
 	.menu_key = 0x44,
 	.no_state_keys = 1,
 	.grab_keyboard = 1,

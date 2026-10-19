@@ -5,7 +5,8 @@
 #include <stdint.h>
 
 enum SdlDumpStatus { SdlDumpStatusVerified, SdlDumpStatusKnown, SdlDumpStatusRefused };
-struct SdlDump { uint32_t crc; const char *role; enum SdlDumpStatus status; const char *name; };
+/* set: NULL, or the release this dump belongs to; dumps of two sets never fill roles together */
+struct SdlDump { uint32_t crc; const char *role; const char *set; enum SdlDumpStatus status; const char *name; };
 extern const struct SdlDump sdl_dumps[];  /* game_dumps.c, generated from dumps.txt */
 extern const uint32_t sdl_dump_count;
 
@@ -28,6 +29,7 @@ struct SdlIdentity
 	int role;          /* index into game_def.disks, -1 when rejected */
 	enum SdlRank rank;
 	const char *name;  /* dumps.txt name for known/verified, NULL for unknown */
+	const char *set;   /* dumps.txt set, NULL for none or unknown */
 	char error[192];   /* when role is -1 */
 };
 void sdl_image_identify(const uint8_t *adf, struct SdlIdentity *id);

@@ -32,6 +32,7 @@ void hle_kbd_key(struct Amiga *m, uint8_t code)
 		m->hle.key_matrix[key >> 3] &= (uint8_t)~bit;
 	else
 		m->hle.key_matrix[key >> 3] |= bit;
+	hle_con_key(m, code);
 }
 
 /* BeginIO: every command completes at once. */

@@ -41,6 +41,18 @@
 #define FL_ACCESS 0x08
 #define FL_VOLUME 0x10
 #define FL_SIZEOF 0x14
+/* Lock's access modes, dos/dos.i: ACCESS_READ is SHARED_LOCK. */
+#define SHARED_LOCK -2
+/* dos/dosasl.i: an AnchorPath and an AChain; dos/dos.i: ERROR_NO_MORE_ENTRIES. */
+#define AP_BASE 0x00
+#define AP_LAST 0x04
+#define AP_STRLEN 0x12
+#define AP_INFO 0x14
+#define AP_BUF 0x118
+#define AN_LOCK 0x08
+#define AN_INFO 0x0C
+#define AN_SIZEOF 0x114
+#define HLE_DOS_NO_MORE_ENTRIES 232
 #define FIB_DISKKEY 0x00
 #define FIB_DIRENTRYTYPE 0x04
 #define FIB_FILENAME 0x08
@@ -72,8 +84,9 @@
 #define CLI_STACK_LONGS 1000
 #define DOS_PATH 256
 #define DOS_LINE 256
-/* HleDosFile.drive of a NIL: handle; the console's is -1. */
+/* HleDosFile.drive of a NIL: handle and, on the A1200, of the CON: window; the console's is -1. */
 #define DOS_NIL -2
+#define DOS_CON -3
 
 static const char *const dos_system_assigns[][2] = {
 	{"SYS", ""}, {"C", "c"}, {"S", "s"}, {"L", "l"}, {"LIBS", "libs"}, {"DEVS", "devs"}, {"FONTS", "fonts"},
@@ -507,6 +520,10 @@ static void dos_close(struct Amiga *m, uint32_t fh)
 	struct HleDosFile *f = dos_file(m, fh);
 	if(!f || f == &m->hle.dos.files[0])
 		return;
+#if AMIGA_A1200
+	if(f->drive == DOS_CON)
+		hle_con_close(m);
+#endif
 	f->used = 0;
 	hle_free(m, fh << 2, FH_SIZEOF);
 }
@@ -796,6 +813,15 @@ static void dos_cli_run(struct Amiga *m, const char *cmd, const char *args, int 
 			amiga_fatal(m, "CLI: unknown command %s", cmd);
 		return;
 	}
+#if AMIGA_A1200
+	/* pr_HomeDir: a lock on the directory the command was loaded from (dos autodoc,
+	 * GetProgramDir), unlocked when it returns. */
+	{
+		struct HleOfsEntry e;
+		if(dos_resolve(m, 0, path, &drive, &block) == 0 && hle_ofs_entry(dos_image(m, drive), block, &e) == 0)
+			hle_w32(m, d->process + PR_HOMEDIR, dos_lock(m, drive, e.parent, SHARED_LOCK));
+	}
+#endif
 	d->cmd_seglist = seg;
 	d->cmd_stack_size = hle_r32(m, d->cli + CLI_DEFAULTSTACK) * 4;
 	d->cmd_stack = hle_alloc(m, d->cmd_stack_size, MEMF_PUBLIC, 0);
@@ -865,6 +891,11 @@ void hle_dos_cli_return(struct Amiga *m)
 	hle_free(m, d->cmd_stack, d->cmd_stack_size);
 	hle_free(m, d->cmd_args, d->cmd_args_size);
 	d->cmd_seglist = 0;
+#if AMIGA_A1200
+	if(hle_r32(m, d->process + PR_HOMEDIR))
+		hle_free(m, hle_r32(m, d->process + PR_HOMEDIR) << 2, FL_SIZEOF);
+	hle_w32(m, d->process + PR_HOMEDIR, 0);
+#endif
 	dos_cli_io(m, d->files[0].fh, d->files[0].fh);
 	if(d->cmd_in)
 		dos_close(m, d->cmd_in);
@@ -1070,11 +1101,18 @@ static int dos_call(struct Amiga *m, uint32_t lvo)
 			amiga_fatal(m, "dos: Open(\"%s\") in mode %d is not implemented", path, (int32_t)D2);
 			return 0;
 		}
-		if(!strcmp(path, "*") || !strncmp(path, "CON:", 4))
+		if(!strcmp(path, "*"))
 		{
 			D0 = d->files[0].fh;
 			return 0;
 		}
+#if AMIGA_A1200
+		if(dos_upper(path[0]) == 'C' && dos_upper(path[1]) == 'O' && dos_upper(path[2]) == 'N' && path[3] == ':')
+		{
+			D0 = hle_con_open(m, path) ? dos_handle(m, DOS_CON, 0, 0) : 0;
+			return 0;
+		}
+#endif
 		D0 = dos_open(m, path, "Open");
 		return 0;
 	case 36: /* Close(d1 file) */
@@ -1089,12 +1127,22 @@ static int dos_call(struct Amiga *m, uint32_t lvo)
 			return 0;
 		if(f == &d->files[0])
 		{
-			hle_w8(m, D2, '1');
-			hle_w8(m, D2 + 1, '\n');
-			D0 = 2;
-			amiga_logf(m, "TEMP console read answered 1");
+			amiga_fatal(m, "dos: reading the console is not implemented");
 			return 0;
 		}
+#if AMIGA_A1200
+		if(f->drive == DOS_CON)
+		{
+			int32_t n = hle_con_read(m, D2, D3);
+			if(n >= 0)
+			{
+				D0 = (uint32_t)n;
+				return 0;
+			}
+			m->cpu.pc = HLE_CON_PARK;
+			return 1;
+		}
+#endif
 		p = dos_buffer(m, D2, D3);
 		if(!p && D3)
 			return 0;
@@ -1113,7 +1161,7 @@ static int dos_call(struct Amiga *m, uint32_t lvo)
 			D0 = D3;
 			return 0;
 		}
-		if(f != &d->files[0])
+		if(f != &d->files[0] && f->drive != DOS_CON)
 		{
 			amiga_fatal(m, "dos: writing files is not implemented (Write)");
 			return 0;
@@ -1122,6 +1170,10 @@ static int dos_call(struct Amiga *m, uint32_t lvo)
 			text[i] = (char)hle_r8(m, D2 + i);
 		text[n] = 0;
 		amiga_logf(m, "dos: console: %s", text);
+#if AMIGA_A1200
+		if(f->drive == DOS_CON)
+			hle_con_write(m, D2, D3);
+#endif
 		D0 = D3;
 		return 0;
 	}
@@ -1137,7 +1189,7 @@ static int dos_call(struct Amiga *m, uint32_t lvo)
 		int64_t at;
 		if(!f)
 			return 0;
-		if(f == &d->files[0])
+		if(f == &d->files[0] || f->drive == DOS_CON)
 		{
 			amiga_fatal(m, "dos: Seek on the console is not implemented");
 			return 0;
@@ -1271,30 +1323,207 @@ static int dos_call(struct Amiga *m, uint32_t lvo)
 		d->delay_frame = m->frame_count + D1;
 		m->cpu.pc = HLE_DOS_DELAY;
 		return 1;
-	case 216: /* IsInteractive(d1 file) */
-		D0 = D1 == d->files[0].fh ? DOSTRUE : 0;
+	case 216: /* IsInteractive(d1 file): the console and the CON: window */
+	{
+		struct HleDosFile *f = D1 == d->files[0].fh ? 0 : dos_file(m, D1);
+		D0 = D1 == d->files[0].fh || (f && f->drive == DOS_CON) ? DOSTRUE : 0;
 		return 0;
+	}
 	case 798: /* ReadArgs(d1 template, d2 array, d3 rdargs) */
 		hle_dos_readargs(m, d->cmd_seglist ? d->cmd_args : 0);
 		return 0;
 	case 858: /* FreeArgs(d1 rdargs) */
 		hle_dos_freeargs(m);
 		return 0;
+#if AMIGA_A1200
+	case 600: /* GetProgramDir: pr_HomeDir, which the caller must not unlock */
+		D0 = hle_r32(m, dos_process(m) + PR_HOMEDIR);
+		return 0;
+	/* Buffered I/O (dos autodoc, V36): no buffer is kept, each call reads or writes at once
+	 * through Read and Write. */
+	case 306: /* FGetC(d1 fh): the byte, or -1 at the end */
+	case 336: /* FGets(d1 fh, d2 buf, d3 len): up to len - 1 bytes through the first newline, or 0 at the end */
+	{
+		struct HleDosFile *f = dos_file(m, D1);
+		uint32_t n = 0, max = lvo == 306 ? 1 : (D3 ? D3 - 1 : 0);
+		uint8_t c;
+		if(!f)
+			return 0;
+		if(f == &d->files[0] || f->drive == DOS_CON)
+		{
+			amiga_fatal(m, "dos: %s on the console is not implemented", lvo == 306 ? "FGetC" : "FGets");
+			return 0;
+		}
+		while(n < max && dos_read(m, f, &c, 1) == 1)
+		{
+			if(lvo == 336)
+				hle_w8(m, D2 + n, c);
+			n++;
+			if(lvo == 306 || c == '\n')
+				break;
+		}
+		if(lvo == 306)
+			D0 = n ? c : 0xFFFFFFFFu;
+		else
+		{
+			hle_w8(m, D2 + n, 0);
+			D0 = n ? D2 : 0;
+		}
+		return 0;
+	}
+	case 318: /* UnGetC(d1 fh, d2 character): the last byte read is read again */
+	{
+		struct HleDosFile *f = dos_file(m, D1);
+		if(!f)
+			return 0;
+		if(f->pos > 0)
+			f->pos--;
+		D0 = D2;
+		return 0;
+	}
+	case 312: /* FPutC(d1 fh, d2 char): the character */
+	case 342: /* FPuts(d1 fh, d2 str): 0 */
+	case 330: /* FWrite(d1 fh, d2 block, d3 blocklen, d4 number): the blocks written */
+	{
+		uint32_t ch = D2, len = 1, buf = 0, number = m->cpu.d[4];
+		int r;
+		if(lvo == 312)
+		{
+			buf = hle_alloc(m, 1, MEMF_PUBLIC, 0);
+			hle_w8(m, buf, (uint8_t)ch);
+		}
+		else if(lvo == 342)
+			for(buf = D2, len = 0; hle_r8(m, D2 + len); len++)
+				;
+		else
+		{
+			buf = D2;
+			len = D3 * number;
+		}
+		D2 = buf;
+		D3 = len;
+		r = dos_call(m, 48);
+		if(lvo == 312)
+			hle_free(m, buf, 1);
+		D0 = lvo == 312 ? ch : lvo == 342 ? 0 : number;
+		return r;
+	}
+	case 360: /* Flush(d1 fh): nothing is buffered */
+		D0 = DOSTRUE;
+		return 0;
+	case 942: /* WriteChars(d1 buf, d2 buflen): to Output(), the count */
+	case 948: /* PutStr(d1 str): to Output(), 0 */
+	case 954: /* VPrintf(d1 format, d2 argarray): RawDoFmt's formatting to Output(), the count */
+	{
+		uint32_t len = D2, buf = D1, next, size = 0;
+		int r;
+		if(lvo == 948)
+			for(len = 0; hle_r8(m, D1 + len); len++)
+				;
+		if(lvo == 954)
+		{
+			buf = hle_fmt(m, D1, D2, &size, &next);
+			if(!buf)
+				return 0;
+			len = size - 1;
+		}
+		D2 = buf;
+		D3 = len;
+		D1 = hle_r32(m, dos_process(m) + PR_COS);
+		r = dos_call(m, 48);
+		if(size)
+			hle_free(m, buf, size);
+		D0 = lvo == 948 ? 0 : len;
+		return r;
+	}
+	case 792: /* CheckSignal(d1 mask): those of the task's received signals, which are cleared */
+	{
+		uint32_t task = dos_process(m), got = hle_r32(m, task + TC_SIGRECVD) & D1;
+		hle_w32(m, task + TC_SIGRECVD, hle_r32(m, task + TC_SIGRECVD) & ~got);
+		D0 = got;
+		return 0;
+	}
+#endif
+#if AMIGA_A1200
+	/* Pattern matching (dos autodoc, MatchFirst; dos/dosasl.i): a name without wildcards
+	 * matches itself once. The AnchorPath gets one AChain, ap_Base and ap_Last, holding a lock
+	 * on the directory the object is in and its FileInfoBlock, ap_Info the same, and with
+	 * ap_Strlen the path in ap_Buf. A pattern with wildcards is fatal. */
+	case 822: /* MatchFirst(d1 pattern, d2 anchorPath): 0, or the error */
+	{
+		struct HleOfsEntry e;
+		uint32_t ap = D2, chain, i, n;
+		int drive;
+		uint32_t block;
+		if(dos_cstr(m, D1, path, sizeof path) < 0)
+			return 0;
+		if(strpbrk(path, "#?*[]()|~%"))
+		{
+			amiga_fatal(m, "dos: MatchFirst(\"%s\"): wildcards are not implemented", path);
+			return 0;
+		}
+		if(dos_resolve(m, 0, path, &drive, &block) < 0)
+		{
+			D0 = hle_r32(m, dos_process(m) + PR_RESULT2);
+			return 0;
+		}
+		hle_ofs_entry(dos_image(m, drive), block, &e);
+		chain = hle_alloc(m, AN_SIZEOF, MEMF_PUBLIC | MEMF_CLEAR, 0);
+		if(!chain)
+		{
+			D0 = HLE_DOS_NO_FREE_STORE;
+			return 0;
+		}
+		hle_w32(m, chain + AN_LOCK, dos_lock(m, drive, e.parent ? e.parent : block, SHARED_LOCK));
+		dos_examine(m, drive, block, chain + AN_INFO);
+		hle_w32(m, ap + AP_BASE, chain);
+		hle_w32(m, ap + AP_LAST, chain);
+		dos_examine(m, drive, block, ap + AP_INFO);
+		n = hle_r16(m, ap + AP_STRLEN);
+		for(i = 0; n && i < n - 1 && path[i]; i++)
+			hle_w8(m, ap + AP_BUF + i, (uint8_t)path[i]);
+		if(n)
+			hle_w8(m, ap + AP_BUF + i, 0);
+		D0 = 0;
+		return 0;
+	}
+	case 828: /* MatchNext(d1 anchorPath): no other match */
+		dos_error(m, HLE_DOS_NO_MORE_ENTRIES);
+		D0 = HLE_DOS_NO_MORE_ENTRIES;
+		return 0;
+	case 834: /* MatchEnd(d1 anchorPath) */
+	{
+		uint32_t chain = hle_r32(m, D1 + AP_BASE);
+		if(chain)
+		{
+			if(hle_r32(m, chain + AN_LOCK))
+				hle_free(m, hle_r32(m, chain + AN_LOCK) << 2, FL_SIZEOF);
+			hle_free(m, chain, AN_SIZEOF);
+		}
+		hle_w32(m, D1 + AP_BASE, 0);
+		hle_w32(m, D1 + AP_LAST, 0);
+		return 0;
+	}
+#endif
 	default:
 		return -1;
 	}
 }
 
 #if AMIGA_A1200
+#define DOS_REQUEST_SIZE 0x8C
+
 /* The requester Kickstart 3.0's dos puts up for a volume no drive holds, through intuition's
- * EasyRequestArgs vector (LVO -588), after call `lvo` failed: Retry (1) runs the call again,
+ * EasyRequestArgs vector (LVO -588), after call `lvo` failed: Retry (1), or a disk inserted
+ * (-1, for the IDCMP_DISKINSERTED it passes, as AROS's ErrorReport does), runs the call again;
  * Cancel (0) leaves it failed. The EasyStruct (intuition/intuition.i) and its strings are ours;
- * Kickstart's wording is not measured. */
+ * Kickstart's wording is not measured. The caller's A2 and A3, which a dos call preserves and
+ * the call's arguments take, wait in the block until it returns. */
 static int dos_request(struct Amiga *m, uint32_t lvo, const uint32_t *args)
 {
 	struct HleDos *d = &m->hle.dos;
 	struct HleFrame f;
-	uint32_t block = hle_alloc(m, 0x80, MEMF_PUBLIC | MEMF_CLEAR, 0), es = block;
+	uint32_t block = hle_alloc(m, DOS_REQUEST_SIZE, MEMF_PUBLIC | MEMF_CLEAR, 0), es = block;
 	if(!block)
 	{
 		amiga_fatal(m, "dos: no memory for the requester for volume \"%s\"", d->request);
@@ -1305,6 +1534,9 @@ static int dos_request(struct Amiga *m, uint32_t lvo, const uint32_t *args)
 	hle_w32(m, es + 12, hle_string(m, block + 0x24, "Please insert volume\n%s\nin any drive"));
 	hle_w32(m, es + 16, hle_string(m, block + 0x4C, "Retry|Cancel"));
 	hle_w32(m, block + 0x5C, hle_string(m, block + 0x60, d->request));
+	hle_w32(m, block + 0x80, IDCMP_DISKINSERTED);
+	hle_w32(m, block + 0x84, m->cpu.a[2]);
+	hle_w32(m, block + 0x88, m->cpu.a[3]);
 	amiga_logf(m, "dos: LVO -%u asks for volume \"%s\" through EasyRequestArgs", lvo, d->request);
 	d->request[0] = 0;
 	memset(&f, 0, sizeof f);
@@ -1316,7 +1548,7 @@ static int dos_request(struct Amiga *m, uint32_t lvo, const uint32_t *args)
 	hle_call(m, &f, HLE_INT_BASE - 588);
 	m->cpu.a[0] = hle_r32(m, dos_process(m) + PR_WINDOWPTR);
 	m->cpu.a[1] = es;
-	m->cpu.a[2] = 0;
+	m->cpu.a[2] = block + 0x80;
 	m->cpu.a[3] = block + 0x5C;
 	m->cpu.a[6] = HLE_INT_BASE;
 	return 1;
@@ -1324,7 +1556,9 @@ static int dos_request(struct Amiga *m, uint32_t lvo, const uint32_t *args)
 
 void hle_dos_request_done(struct Amiga *m, const struct HleFrame *f)
 {
-	hle_free(m, f->saved[4], 0x80);
+	m->cpu.a[2] = hle_r32(m, f->saved[4] + 0x84);
+	m->cpu.a[3] = hle_r32(m, f->saved[4] + 0x88);
+	hle_free(m, f->saved[4], DOS_REQUEST_SIZE);
 	m->cpu.a[6] = f->saved[5];
 	if(D0)
 	{

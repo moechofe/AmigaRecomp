@@ -187,6 +187,10 @@ void amiga_insert(struct Amiga *m, int drive, int role)
 	}
 	if(m->hle.dos.booted)
 		hle_dos_mount(m);
+#if AMIGA_A1200
+	if(role >= 0 && m->booted)
+		hle_con_disk_inserted(m);
+#endif
 }
 
 /* The device's own vectors, for a caller that skips exec: BeginIO -30, AbortIO -36

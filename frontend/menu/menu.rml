@@ -32,6 +32,7 @@
 				<p class="lead">Your own copy of {{title}}, running natively on this computer.</p>
 				<div class="actions">
 					<button class="primary" data-event-click="open_disk">Open Disk…</button>
+					<button data-if="booted" data-event-click="reset">Reset</button>
 					<button data-event-click="quit">Quit</button>
 				</div>
 				<div class="actions" data-if="desktop_offered">
@@ -58,7 +59,7 @@
 				<div class="drive" data-for="d, n : drives">
 					<span class="label">{{d.name}}</span>
 					<span class="state" data-if="!booted">{{d.disk}}</span>
-					<span class="toggle" data-if="booted"><button data-for="c : drive_choices" data-class-chosen="c.role == d.role" data-event-click="insert(n, c.role)">{{c.label}}</button></span>
+					<span class="toggle" data-if="booted"><span data-for="c : drive_choices"><button data-class-chosen="c.role == d.role" data-event-click="insert(n, c.role)">{{c.label}}</button></span></span>
 				</div>
 				<p class="hint" data-if="!booted">The game starts with these disks in its drives. Once it runs, choose the disk in each drive here.</p>
 				<h2>Game disks</h2>

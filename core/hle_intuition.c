@@ -621,6 +621,14 @@ int hle_int_call(struct Amiga *m, uint32_t lvo)
 		return 0;
 	case 420: /* UnlockIBase(a0 ibLock) */
 		return 0;
+#if AMIGA_A1200
+	case 588: /* EasyRequestArgs(a0 window, a1 easyStruct, a2 idcmpPtr, a3 args): drawn on the
+	           * Workbench screen and parked until answered (hle_con_request) */
+		if(!hle_con_request(m, A0, A1, m->cpu.a[2], m->cpu.a[3]))
+			return 0;
+		m->cpu.pc = HLE_REQ_PARK;
+		return 1;
+#endif
 	default:
 		return -1;
 	}

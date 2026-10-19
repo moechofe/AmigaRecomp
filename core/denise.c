@@ -175,7 +175,9 @@ static int denise_in_vwindow(const struct Denise *d)
 	return d->line >= denise_vstart(d) && d->line < denise_vstop(d);
 }
 
-/* The game's pointer sprite, the lowest in `game_def.pointer_sprites`. The frame pixel at the centre
+/* The pointer the frontend steers: on the A1200, while an EasyRequestArgs requester is up, the
+ * HLE's own pointer's hot spot (hle_con_pointer), whether drawn or not. Otherwise the game's
+ * pointer sprite, the lowest in `game_def.pointer_sprites`: the frame pixel at the centre
  * of the pixels its first control words and image describe on the lines the display window
  * shows, read from chip RAM where this frame's sprite DMA started, so a position the game
  * wrote after the fetch counts. Image bit 15 - c of a row is column c at DIW x HSTART + 1 + c,
@@ -189,6 +191,14 @@ int denise_pointer(struct Amiga *m, int *x, int *y)
 	uint16_t pos, ctl;
 	int w = denise_sprite_words(d), width = 16 * w;
 	int vstart, vstop, first, last, h, row, c, x0 = width, x1 = -1, y0 = -1, y1 = -1;
+#if AMIGA_A1200
+	if(hle_con_pointer(m, x, y))
+	{
+		*x -= AMIGA_FRAME_DIW_X0;
+		*y -= AMIGA_DISPLAY_LINE0;
+		return 1;
+	}
+#endif
 	if(!game_def.pointer_sprites || (m->paula.dmacon & 0x0220) != 0x0220)
 		return 0;
 	pos = mem_chip16(m, pt);

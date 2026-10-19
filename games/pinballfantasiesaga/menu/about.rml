@@ -1,0 +1,8 @@
+<p>Requires the four disks of the AGA release (or the HCC two-disk repack). It starts with Disk 1 in DF0 and the other disks in DF1 to DF3. After the crackers' intro, which waits for a click, the game's menu is a console window: type 1 to 4 and Return to load a table, or Q to quit. The window and its text are drawn by this runtime in a font of its own.</p>
+<h2>Controls</h2>
+<div class="key"><span class="label">1 to 4, Return</span><span class="state">on the menu: load a table</span></div>
+<div class="key"><span class="label">F1</span><span class="state">on a table: start a one-player game</span></div>
+<div class="key"><span class="label">Left / Right Shift / Alt</span><span class="state">left and right flippers</span></div>
+<div class="key"><span class="label">Down</span><span class="state">pull the plunger; let go to launch the ball</span></div>
+<div class="key"><span class="label">Space</span><span class="state">nudge the table</span></div>
+<p class="hint">F11 opens this menu; F1, F5 and F9 belong to the game. Save and load states on the Disks page.</p>

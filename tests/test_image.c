@@ -202,17 +202,19 @@ static void test_dumps(void)
 	{
 		uint32_t crc;
 		const char *role;
+		const char *set;
 		enum SdlDumpStatus status;
 		const char *name;
 	} want[] = {
-		{0xAB174FFBu, "disk1", SdlDumpStatusVerified, "Synthetic disk 1"},
-		{0x9FAB1EC7u, "disk2", SdlDumpStatusKnown, "Synthetic disk 2"},
-		{0x3AEFD3ECu, "disk1", SdlDumpStatusRefused, "This synthetic dump is refused"},
+		{0xAB174FFBu, "disk1", "first", SdlDumpStatusVerified, "Synthetic disk 1"},
+		{0x9FAB1EC7u, "disk2", 0, SdlDumpStatusKnown, "Synthetic disk 2"},
+		{0x3AEFD3ECu, "disk1", 0, SdlDumpStatusRefused, "This synthetic dump is refused"},
 	};
 	uint32_t i;
 	int ok = sdl_dump_count == 3;
 	for(i = 0; ok && i < 3; i++)
 		ok = sdl_dumps[i].crc == want[i].crc && !strcmp(sdl_dumps[i].role, want[i].role)
+			&& (want[i].set ? sdl_dumps[i].set && !strcmp(sdl_dumps[i].set, want[i].set) : !sdl_dumps[i].set)
 			&& sdl_dumps[i].status == want[i].status && !strcmp(sdl_dumps[i].name, want[i].name);
 	check(ok, "dumps table", "rows differ from tests/dumps.txt");
 }

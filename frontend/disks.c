@@ -109,7 +109,47 @@ static uint8_t *disks_read_file(const char *path, size_t *size)
 	return data;
 }
 
-int sdl_disks_offer(const char *path, enum SdlOffer how, void (*report)(int error, const char *text))
+/* A role other than `role` holding a dump of another set than `set`, or -1. */
+static int disks_other_set(int role, const char *set)
+{
+	uint32_t r;
+	for(r = 0; set && r < game_def.disk_count; r++)
+		if((int)r != role && sdl_roles[r].set && strcmp(sdl_roles[r].set, set))
+			return (int)r;
+	return -1;
+}
+
+/* Empties role `r` and forgets its settings.ini path, first taking it from `m` and its drives
+ * when the machine holds it. */
+static void disks_release(struct Amiga *m, int r)
+{
+	struct SdlRole *role = &sdl_roles[r];
+	const char *value;
+	char key[80];
+	int n;
+	snprintf(key, sizeof key, "disk.%s", game_def.disks[r].id);
+	value = sdl_settings_get(key);
+	if(value && *value && sdl_settings_set(key, ""))
+		sdl_settings_save();
+	if(role->attached)
+	{
+		for(n = 0; n < AMIGA_DRIVES; n++)
+			if(m->drive_role[n] == r)
+				amiga_insert(m, n, -1);
+		amiga_attach(m, r, NULL, 0);
+		role->attached = 0;
+	}
+	free(role->adf);
+	role->adf = NULL;
+	role->rank = SdlRankNone;
+	role->set = NULL;
+	role->name[0] = 0;
+	role->source[0] = 0;
+}
+
+/* `open` NULL: sdl_disks_offer's rules. Else sdl_disks_open's, on that machine. */
+static int disks_offer(const char *path, enum SdlOffer how, struct Amiga *open, int *swapped,
+	void (*report)(int error, const char *text))
 {
 	char absolute[1024], line[640], error[128];
 	struct SdlCandidate cands[SDL_IMAGE_CANDIDATES];
@@ -158,6 +198,7 @@ int sdl_disks_offer(const char *path, enum SdlOffer how, void (*report)(int erro
 		struct SdlIdentity id;
 		struct SdlRole *held;
 		const char *label;
+		int other;
 		if(!c->adf)
 		{
 			snprintf(line, sizeof line, "%.255s: %s", c->name, c->error);
@@ -174,33 +215,63 @@ int sdl_disks_offer(const char *path, enum SdlOffer how, void (*report)(int erro
 		}
 		held = &sdl_roles[id.role];
 		label = game_def.disks[id.role].label;
-		if(held->attached)
+		if(open)
 		{
-			snprintf(line, sizeof line, "%.255s: %s is in use; restart to change it", c->name, label);
-			report(1, line);
-			free(c->adf);
+			while((other = disks_other_set(id.role, id.set)) >= 0)
+			{
+				snprintf(line, sizeof line, "%.200s: %s taken out, it does not go with %.200s", sdl_roles[other].name,
+					game_def.disks[other].label, c->name);
+				report(0, line);
+				*swapped |= sdl_roles[other].attached;
+				disks_release(open, other);
+			}
+			if(held->attached)
+			{
+				amiga_attach(open, id.role, c->adf, 0);
+				*swapped = 1;
+			}
 		}
 		else if(held->adf && how == SdlOfferRemembered)
+		{
 			free(c->adf);
+			continue;
+		}
+		else if((other = disks_other_set(id.role, id.set)) >= 0)
+		{
+			snprintf(line, sizeof line, "%.200s: %s, it does not go with %s, %.200s", c->name,
+				how == SdlOfferRemembered ? "not used" : "refused", game_def.disks[other].label, sdl_roles[other].name);
+			report(how != SdlOfferRemembered, line);
+			free(c->adf);
+			continue;
+		}
 		else if(held->adf && id.rank <= held->rank)
 		{
 			snprintf(line, sizeof line, "%.255s: ignored, %s already has a %s dump", c->name, label, disks_rank_word(held->rank));
 			report(0, line);
 			free(c->adf);
+			continue;
 		}
-		else
-		{
-			free(held->adf);
-			held->adf = c->adf;
-			held->rank = id.rank;
-			snprintf(held->source, sizeof held->source, "%s", absolute);
-			snprintf(held->name, sizeof held->name, "%.255s", id.name ? id.name : c->name);
-			snprintf(line, sizeof line, "%.255s: %s, %s dump", c->name, label, disks_rank_word(id.rank));
-			report(0, line);
-			filled++;
-		}
+		free(held->adf);
+		held->adf = c->adf;
+		held->rank = id.rank;
+		held->set = id.set;
+		snprintf(held->source, sizeof held->source, "%s", absolute);
+		snprintf(held->name, sizeof held->name, "%.255s", id.name ? id.name : c->name);
+		snprintf(line, sizeof line, "%.255s: %s, %s dump", c->name, label, disks_rank_word(id.rank));
+		report(0, line);
+		filled++;
 	}
 	return filled;
+}
+
+int sdl_disks_offer(const char *path, enum SdlOffer how, void (*report)(int error, const char *text))
+{
+	return disks_offer(path, how, NULL, NULL, report);
+}
+
+int sdl_disks_open(struct Amiga *m, const char *path, int *swapped, void (*report)(int error, const char *text))
+{
+	return disks_offer(path, SdlOfferGiven, m, swapped, report);
 }
 
 int sdl_disks_import(int role, const char *path, void (*report)(int error, const char *text))

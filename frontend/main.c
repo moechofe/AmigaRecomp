@@ -486,7 +486,8 @@ static const char *sdl_state_load_window(const char *path, void (*report)(int er
 	return why;
 }
 
-/* 0, or -1 with the fatal error printed. */
+/* Boots, or cold-boots a machine that has run, with the boot layout of sdl_disks_boot_drives.
+ * 0, or -1 with the fatal error printed. */
 static int sdl_boot(void (*banner)(const char *text))
 {
 	const int *drives = sdl_disks_boot_drives();
@@ -494,7 +495,7 @@ static int sdl_boot(void (*banner)(const char *text))
 	sdl_disks_attach(&machine, banner);
 	for(i = 0; i < 4; i++)
 		amiga_insert(&machine, i, drives[i]);
-	if(machine.fatal || amiga_boot(&machine))
+	if(machine.fatal || (machine.booted ? amiga_reset(&machine) : amiga_boot(&machine)))
 	{
 		sdl_report_fatal();
 		return -1;
@@ -515,15 +516,17 @@ static int sdl_boot_window(void)
 	return 0;
 }
 
-/* One action from the menu; returns the number of roles filled. */
-static int sdl_menu_action_run(const struct SdlOptions *o, const SDL_UserEvent *u)
+/* One action from the menu; returns the number of roles filled, and sets *swapped when the
+ * machine's disks were replaced. */
+static int sdl_menu_action_run(const struct SdlOptions *o, const SDL_UserEvent *u, int *swapped)
 {
 	const char *path = u->data1 ? (const char *)u->data1 : o->state;
+	char text[160];
 	int role, n;
 	switch((enum SdlMenuAction)u->code)
 	{
 	case SdlMenuOpenDisk:
-		return sdl_disks_offer(u->data1, SdlOfferGiven, sdl_report_given);
+		return sdl_disks_open(&machine, u->data1, swapped, sdl_report_given);
 	case SdlMenuImportDisk:
 		role = (int)(intptr_t)u->data2;
 		if(sdl_disks_import(role, u->data1, sdl_report_given) == 0 && sdl_roles[role].attached)
@@ -537,6 +540,27 @@ static int sdl_menu_action_run(const struct SdlOptions *o, const SDL_UserEvent *
 	case SdlMenuStateLoad:
 		if(!sdl_state_load_window(path, sdl_report_window))
 			sdl_menu_show(0);
+		return 0;
+	case SdlMenuReset:
+		role = machine.drive_role[0];
+		if(role < 0)
+		{
+			sdl_menu_notify("Not reset: DF0 is empty", 1);
+			return 0;
+		}
+		if(role != game_def.drives[0] && !(game_def.drives_optional && role == game_def.drives_optional[0]))
+		{
+			snprintf(text, sizeof text, "Not reset: the game does not boot from %.60s in DF0", game_def.disks[role].label);
+			sdl_menu_notify(text, 1);
+			return 0;
+		}
+		snprintf(text, sizeof text, "reset at frame %u", machine.frame_count);
+		if(!amiga_reset(&machine))
+		{
+			sdl_log(text);
+			sdl_menu_notify("Machine reset", 0);
+		}
+		sdl_menu_show(0);
 		return 0;
 	}
 	return 0;
@@ -626,19 +650,19 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 	while(running)
 	{
 		SDL_Event e;
-		int dx, dy, filled = 0;
+		int dx, dy, filled = 0, swapped = 0;
 		while(SDL_PollEvent(&e))
 		{
 			int open = sdl_menu_is_open();
 			if(e.type == SDL_EVENT_QUIT)
 				running = 0;
 			else if(e.type == SDL_EVENT_DROP_FILE)
-				filled += sdl_disks_offer(e.drop.data, SdlOfferGiven, sdl_report_given);
+				filled += sdl_disks_open(&machine, e.drop.data, &swapped, sdl_report_given);
 			else if(sdl_pad_event(&e))
 				;
 			else if(e.type == sdl_menu_action_event)
 			{
-				filled += sdl_menu_action_run(o, &e.user);
+				filled += sdl_menu_action_run(o, &e.user, &swapped);
 				SDL_free(e.user.data1);
 			}
 			else if(e.type == SDL_EVENT_WINDOW_MOUSE_LEAVE || e.type == SDL_EVENT_MOUSE_MOTION)
@@ -724,7 +748,14 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 			}
 		}
 
-		if(filled)
+		if(swapped)
+		{
+			char text[64];
+			snprintf(text, sizeof text, "disks replaced at frame %u", machine.frame_count);
+			sdl_log(text);
+			sdl_booted = 0;
+		}
+		if(filled || swapped)
 		{
 			if(!sdl_booted && sdl_disks_ready())
 			{
@@ -733,6 +764,8 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 					code = 1;
 					break;
 				}
+				if(swapped)
+					sdl_menu_notify("Machine reset with the new disks", 0);
 				sdl_menu_show(0);
 			}
 			else if(sdl_booted)
@@ -740,6 +773,8 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 				sdl_disks_attach(&machine, sdl_banner_window);
 				sdl_disks_remember();
 			}
+			else if(swapped)
+				sdl_menu_show(1);
 			sdl_menu_refresh(sdl_booted);
 		}
 		if(sdl_menu_is_open())
@@ -793,6 +828,7 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 			if(game_def.joystick >= 2)
 				amiga_joystick(&machine, 0, sdl_pad_joystick(0));
 			machine.pointer_hidden = game_system_cursor(&machine) && !captured;
+			machine.os_cursor = !captured && (!game_def.system_cursor || game_system_cursor(&machine));
 
 			if(o->script)
 			{

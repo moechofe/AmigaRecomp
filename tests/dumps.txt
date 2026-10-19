@@ -1,5 +1,5 @@
 # Synthetic dumps for test_image; no game bytes.
 
-ab174ffb disk1 verified Synthetic disk 1   # a trailing comment
+ab174ffb disk1@first verified Synthetic disk 1   # a trailing comment
 9FAB1EC7 disk2 known Synthetic disk 2
 3aefd3ec disk1 refused This synthetic dump is refused

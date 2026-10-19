@@ -115,3 +115,24 @@ const char *state_load(struct Amiga *m, const uint8_t *in, uint32_t len)
 	memcpy(m->hle.calls, calls, sizeof calls);
 	return 0;
 }
+
+/* A cold boot with each drive keeping its disk: every section but the drive-to-role table starts
+ * from zero, as after amiga_init, and the disks go back in as sdl_boot puts them before
+ * amiga_boot. What state_load keeps stays. 0, or -1 with m->fatal set. */
+int amiga_reset(struct Amiga *m)
+{
+	int8_t drives[AMIGA_DRIVES];
+	uint32_t calls[HLE_CALL_LIBS][256];
+	size_t i;
+	int n;
+	memcpy(drives, m->drive_role, sizeof drives);
+	memcpy(calls, m->hle.calls, sizeof calls);
+	for(i = 0; i < STATE_SECTIONS; i++)
+		memset((uint8_t *)m + state_fields[i].offset, 0, state_fields[i].size);
+	memcpy(m->hle.calls, calls, sizeof calls);
+	m->cpu_clock_odd = 0;
+	m->booted = 0;
+	for(n = 0; n < AMIGA_DRIVES; n++)
+		amiga_insert(m, n, drives[n]);
+	return m->fatal ? -1 : amiga_boot(m);
+}

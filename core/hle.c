@@ -595,11 +595,15 @@ static int hle_internal(struct Amiga *m, uint32_t off)
 		hle_continue(m);
 		return 0;
 	case 0x410:
-		/* graphics', gameport's, Intuition's and timer.device's vertical-blank work. */
+		/* graphics', gameport's, Intuition's and timer.device's vertical-blank work, and on the
+		 * A1200 the requester's pointer. */
 		hle_gfx_vblank(m);
 		hle_input_vblank(m);
 		hle_int_vblank(m);
 		hle_timer_vblank(m);
+#if AMIGA_A1200
+		hle_con_vblank(m);
+#endif
 		m->cpu.z = 1;
 		m->cpu.pc = cpu_pop32(m);
 		return 0;
@@ -690,6 +694,12 @@ static int hle_internal(struct Amiga *m, uint32_t off)
 		/* An ICR owner whose work the HLE does elsewhere. */
 		m->cpu.pc = cpu_pop32(m);
 		return 0;
+#if AMIGA_A1200
+	case 0x43C:
+		return hle_con_park(m);
+	case 0x440:
+		return hle_con_request_park(m);
+#endif
 	default:
 		amiga_fatal(m, "jump to internal HLE entry 0x%03X", (unsigned)off);
 		return 0;
@@ -725,7 +735,7 @@ int hle_dispatch(struct Amiga *m)
 		static const char *names[HLE_LIBS] = {"exec.library", "graphics.library", "trackdisk.device", "input.device",
 			"intuition.library", "dos.library", "layers.library", "audio.device", [HLE_LIB_POTGO] = "potgo.resource",
 			[HLE_LIB_CIAA] = "ciaa.resource", [HLE_LIB_CIAB] = "ciab.resource", [HLE_LIB_TIMER] = "timer.device",
-			[HLE_LIB_KEYBOARD] = "keyboard.device", [HLE_LIB_GAMEPORT] = "gameport.device"};
+			[HLE_LIB_KEYBOARD] = "keyboard.device", [HLE_LIB_UTILITY] = "utility.library"};
 		char buf[64];
 		const char *who = names[lib] ? names[lib] : "unknown library";
 		if(lib >= HLE_LIB_STUB && lib - HLE_LIB_STUB < m->hle.stub_count)
