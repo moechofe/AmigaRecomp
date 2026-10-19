@@ -1,3 +1,3 @@
 <p>Requires Disk 3 and Disk 2 of the original game; Disk 1, the intro, is optional. The machine has one drive: the game starts from Disk 3, or from Disk 1 when given, and asks for each other disk in DF0; put it there on the Disks page.</p>
 <h2>Controls</h2>
-<div class="key"><span class="label">Mouse</span><span class="state">the game is played with the mouse</span></div>
+<div class="row"><span class="label">Mouse</span><span class="state">the game is played with the mouse</span></div>

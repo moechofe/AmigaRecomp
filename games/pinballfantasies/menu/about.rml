@@ -1,9 +1,9 @@
-<p>Requires the three disks of the original game. It starts with Disk 1 in DF0 and DF1 empty; when it asks for a course disk, put Disk 2 or Disk 3 in DF1 on the Disks page. The menu offers the two tables of one course disk, Disk 2 first.</p>
+<p>Requires the three disks of the original game. When it asks for a course disk, put Disk 2 or Disk 3 in DF1.</p>
 <h2>Controls</h2>
-<div class="key"><span class="label">F1 / F2</span><span class="state">on the menu: load the first or second table</span></div>
-<div class="key"><span class="label">F1 to F8</span><span class="state">on a table: start a game for that many players</span></div>
-<div class="key"><span class="label">Left / Right Shift / Alt</span><span class="state">left and right flippers</span></div>
-<div class="key"><span class="label">Down</span><span class="state">pull the plunger; let go to launch the ball</span></div>
-<div class="key"><span class="label">Space</span><span class="state">nudge the table</span></div>
-<div class="key"><span class="label">Insert / Home</span><span class="state">the Amiga's Help key: on the menu, turn to the other course disk's tables</span></div>
-<p class="hint">F11 opens this menu; F1, F5 and F9 belong to the game. Save and load states on the Disks page.</p>
+<div class="row"><span class="label">F1 / F2</span><span class="state">on the menu: load the first or second table</span></div>
+<div class="row"><span class="label">F1 to F8</span><span class="state">on a table: start a game for that many players</span></div>
+<div class="row"><span class="label">Left / Right Shift / Alt</span><span class="state">left and right flippers</span></div>
+<div class="row"><span class="label">Down</span><span class="state">pull the plunger; let go to launch the ball</span></div>
+<div class="row"><span class="label">Space</span><span class="state">nudge the table</span></div>
+<div class="row"><span class="label">Esc</span><span class="state">quit the table</span></div>
+<div class="row"><span class="label">Insert / Home</span><span class="state">the Amiga's Help key: on the menu, turn to the other course disk's tables</span></div>

@@ -1,5 +1,5 @@
 <p>Requires the game's disk in DF0.</p>
 <h2>Controls</h2>
-<div class="key"><span class="label">Arrows</span><span class="state">steer, menu selection</span></div>
-<div class="key"><span class="label">Right Ctrl</span><span class="state">fire: accelerate, validate</span></div>
+<div class="row"><span class="label">Arrows</span><span class="state">steer, menu selection</span></div>
+<div class="row"><span class="label">Right Ctrl</span><span class="state">fire: accelerate, validate</span></div>
 <p class="hint">Changes this from the Controls page.</p>
