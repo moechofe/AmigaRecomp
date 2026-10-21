@@ -130,9 +130,10 @@ static int sdl_help(void)
 		"  Alt+Enter        fullscreen on or off\n");
 	if(game_def.joystick)
 		printf("  bound keys       the joystick in port 2, bound on the menu's Controls page;\n"
-			"                   by default the arrows and Right Ctrl (fire)\n"
-			"  a controller     also the joystick in port 2: left stick or D-pad, and\n"
-			"                   A, B, X or Y (any button on a plain joystick) fires\n");
+			"                   by default the arrows, Ctrl (fire) and Space (button 2)\n"
+			"  a controller     also the joystick in port 2: left stick or D-pad, and the\n"
+			"                   bound buttons, by default A, X or Y fire and B is button 2\n"
+			"                   (any button fires on a plain joystick)\n");
 	if(game_def.joystick >= 2)
 		printf("  2nd controller   the joystick in port 1, for player 2, in place of the mouse\n");
 	printf("\n"
@@ -700,6 +701,11 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 				{
 					if(!e.key.repeat)
 						sdl_menu_bind(sdl_frontend_key(e.key.scancode) || e.key.scancode == SDL_SCANCODE_ESCAPE ? -1 : (int)e.key.scancode);
+				}
+				else if(e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN && sdl_menu_binding())
+				{
+					if(sdl_bindings_pad_button(e.gbutton.button))
+						sdl_menu_bind(SDL_BIND_PAD(e.gbutton.button));
 				}
 				else if(e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat && sdl_booted
 					&& (e.key.scancode == (SDL_Scancode)sdl_menu_key() || e.key.scancode == SDL_SCANCODE_ESCAPE))

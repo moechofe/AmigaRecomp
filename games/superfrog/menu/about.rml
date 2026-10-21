@@ -1,0 +1,6 @@
+<p>Boots from Disk 1 in DF0; give Disks 2 to 4 as well.</p>
+<h2>Controls</h2>
+<div class="row"><span class="label">Arrows</span><span class="state">the joystick in port 2: run, aim a throw</span></div>
+<div class="row"><span class="label">Ctrl, pad A</span><span class="state">fire: jump in a level, menu selection</span></div>
+<div class="row"><span class="label">Space, pad B</span><span class="state">button 2: throw, aimed with the arrows</span></div>
+<p class="hint">With the hack "Fire jumps, button 2 throws" off, up jumps and fire throws, as on the Amiga. Change the keys and buttons from the Controls page.</p>

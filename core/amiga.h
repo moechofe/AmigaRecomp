@@ -27,6 +27,12 @@
 #define AMIGA_A1200 0
 #endif
 
+/* 1: a disk DMA transfer takes the time the head takes to pass its words; 0: it is instant.
+ * Chosen by the game's CMakeLists (docs/game.md, item 2; core/disk.c). */
+#ifndef AMIGA_DISK_TIMED
+#define AMIGA_DISK_TIMED 0
+#endif
+
 /* Chip RAM at 0x000000 and 512 KB slow RAM at 0xC00000: the A500 memory map, HRM "Memory Map".
  * Chip RAM is 512 KB behind the OCS Agnus, 1 MB behind the ECS Agnus (8372A) when the game's
  * CMakeLists asks for it (docs/game.md, item 2), or the A1200's 2 MB behind Alice. On the A1200
@@ -115,6 +121,8 @@ struct Hacks
 #define AMIGA_DRIVES 4
 /* The capacity of the role table, not a hardware value. */
 #define AMIGA_ROLES 8
+/* One revolution of a track as MFM words: 200 ms (300 rpm) at 32 us a word (core/disk.c). */
+#define AMIGA_TRACK_WORDS 6250
 
 struct Cpu
 {
@@ -251,6 +259,13 @@ struct Floppy
 	uint8_t motor[AMIGA_DRIVES];   /* latched when /SELn falls */
 	uint8_t changed[AMIGA_DRIVES]; /* 1: /CHNG low */
 	uint64_t index_rev;            /* the last revolution number that pulsed the index */
+#if AMIGA_DISK_TIMED
+	/* The disk DMA in progress: its words land as the head passes them. */
+	uint16_t dma_track[AMIGA_TRACK_WORDS]; /* the track it reads, the index at word 0 */
+	uint64_t dma_word0;            /* the revolution-word number (cycles / 227) of its first word */
+	uint32_t dma_dest, dma_len, dma_done;
+	uint8_t dma_on, dma_sync;      /* dma_sync: DSKSYN not raised yet */
+#endif
 };
 
 /* A disk image a game role holds. rw is the same buffer as image for a writable role, else
@@ -484,7 +499,8 @@ void amiga_log_once(struct Amiga *m, uint32_t key, const char *fmt, ...);
 void amiga_logf(struct Amiga *m, const char *fmt, ...);
 void amiga_key(struct Amiga *m, uint8_t code, int up);
 void amiga_mouse(struct Amiga *m, int dx, int dy, int lmb, int rmb);
-enum AmigaJoy { AmigaJoyUp = 1, AmigaJoyDown = 2, AmigaJoyLeft = 4, AmigaJoyRight = 8, AmigaJoyFire = 16 };
+/* AmigaJoyFire2 is the second button of a two-button joystick, on the port's pin 9 (POTGOR). */
+enum AmigaJoy { AmigaJoyUp = 1, AmigaJoyDown = 2, AmigaJoyLeft = 4, AmigaJoyRight = 8, AmigaJoyFire = 16, AmigaJoyFire2 = 32 };
 void amiga_joystick(struct Amiga *m, int port, uint8_t joy);
 uint64_t amiga_now(const struct Amiga *m);
 
@@ -521,6 +537,7 @@ void denise_render_to(struct Amiga *m, int hpos);
 void denise_end_line(struct Amiga *m);
 void denise_write(struct Amiga *m, uint32_t reg, uint16_t v);
 int denise_pointer(struct Amiga *m, int *x, int *y);
+int denise_copper_blocked(const struct Amiga *m, int hpos);
 #if AMIGA_A1200
 /* hle_con.c: an EasyRequestArgs requester's pointer, its hot spot at DIW x *x on line *y; 0 when
  * no requester is up. */

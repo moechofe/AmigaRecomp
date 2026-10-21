@@ -30,6 +30,8 @@ struct Script
 	int count;
 	int frames;
 	int arg[3];
+	int joy_on;  /* 1 once a `joy` directive has run: the port-2 joystick is held at `joy` */
+	uint8_t joy;
 	char name[64];
 	char error[256];
 };

@@ -1,0 +1,20 @@
+# docs/game.md, item 4.
+0cceb5bf disk1 verified Superfrog (1993)(Team 17)(Disk 1 of 4)[cr CSL]
+fdeb21b2 disk1 known Superfrog (1993)(Team 17)(Disk 1 of 4)[cr CSL][b dump]
+e1bdcf96 disk1 known Superfrog (1993)(Team 17)(Disk 1 of 4)[cr CSL][t +10 TRSI]
+be06919f disk1 known Superfrog (1993)(Team 17)(Disk 1 of 4)[cr CSL][t +15 ATX]
+70100d0a disk1 known Superfrog (1993)(Team 17)(Disk 1 of 4)[cr CSL][t +5 PDX]
+459f2da1 disk1 known Superfrog (1993)(Team 17)(Disk 1 of 4)[cr CSL][t +6 SCX]
+64375ed2 disk1 known Superfrog (1993)(Team 17)(Disk 1 of 4)[cr CSL][t +8 Access]
+767402aa disk2 known Superfrog (1993)(Team 17)(Disk 2 of 4)[cr CSL]
+c0902099 disk2 known Superfrog (1993)(Team 17)(Disk 2 of 4)[cr CSL][b dump]
+40d1dd26 disk3 known Superfrog (1993)(Team 17)(Disk 3 of 4)[cr CSL][bootable]
+8f58e8a7 disk3 known Superfrog (1993)(Team 17)(Disk 3 of 4)[cr CSL][a][bootable]
+97b3d1a3 disk3 known Superfrog (1993)(Team 17)(Disk 3 of 4)[cr CSL][a2][bootable]
+df456e77 disk3 known Superfrog (1993)(Team 17)(Disk 3 of 4)[cr CSL][u2][bootable]
+4554d826 disk4 known Superfrog (1993)(Team 17)(Disk 4 of 4)[cr CSL]
+5e805d8a disk4 known Superfrog (1993)(Team 17)(Disk 4 of 4)[cr CSL][a]
+928040cc disk1 refused This Superfrog is Faction's hard-disk install, files for a hard disk: Kickstart does not boot its Disk 1 on the original machine either. Give the disks of the floppy release
+b47e5051 disk2 refused This Superfrog disk is from Faction's hard-disk install, files for a hard disk, not a floppy of the game. Give the disks of the floppy release
+9c360dba disk3 refused This Superfrog disk is from Faction's hard-disk install, files for a hard disk, not a floppy of the game. Give the disks of the floppy release
+7ff03160 disk4 refused This Superfrog disk is from Faction's hard-disk install, files for a hard disk, not a floppy of the game. Give the disks of the floppy release

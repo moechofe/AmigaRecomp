@@ -1,12 +1,14 @@
 #include "pad.h"
 
 #include "amiga.h"
+#include "bindings.h"
 #include "game.h"
 
 #include <stdio.h>
 
-/* A gamepad SDL knows the layout of reads through SDL's gamepad mapping; any other device as a
- * plain joystick: axes 0 and 1, hat 0, and every button. */
+/* A gamepad SDL knows the layout of reads through SDL's gamepad mapping: stick and D-pad steer,
+ * its buttons do what the Controls page binds them to. Any other device is a plain joystick: axes
+ * 0 and 1, hat 0, and every button fires. */
 struct SdlPad { SDL_JoystickID id; SDL_Gamepad *pad; SDL_Joystick *joy; int port; };
 
 static struct SdlPad *pads;
@@ -119,10 +121,7 @@ static uint8_t pad_gamepad(SDL_Gamepad *g)
 		joy |= AmigaJoyLeft;
 	if(SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_DPAD_RIGHT))
 		joy |= AmigaJoyRight;
-	if(SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_SOUTH) || SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_EAST)
-		|| SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_WEST) || SDL_GetGamepadButton(g, SDL_GAMEPAD_BUTTON_NORTH))
-		joy |= AmigaJoyFire;
-	return joy;
+	return (uint8_t)(joy | sdl_bindings_gamepad(g));
 }
 
 static uint8_t pad_joystick(SDL_Joystick *j)

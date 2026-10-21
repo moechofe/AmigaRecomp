@@ -12,6 +12,15 @@
 #define PAULA_RC_6200 30288
 #define PAULA_RC_20000 57793
 
+/* A period in colour clocks; AUDxPER 0 is 65 536, as in WinUAE's AUDxPER. DMA gives a channel one
+ * word, two samples, a line, so no period runs faster than half a line; ProTracker's lowest, 113,
+ * is not raised. */
+static uint32_t paula_period(const struct AudioChannel *a)
+{
+	uint32_t per = a->per ? a->per : 0x10000u;
+	return per < AMIGA_CCK_PER_LINE / 2 ? AMIGA_CCK_PER_LINE / 2 : per;
+}
+
 static void paula_reload(struct Amiga *m, int ch)
 {
 	struct AudioChannel *a = &m->paula.aud[ch];
@@ -43,7 +52,7 @@ void paula_dmacon_changed(struct Amiga *m, uint16_t old)
 		{
 			paula_reload(m, ch);
 			paula_fetch(m, ch);
-			a->counter = a->per;
+			a->counter = paula_period(a);
 			a->active = 1;
 		}
 		else if(!now && was)
@@ -111,8 +120,7 @@ void paula_audio_run(struct Amiga *m, int cck)
 				a->counter--;
 				continue;
 			}
-			/* Periods below 124 colour clocks exceed what DMA can feed. HRM. */
-			a->counter = a->per < 124 ? 124 : a->per;
+			a->counter = paula_period(a);
 			a->sample = (int8_t)(a->byte == 0 ? a->word >> 8 : a->word & 0xFF);
 			if(++a->byte == 2)
 				paula_fetch(m, ch);

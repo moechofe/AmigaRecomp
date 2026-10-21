@@ -290,6 +290,26 @@ static int denise_planes(const struct Denise *d)
 	return bpu;
 }
 
+/* Whether this line's bitplane DMA takes colour clock `hpos`, one the copper fetches in (it
+ * fetches at even colour clocks, docs/runtime.md, "Timing"). A 16-bit fetch block gives its
+ * even colour clocks 2 and 6 to planes 6 and 5 in lores, and 0 and 4 to plane 4 and 2 and 6 to
+ * plane 3 in hires (HRM, Figures 6-11 and 6-12, "Time Slots Used by a Six Bitplane Display" and
+ * "by a High Resolution Display"); its odd ones go to the other planes. Wider AGA fetches are not
+ * modelled and take none. */
+int denise_copper_blocked(const struct Amiga *m, int hpos)
+{
+	const struct Denise *d = &m->denise;
+	int bpu = denise_planes(d), start = denise_ddf_start(d), stop = d->ddfstop & 0xFC, k;
+	if(denise_fm(d, 0) || (m->paula.dmacon & 0x0300) != 0x0300 || bpu == 0 || !denise_in_vwindow(d) || stop < start)
+		return 0;
+	if(hpos < start || hpos >= start + ((stop - start + 7) / 8 + 1) * 8)
+		return 0;
+	k = (hpos - start) & 7;
+	if(d->bplcon0 & 0x8000)
+		return ((k == 0 || k == 4) && bpu >= 4) || ((k == 2 || k == 6) && bpu >= 3);
+	return (k == 2 && bpu >= 6) || (k == 6 && bpu >= 5);
+}
+
 static void denise_fetch(struct Amiga *m)
 {
 	struct Denise *d = &m->denise;
@@ -571,6 +591,16 @@ void denise_write(struct Amiga *m, uint32_t reg, uint16_t v)
 		case 2: s->ctl = v; s->armed = 0; break;
 		case 4: s->data = denise_sprite_write(m, d, v); s->armed = 1; break;
 		case 6: s->datb = denise_sprite_write(m, d, v); break;
+		}
+		/* Agnus takes VSTART and VSTOP from every write of SPRxPOS and SPRxCTL, not only from
+		 * the DMA's control words, so a sprite whose position the CPU or copper writes starts its
+		 * data fetch at VSTART (FS-UAE 3.1.66 custom.cpp, SPRxCTLPOS and do_sprites_1). */
+		if(!(reg & 4))
+		{
+			s->vstart = denise_sprite_vstart(s->pos, s->ctl);
+			s->vstop = denise_sprite_vstop(s->ctl);
+			if(s->dma_state == SpriteIdle || s->dma_state == SpriteWaitStart)
+				s->dma_state = SpriteWaitStart;
 		}
 		return;
 	}

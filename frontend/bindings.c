@@ -9,9 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-const char *const sdl_command_labels[SdlCommandCount] = {"Joystick up", "Joystick down", "Joystick left", "Joystick right", "Joystick fire"};
-static const char *const bind_ids[SdlCommandCount] = {"joy_up", "joy_down", "joy_left", "joy_right", "joy_fire"};
-static const uint8_t bind_joy[SdlCommandCount] = {AmigaJoyUp, AmigaJoyDown, AmigaJoyLeft, AmigaJoyRight, AmigaJoyFire};
+const char *const sdl_command_labels[SdlCommandCount] = {"Joystick up", "Joystick down", "Joystick left", "Joystick right", "Joystick fire", "Joystick button 2"};
+static const char *const bind_ids[SdlCommandCount] = {"joy_up", "joy_down", "joy_left", "joy_right", "joy_fire", "joy_fire2"};
+static const uint8_t bind_joy[SdlCommandCount] = {AmigaJoyUp, AmigaJoyDown, AmigaJoyLeft, AmigaJoyRight, AmigaJoyFire, AmigaJoyFire2};
 
 static const struct SdlBinding bind_defaults[] = {
 	{SDL_SCANCODE_UP, SdlCommandJoyUp},
@@ -20,8 +20,14 @@ static const struct SdlBinding bind_defaults[] = {
 	{SDL_SCANCODE_RIGHT, SdlCommandJoyRight},
 	{SDL_SCANCODE_RCTRL, SdlCommandJoyFire},
 	{SDL_SCANCODE_LCTRL, SdlCommandJoyFire},
+	{SDL_SCANCODE_SPACE, SdlCommandJoyFire2},
+	{SDL_BIND_PAD(SDL_GAMEPAD_BUTTON_SOUTH), SdlCommandJoyFire},
+	{SDL_BIND_PAD(SDL_GAMEPAD_BUTTON_EAST), SdlCommandJoyFire2},
+	{SDL_BIND_PAD(SDL_GAMEPAD_BUTTON_WEST), SdlCommandJoyFire},
+	{SDL_BIND_PAD(SDL_GAMEPAD_BUTTON_NORTH), SdlCommandJoyFire},
 };
 #define BIND_DEFAULTS (int)(sizeof bind_defaults / sizeof bind_defaults[0])
+SDL_COMPILE_TIME_ASSERT(bind_pad, SDL_BIND_PAD(0) >= SDL_SCANCODE_COUNT);
 
 static struct SdlBinding bind_table[SDL_BINDINGS_MAX];
 static int bind_count = -1;  /* -1: the defaults, not yet copied */
@@ -40,75 +46,139 @@ static void bind_ready(void)
 	bind_count = BIND_DEFAULTS;
 }
 
-static int bind_find(int scancode)
+static int bind_find(int input)
 {
 	int i;
 	bind_ready();
 	for(i = 0; i < bind_count; i++)
-		if(bind_table[i].scancode == scancode)
+		if(bind_table[i].input == input)
 			return i;
 	return -1;
 }
 
-/* `<scancode>:<command id>`, separated by spaces; 0, or -1 with the table unchanged. */
-static int bind_parse(const char *text)
+int sdl_bindings_pad_button(int button)
 {
-	struct SdlBinding t[SDL_BINDINGS_MAX];
+	return button > SDL_GAMEPAD_BUTTON_INVALID && button < SDL_GAMEPAD_BUTTON_COUNT && button != SDL_GAMEPAD_BUTTON_GUIDE
+		&& (button < SDL_GAMEPAD_BUTTON_DPAD_UP || button > SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+}
+
+static int bind_valid(int input)
+{
+	if(input >= SDL_BIND_PAD(0))
+		return sdl_bindings_pad_button(input - SDL_BIND_PAD(0));
+	return input > SDL_SCANCODE_UNKNOWN && input < SDL_SCANCODE_COUNT;
+}
+
+/* Kind 0 is the keys, stored under `bind`; kind 1 the gamepad buttons, under `bind_pad`. */
+static const char *const bind_keys[2] = {"bind", "bind_pad"};
+
+static int bind_kind(int input)
+{
+	return input >= SDL_BIND_PAD(0);
+}
+
+/* Appends the defaults of one kind to t[*n]. */
+static void bind_defaults_add(int kind, struct SdlBinding *t, int *n)
+{
+	int i;
+	for(i = 0; i < BIND_DEFAULTS && *n < SDL_BINDINGS_MAX; i++)
+		if(bind_kind(bind_defaults[i].input) == kind)
+			t[(*n)++] = bind_defaults[i];
+}
+
+/* Appends `<input>:<command id>` pairs, separated by spaces, to t[*n]: an input is a scancode for
+ * kind 0 and an SDL gamepad button name for kind 1. -1 on a bad pair, with *n unchanged. */
+static int bind_parse(const char *text, int kind, struct SdlBinding *t, int *n)
+{
 	const char *p = text;
-	int n = 0;
+	int k = *n;
 	for(;;)
 	{
-		char *end;
-		long sc;
+		char name[32];
+		long input;
 		size_t len;
 		int c, i;
 		while(*p == ' ')
 			p++;
 		if(!*p)
 			break;
-		if(*p < '0' || *p > '9')
+		len = strcspn(p, ": ");
+		if(p[len] != ':' || len >= sizeof name || k == SDL_BINDINGS_MAX)
 			return -1;
-		sc = strtol(p, &end, 10);
-		if(*end != ':' || sc <= SDL_SCANCODE_UNKNOWN || sc >= SDL_SCANCODE_COUNT || n == SDL_BINDINGS_MAX)
+		memcpy(name, p, len);
+		name[len] = 0;
+		if(kind)
+			input = SDL_BIND_PAD(SDL_GetGamepadButtonFromString(name));
+		else
+		{
+			char *end;
+			if(name[0] < '0' || name[0] > '9')
+				return -1;
+			input = strtol(name, &end, 10);
+			if(*end)
+				return -1;
+		}
+		if(!bind_valid((int)input) || bind_kind((int)input) != kind)
 			return -1;
-		p = end + 1;
+		p += len + 1;
 		len = strcspn(p, " ");
 		for(c = 0; c < SdlCommandCount && (strlen(bind_ids[c]) != len || strncmp(p, bind_ids[c], len)); c++)
 			;
 		if(c == SdlCommandCount)
 			return -1;
-		for(i = 0; i < n; i++)
-			if(t[i].scancode == (int)sc)
+		for(i = *n; i < k; i++)
+			if(t[i].input == (int)input)
 				return -1;
-		t[n].scancode = (int)sc;
-		t[n].command = (enum SdlCommand)c;
-		n++;
+		t[k].input = (int)input;
+		t[k].command = (enum SdlCommand)c;
+		k++;
 		p += len;
 	}
-	memcpy(bind_table, t, (size_t)n * sizeof t[0]);
-	bind_count = n;
+	*n = k;
 	return 0;
 }
 
 static void bind_store(void)
 {
-	char text[SDL_BINDINGS_MAX * 16];
-	size_t n = 0;
-	int i;
-	text[0] = 0;
-	for(i = 0; i < bind_count; i++)
-		n += (size_t)snprintf(text + n, sizeof text - n, "%s%d:%s", i ? " " : "", bind_table[i].scancode, bind_ids[bind_table[i].command]);
-	if(sdl_settings_set("bind", text))
+	int kind, changed = 0;
+	for(kind = 0; kind < 2; kind++)
+	{
+		char text[SDL_BINDINGS_MAX * 32];
+		size_t n = 0;
+		int i;
+		text[0] = 0;
+		for(i = 0; i < bind_count; i++)
+		{
+			const int input = bind_table[i].input;
+			if(bind_kind(input) != kind)
+				continue;
+			if(kind)
+				n += (size_t)snprintf(text + n, sizeof text - n, "%s%s:%s", n ? " " : "",
+					SDL_GetGamepadStringForButton((SDL_GamepadButton)(input - SDL_BIND_PAD(0))), bind_ids[bind_table[i].command]);
+			else
+				n += (size_t)snprintf(text + n, sizeof text - n, "%s%d:%s", n ? " " : "", input, bind_ids[bind_table[i].command]);
+		}
+		changed |= sdl_settings_set(bind_keys[kind], text) != 0;
+	}
+	if(changed)
 		sdl_settings_save();
 }
 
 void sdl_bindings_apply(void)
 {
-	const char *text = sdl_settings_get("bind");
-	bind_count = -1;
-	if(text && bind_parse(text))
-		fprintf(stderr, "settings.ini: ignoring bind=%s\n", text);
-	bind_ready();
+	struct SdlBinding t[SDL_BINDINGS_MAX];
+	int n = 0, kind;
+	for(kind = 0; kind < 2; kind++)
+	{
+		const char *text = sdl_settings_get(bind_keys[kind]);
+		if(text && bind_parse(text, kind, t, &n))
+			fprintf(stderr, "settings.ini: ignoring %s=%s\n", bind_keys[kind], text);
+		else if(text)
+			continue;
+		bind_defaults_add(kind, t, &n);
+	}
+	memcpy(bind_table, t, (size_t)n * sizeof t[0]);
+	bind_count = n;
 }
 
 int sdl_bindings_count(void)
@@ -123,31 +193,50 @@ const struct SdlBinding *sdl_bindings_get(int i)
 	return i >= 0 && i < bind_count ? &bind_table[i] : 0;
 }
 
-int sdl_bindings_add(int scancode, enum SdlCommand command)
+int sdl_bindings_add(int input, enum SdlCommand command)
 {
-	int i = bind_find(scancode);
-	if(scancode <= SDL_SCANCODE_UNKNOWN || scancode >= SDL_SCANCODE_COUNT || (unsigned)command >= SdlCommandCount)
+	int i = bind_find(input);
+	if(!bind_valid(input) || (unsigned)command >= SdlCommandCount)
 		return -1;
 	if(i < 0)
 	{
 		if(bind_count == SDL_BINDINGS_MAX)
 			return -1;
 		i = bind_count++;
-		bind_table[i].scancode = scancode;
+		bind_table[i].input = input;
 	}
 	bind_table[i].command = command;
 	bind_store();
 	return 0;
 }
 
-void sdl_bindings_remove(int scancode)
+void sdl_bindings_remove(int input)
 {
-	int i = bind_find(scancode);
+	int i = bind_find(input);
 	if(i < 0)
 		return;
 	memmove(&bind_table[i], &bind_table[i + 1], (size_t)(bind_count - i - 1) * sizeof bind_table[0]);
 	bind_count--;
 	bind_store();
+}
+
+void sdl_bindings_name(int input, char *out, int size)
+{
+	if(input >= SDL_BIND_PAD(0))
+	{
+		const char *name = SDL_GetGamepadStringForButton((SDL_GamepadButton)(input - SDL_BIND_PAD(0)));
+		snprintf(out, (size_t)size, "Pad %s", name ? name : "?");
+		if(name && !name[1] && size > 5)
+			out[4] = (char)(out[4] - 'a' + 'A');
+	}
+	else
+	{
+		const char *name = SDL_GetScancodeName((SDL_Scancode)input);
+		if(*name)
+			snprintf(out, (size_t)size, "%s", name);
+		else
+			snprintf(out, (size_t)size, "Key %d", input);
+	}
 }
 
 void sdl_bindings_reset(void)
@@ -176,7 +265,18 @@ uint8_t sdl_bindings_joystick(void)
 	int i;
 	bind_ready();
 	for(i = 0; i < bind_count; i++)
-		if(bind_held[bind_table[i].scancode])
+		if(bind_table[i].input < SDL_SCANCODE_COUNT && bind_held[bind_table[i].input])
+			joy |= bind_joy[bind_table[i].command];
+	return joy;
+}
+
+uint8_t sdl_bindings_gamepad(SDL_Gamepad *pad)
+{
+	uint8_t joy = 0;
+	int i;
+	bind_ready();
+	for(i = 0; i < bind_count; i++)
+		if(bind_table[i].input >= SDL_BIND_PAD(0) && SDL_GetGamepadButton(pad, (SDL_GamepadButton)(bind_table[i].input - SDL_BIND_PAD(0))))
 			joy |= bind_joy[bind_table[i].command];
 	return joy;
 }

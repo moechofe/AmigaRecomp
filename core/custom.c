@@ -101,8 +101,10 @@ uint16_t custom_read(struct Amiga *m, uint32_t reg)
 	case REG_POT1DAT:
 		return 0;
 	case REG_POTGOR:
-		/* Port 0 pin 9 (DATLY, bit 10) is the right mouse button, active low. HRM. */
-		return (uint16_t)(0x5500 & ~(m->paula.rmb ? 0x0400 : 0));
+		/* Pin 9 of each port, active low (HRM): port 1's (DATLY, bit 10) is the right mouse button
+		 * or the port-1 joystick's second button, port 2's (DATRY, bit 14) the port-2 joystick's. */
+		return (uint16_t)(0x5500 & ~(m->paula.rmb || (m->paula.joy[0] & AmigaJoyFire2) ? 0x0400 : 0)
+			& ~(m->paula.joy[1] & AmigaJoyFire2 ? 0x4000 : 0));
 	case REG_SERDATR:
 		return 0x3000;
 	case REG_DSKBYTR:

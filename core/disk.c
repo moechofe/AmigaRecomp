@@ -8,11 +8,12 @@
  * FAQ (Laurent Clevy), "MFM track format". A disk is an ADF image, so every track is the
  * standard format: 11 sectors, and the image is the only source of data.
  *
- * Transfers are instant, like trackdisk and the blitter (docs/runtime.md, "Timing"). */
+ * Transfers are instant, like trackdisk and the blitter (docs/runtime.md, "Timing"), unless the
+ * game's CMakeLists asks for DISK_TIMED (AMIGA_DISK_TIMED): then a DMA transfer takes the time
+ * the head takes to pass its words, as on the hardware. */
 
 /* One revolution is 200 ms (300 rpm); at 2 us per MFM cell a 16-cell word takes 32 us, so a
- * track is 200 ms / 32 us = 6250 words. 32 us is 226.99 CPU cycles at 7 093 790 Hz. */
-#define DISK_TRACK_WORDS 6250
+ * track is 200 ms / 32 us = AMIGA_TRACK_WORDS words. 32 us is 226.99 CPU cycles at 7 093 790 Hz. */
 #define DISK_WORD_CYCLES 227
 /* ADF FAQ: a sector is 544 MFM words (sync and header 2 + 2 + 4 + 16 + 4 + 4, data 512). */
 #define DISK_SECTOR_WORDS 544
@@ -74,7 +75,7 @@ static uint32_t adf_long(const uint8_t *p)
 
 /* Encode track `track` (cylinder * 2 + head) of `adf` as the 6250 words the head reads, the index
  * at word 0. */
-static void disk_track(const uint8_t *adf, int track, uint16_t out[DISK_TRACK_WORDS])
+static void disk_track(const uint8_t *adf, int track, uint16_t out[AMIGA_TRACK_WORDS])
 {
 	uint32_t prev = 0;
 	int w = 0, s, i;
@@ -110,7 +111,7 @@ static void disk_track(const uint8_t *adf, int track, uint16_t out[DISK_TRACK_WO
 	}
 	/* The rest of the revolution is gap. */
 	w = DISK_SECTORS * DISK_SECTOR_WORDS;
-	while(w < DISK_TRACK_WORDS)
+	while(w < AMIGA_TRACK_WORDS)
 		put_long(out, &w, mfm_long(0, &prev));
 }
 
@@ -132,15 +133,50 @@ static int disk_selected(uint8_t pins, int *drive)
 	return count;
 }
 
+#if AMIGA_DISK_TIMED
+/* Land the words the head has passed by `now`: word k of the transfer once revolution-word
+ * dma_word0 + k has ended. DSKSYN rises as the sync word ends, DSKBLK after the last word. */
+static void disk_dma_run(struct Amiga *m, uint64_t now)
+{
+	struct Floppy *f = &m->floppy;
+	uint64_t passed = now / DISK_WORD_CYCLES;
+	uint32_t count;
+
+	if(!f->dma_on || passed < f->dma_word0)
+		return;
+	if(f->dma_sync)
+	{
+		f->dma_sync = 0;
+		custom_set_intreq(m, 0x1000);
+	}
+	count = passed - f->dma_word0 < f->dma_len ? (uint32_t)(passed - f->dma_word0) : f->dma_len;
+	for(; f->dma_done < count; f->dma_done++)
+		mem_chip_write16(m, f->dma_dest + 2 * f->dma_done,
+			f->dma_track[(f->dma_word0 + f->dma_done) % AMIGA_TRACK_WORDS]);
+	f->dskpt = f->dma_dest + 2 * f->dma_done;
+	if(f->dma_done == f->dma_len)
+	{
+		f->dma_on = 0;
+		custom_set_intreq(m, 0x0002);
+	}
+}
+#endif
+
 static void disk_dma(struct Amiga *m, uint16_t v)
 {
+	struct Floppy *f = &m->floppy;
 	uint8_t pins = disk_pins(m);
 	uint16_t adkcon = m->paula.adkcon;
-	uint16_t buf[DISK_TRACK_WORDS];
-	uint32_t dest = m->floppy.dskpt;
+	uint64_t word = amiga_now(m) / DISK_WORD_CYCLES;
+	uint32_t dest = f->dskpt;
 	uint32_t len = v & 0x3FFF;
-	uint32_t i, pos;
+	uint32_t i = 0, pos;
 	int n = 0, count, role, head, cyl;
+#if AMIGA_DISK_TIMED
+	uint16_t *buf = f->dma_track;
+#else
+	uint16_t buf[AMIGA_TRACK_WORDS];
+#endif
 
 	if(v & 0x4000)
 	{
@@ -164,7 +200,7 @@ static void disk_dma(struct Amiga *m, uint16_t v)
 		amiga_fatal(m, "disk DMA from DF%d, which is empty", n);
 		return;
 	}
-	if(!m->floppy.motor[n])
+	if(!f->motor[n])
 	{
 		amiga_fatal(m, "disk DMA from DF%d with its motor off", n);
 		return;
@@ -173,32 +209,44 @@ static void disk_dma(struct Amiga *m, uint16_t v)
 		amiga_log_once(m, 0xD2000000u, "disk DMA with ADKCON FAST clear; read as MFM");
 
 	head = (pins & PRB_SIDE) ? 0 : 1;
-	cyl = m->floppy.cyl[n];
+	cyl = f->cyl[n];
 	disk_track(m->disks[role].image, cyl * 2 + head, buf);
-	pos = (uint32_t)((amiga_now(m) / DISK_WORD_CYCLES) % DISK_TRACK_WORDS);
-
+	/* The transfer starts with the word under the head, or, with WORDSYNC, with the word after
+	 * the next sync word. */
+	pos = (uint32_t)(word % AMIGA_TRACK_WORDS);
 	if(adkcon & ADKCON_WORDSYNC)
 	{
-		for(i = 0; i < DISK_TRACK_WORDS; i++)
-			if(buf[(pos + i) % DISK_TRACK_WORDS] == m->floppy.dsksync)
+		for(; i < AMIGA_TRACK_WORDS; i++)
+			if(buf[(pos + i) % AMIGA_TRACK_WORDS] == f->dsksync)
 				break;
-		if(i == DISK_TRACK_WORDS)
+		if(i == AMIGA_TRACK_WORDS)
 		{
 			amiga_fatal(m, "disk DMA: DF%d track %d holds no sync word 0x%04X", n, cyl * 2 + head,
-				m->floppy.dsksync);
+				f->dsksync);
 			return;
 		}
-		pos = (pos + i + 1) % DISK_TRACK_WORDS;
-		custom_set_intreq(m, 0x1000);
+		i++;
 	}
-	for(i = 0; i < len; i++)
-		mem_chip_write16(m, dest + 2 * i, buf[(pos + i) % DISK_TRACK_WORDS]);
-	m->floppy.dskpt = dest + 2 * len;
 	m->disk_accesses++;
-	custom_set_intreq(m, 0x0002);
 	if(m->log)
 		amiga_logf(m, "disk DMA: DF%d=%s cylinder %d head %d +%u words -> RAM 0x%06X", n,
 			game_def.disks[role].id, cyl, head, len, dest);
+#if AMIGA_DISK_TIMED
+	f->dma_sync = (adkcon & ADKCON_WORDSYNC) != 0;
+	f->dma_word0 = word + i;
+	f->dma_dest = dest;
+	f->dma_len = len;
+	f->dma_done = 0;
+	f->dma_on = 1;
+#else
+	if(adkcon & ADKCON_WORDSYNC)
+		custom_set_intreq(m, 0x1000);
+	pos = (pos + i) % AMIGA_TRACK_WORDS;
+	for(i = 0; i < len; i++)
+		mem_chip_write16(m, dest + 2 * i, buf[(pos + i) % AMIGA_TRACK_WORDS]);
+	f->dskpt = dest + 2 * len;
+	custom_set_intreq(m, 0x0002);
+#endif
 }
 
 void disk_write_reg(struct Amiga *m, uint32_t reg, uint16_t v)
@@ -216,6 +264,12 @@ void disk_write_reg(struct Amiga *m, uint32_t reg, uint16_t v)
 		f->dsksync = v;
 		return;
 	case REG_DSKLEN:
+#if AMIGA_DISK_TIMED
+		disk_dma_run(m, amiga_now(m));
+		/* HRM: writing DSKLEN with DMAEN clear stops a transfer. */
+		if(!(v & 0x8000))
+			f->dma_on = 0;
+#endif
 		/* HRM: DMA starts when DMAEN is written twice in a row. */
 		if((v & 0x8000) && (f->dsklen & 0x8000))
 		{
@@ -282,10 +336,14 @@ uint8_t disk_status(const struct Amiga *m)
 	return bits;
 }
 
-/* The index pulse: /FLAG on CIA-B once a revolution, while a spinning disk is selected. */
+/* At the end of each line: with DISK_TIMED the disk DMA's words so far; the index pulse, /FLAG
+ * on CIA-B once a revolution while a spinning disk is selected. */
 void disk_line(struct Amiga *m)
 {
-	uint64_t rev = m->done / ((uint64_t)DISK_TRACK_WORDS * DISK_WORD_CYCLES);
+	uint64_t rev = m->done / ((uint64_t)AMIGA_TRACK_WORDS * DISK_WORD_CYCLES);
+#if AMIGA_DISK_TIMED
+	disk_dma_run(m, m->done);
+#endif
 	if(rev == m->floppy.index_rev)
 		return;
 	m->floppy.index_rev = rev;

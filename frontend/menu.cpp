@@ -148,7 +148,7 @@ struct NoteRow
 struct KeyChip
 {
 	Rml::String name;
-	int scancode = 0;
+	int input = 0;
 };
 
 struct CommandRow
@@ -373,10 +373,11 @@ void menu_controls_refresh()
 	for(int i = 0; i < sdl_bindings_count(); i++)
 	{
 		const SdlBinding *b = sdl_bindings_get(i);
-		const char *name = SDL_GetScancodeName((SDL_Scancode)b->scancode);
+		char name[64];
 		KeyChip key;
-		key.name = *name ? name : "Key " + std::to_string(b->scancode);
-		key.scancode = b->scancode;
+		sdl_bindings_name(b->input, name, (int)sizeof name);
+		key.name = name;
+		key.input = b->input;
 		rows[b->command].keys.push_back(key);
 	}
 	menu->handle.DirtyVariable("commands");
@@ -517,7 +518,7 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 	if(auto row = ctor.RegisterStruct<KeyChip>())
 	{
 		row.RegisterMember("name", &KeyChip::name);
-		row.RegisterMember("scancode", &KeyChip::scancode);
+		row.RegisterMember("input", &KeyChip::input);
 	}
 	ctor.RegisterArray<std::vector<KeyChip>>();
 	if(auto row = ctor.RegisterStruct<CommandRow>())
@@ -692,10 +693,10 @@ int sdl_menu_binding(void)
 	return menu && menu->model.open && menu->model.binding >= 0;
 }
 
-void sdl_menu_bind(int scancode)
+void sdl_menu_bind(int input)
 {
-	if(scancode >= 0 && menu->model.binding >= 0)
-		sdl_bindings_add(scancode, (SdlCommand)menu->model.binding);
+	if(input >= 0 && menu->model.binding >= 0)
+		sdl_bindings_add(input, (SdlCommand)menu->model.binding);
 	menu_binding_set(-1);
 	menu_controls_refresh();
 }

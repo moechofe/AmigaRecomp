@@ -1,13 +1,21 @@
 #include "amiga.h"
 
-/* The copper: MOVE, WAIT and SKIP, HRM chapter 2. It runs at colour-clock granularity, four
- * colour clocks an instruction, against the beam position of the line being drawn. */
+/* The copper: MOVE, WAIT and SKIP, HRM chapter 2. It runs at colour-clock granularity against
+ * the beam position of the line being drawn: an instruction is two word fetches, each in an even
+ * colour clock that bitplane DMA leaves free (denise_copper_blocked), so four colour clocks
+ * without contention. Colour clock 0xE0 is never the copper's. A WAIT then spends one more such
+ * colour clock before it compares, and in the line's last colour clock it compares against
+ * position 0, so a WAIT that has not matched by then does not match on that line (FS-UAE 3.1.66
+ * custom.cpp, update_copper: COP_wait_in2, and the compare position of the last cycle;
+ * copper_cant_read2: cycle maxhpos - 3; docs/runtime.md, "Timing"). */
 
 enum CopperState
 {
 	CopperFetch,
 	CopperWait,
-	CopperStopped
+	CopperStopped,
+	CopperFetch2, /* the first word is fetched */
+	CopperWaitIn  /* a WAIT is fetched and has not compared yet */
 };
 
 void copper_restart(struct Amiga *m, int list)
@@ -48,7 +56,7 @@ void copper_run(struct Amiga *m, int line, int to_hpos)
 		if(c->state == CopperWait)
 		{
 			int vmask = ((c->ir2 >> 8) & 0x7F) | 0x80;
-			if(copper_reached(line, c->hpos, c->ir1, c->ir2))
+			if(copper_reached(line, c->hpos < AMIGA_CCK_PER_LINE - 1 ? c->hpos : 0, c->ir1, c->ir2))
 			{
 				c->state = CopperFetch;
 				c->hpos += 2;
@@ -62,10 +70,27 @@ void copper_run(struct Amiga *m, int line, int to_hpos)
 			c->hpos += 2;
 			continue;
 		}
-		c->ir1 = mem_chip16(m, c->pc);
+		if(c->hpos == AMIGA_CCK_PER_LINE - 3 || denise_copper_blocked(m, c->hpos))
+		{
+			c->hpos += 2;
+			continue;
+		}
+		if(c->state == CopperWaitIn)
+		{
+			c->state = CopperWait;
+			c->hpos += 2;
+			continue;
+		}
+		if(c->state == CopperFetch)
+		{
+			c->ir1 = mem_chip16(m, c->pc);
+			c->state = CopperFetch2;
+			c->hpos += 2;
+			continue;
+		}
 		c->ir2 = mem_chip16(m, c->pc + 2);
 		c->pc = (c->pc + 4) & 0x1FFFFE;
-		c->hpos += 2;
+		c->state = CopperFetch;
 		if(!(c->ir1 & 1))
 		{
 			uint32_t reg = c->ir1 & 0x1FE;
@@ -80,7 +105,7 @@ void copper_run(struct Amiga *m, int line, int to_hpos)
 		}
 		else if(!(c->ir2 & 1))
 		{
-			c->state = CopperWait;
+			c->state = CopperWaitIn;
 		}
 		else if(copper_reached(line, c->hpos, c->ir1, c->ir2))
 		{

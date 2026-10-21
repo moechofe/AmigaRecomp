@@ -145,11 +145,12 @@ amiga_warnings(amiga_frontend)
 
 # --- one executable per game -------------------------------------------------------------------
 
-# amiga_add_game(<id> [CHIP_1MB | A1200]): CHIP_1MB builds the machine, core and tests included,
-# with 1 MB of chip RAM behind the ECS Agnus instead of 512 KB behind the OCS one. A1200 builds
-# an A1200 instead: a 68EC020, the AGA chipset and 2 MB of chip RAM, with Kickstart 3.0's HLE.
+# amiga_add_game(<id> [CHIP_1MB | A1200] [DISK_TIMED]): CHIP_1MB builds the machine, core and tests
+# included, with 1 MB of chip RAM behind the ECS Agnus instead of 512 KB behind the OCS one. A1200
+# builds an A1200 instead: a 68EC020, the AGA chipset and 2 MB of chip RAM, with Kickstart 3.0's
+# HLE. DISK_TIMED makes each disk DMA transfer take the time the head takes to pass its words.
 function(amiga_add_game id)
-	cmake_parse_arguments(PARSE_ARGV 1 game "CHIP_1MB;A1200" "" "")
+	cmake_parse_arguments(PARSE_ARGV 1 game "CHIP_1MB;A1200;DISK_TIMED" "" "")
 	if(game_CHIP_1MB AND game_A1200)
 		message(FATAL_ERROR "amiga_add_game(${id}): CHIP_1MB and A1200 exclude each other")
 	endif()
@@ -158,6 +159,9 @@ function(amiga_add_game id)
 	endif()
 	if(game_A1200)
 		target_compile_definitions(amiga_core PUBLIC AMIGA_A1200=1 AMIGA_CHIP_SIZE=0x200000u)
+	endif()
+	if(game_DISK_TIMED)
+		target_compile_definitions(amiga_core PUBLIC AMIGA_DISK_TIMED=1)
 	endif()
 	if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/dumps.txt")
 		message(FATAL_ERROR "${CMAKE_CURRENT_SOURCE_DIR}/dumps.txt is missing (docs/game.md, item 4)")
@@ -217,4 +221,8 @@ if(NOT TARGET test_image)
 	target_link_libraries(test_dos PRIVATE amiga_core)
 	amiga_warnings(test_dos)
 	add_test(NAME test_dos COMMAND test_dos)
+	add_executable(test_copper "${AMIGA_ROOT}/tests/test_copper.c")
+	target_link_libraries(test_copper PRIVATE amiga_core)
+	amiga_warnings(test_copper)
+	add_test(NAME test_copper COMMAND test_copper)
 endif()

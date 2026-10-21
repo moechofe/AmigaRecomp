@@ -37,6 +37,12 @@ static const struct ScriptKey script_keys[] = {
 	{"shift", 0x60},
 };
 
+/* `joy` inputs of the port-2 joystick. */
+static const struct ScriptKey script_joy[] = {
+	{"up", AmigaJoyUp}, {"down", AmigaJoyDown}, {"left", AmigaJoyLeft}, {"right", AmigaJoyRight},
+	{"fire", AmigaJoyFire}, {"fire2", AmigaJoyFire2},
+};
+
 void script_init(struct Script *s, const char *text)
 {
 	memset(s, 0, sizeof *s);
@@ -158,10 +164,10 @@ static enum ScriptResult script_start(struct Script *s, struct Amiga *m)
 		}
 		return ScriptRunFrame;
 	}
-	if(!strcmp(word, "rclick") && n == 1)
+	if((!strcmp(word, "rclick") || !strcmp(word, "bclick")) && n == 1)
 	{
 		s->active = OpClick;
-		s->arg[2] = 1;
+		s->arg[2] = word[0] == 'r' ? 1 : 2;
 		s->phase = 2;
 		return ScriptRunFrame;
 	}
@@ -175,6 +181,30 @@ static enum ScriptResult script_start(struct Script *s, struct Amiga *m)
 	if(!strcmp(word, "fire") && n == 1)
 	{
 		s->active = OpFire;
+		return ScriptRunFrame;
+	}
+	if(!strcmp(word, "joy") && n == 2)
+	{
+		char *p = arg;
+		uint8_t joy = 0;
+		if(strcmp(arg, "none"))
+			for(;;)
+			{
+				char *plus = strchr(p, '+');
+				if(plus)
+					*plus = 0;
+				for(k = 0; k < sizeof script_joy / sizeof script_joy[0] && strcmp(p, script_joy[k].name); k++)
+					;
+				if(k == sizeof script_joy / sizeof script_joy[0])
+					return script_fail(s, "expected `joy none|<input>[+<input>...]`");
+				joy |= script_joy[k].code;
+				if(!plus)
+					break;
+				p = plus + 1;
+			}
+		s->joy = joy;
+		s->joy_on = 1;
+		amiga_joystick(m, 1, joy);
 		return ScriptRunFrame;
 	}
 	if(!strcmp(word, "disk"))
@@ -304,7 +334,7 @@ static int script_continue(struct Script *s, struct Amiga *m, enum ScriptResult 
 		return s->count++ < 4;
 	case OpClick:
 		/* Park in the top-left corner for 8 frames, move at most 100 counts a frame, hold
-		 * the button (arg[2]: 0 left, 1 right) 3 frames, release. */
+		 * the buttons (arg[2]: 0 left, 1 right, 2 both) 3 frames, release. */
 		if(s->phase == 0)
 		{
 			amiga_mouse(m, -100, -100, 0, 0);
@@ -328,7 +358,7 @@ static int script_continue(struct Script *s, struct Amiga *m, enum ScriptResult 
 		}
 		if(s->phase == 2)
 		{
-			amiga_mouse(m, 0, 0, !s->arg[2], s->arg[2]);
+			amiga_mouse(m, 0, 0, s->arg[2] != 1, s->arg[2] != 0);
 			if(++s->frames == 3)
 				s->phase = 3;
 			return 1;
@@ -347,6 +377,9 @@ static int script_continue(struct Script *s, struct Amiga *m, enum ScriptResult 
 
 enum ScriptResult script_tick(struct Script *s, struct Amiga *m)
 {
+	/* The window sets the joystick from its own input each frame; a `joy` hold outlasts that. */
+	if(s->joy_on)
+		amiga_joystick(m, 1, s->joy);
 	for(;;)
 	{
 		enum ScriptResult r;

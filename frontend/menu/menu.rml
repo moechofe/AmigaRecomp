@@ -51,7 +51,7 @@
 				<div class="key"><span class="label">F12</span><span class="state">screenshot of the game screen</span></div>
 				<div class="key"><span class="label">Alt+Enter</span><span class="state">fullscreen on / off</span></div>
 				<div class="key" data-if="controls"><span class="label">bound keys</span><span class="state">the joystick in port 2; see the Controls page</span></div>
-				<div class="key" data-if="controls"><span class="label">a controller</span><span class="state">the joystick in port 2 too: left stick or D-pad, A, B, X or Y fires</span></div>
+				<div class="key" data-if="controls"><span class="label">a controller</span><span class="state">the joystick in port 2 too: left stick or D-pad, buttons as on the Controls page</span></div>
 				<div class="key" data-if="two_joysticks"><span class="label">2nd controller</span><span class="state">player 2's joystick, in port 1</span></div>
 			</div>
 			<div data-if="page == 'disks'">
@@ -93,17 +93,17 @@
 				</div>
 			</div>
 			<div data-if="page == 'controls'">
-				<p>Rebind Amiga's joystick in port 2 to your keyboard keys.</p>
+				<p>Rebind Amiga's joystick in port 2 to your keyboard keys and controller buttons.</p>
 				<div class="command" data-for="c, i : commands">
 					<span class="label">{{c.label}}</span>
 					<span class="keys">
-						<button class="keycap" data-for="k : c.keys" data-event-click="unbind_key(k.scancode)">{{k.name}}<span class="remove">×</span></button>
+						<button class="keycap" data-for="k : c.keys" data-event-click="unbind_key(k.input)">{{k.name}}<span class="remove">×</span></button>
 						<button data-if="binding != i" data-event-click="bind_key(i)">Add key…</button>
-						<span class="waiting" data-if="binding == i">Press a key (Esc cancels)</span>
+						<span class="waiting" data-if="binding == i">Press a key or a controller button (Esc cancels)</span>
 					</span>
 				</div>
-				<p class="hint">Click a key to unbind it. {{menu_key}}, <span data-if="state_keys">F5, F9, </span>F12 and Esc stay with this program and cannot be bound.</p>
-				<p class="hint">A game controller works the joystick too, alongside these keys: the left stick or the D-pad steers, and A, B, X or Y fires (any button on a plain joystick).<span data-if="two_joysticks"> A second controller is player 2's joystick, in port 1.</span></p>
+				<p class="hint">Click a key or button to unbind it. {{menu_key}}, <span data-if="state_keys">F5, F9, </span>F12 and Esc stay with this program and cannot be bound.</p>
+				<p class="hint">A game controller works the joystick too, alongside these keys: the left stick or the D-pad steers, and its buttons do what they are bound to here, Pad A, B, X and Y by their places on an Xbox controller (any button fires on a plain joystick). Button 2 is the second button of a two-button joystick, which most games ignore.<span data-if="two_joysticks"> A second controller is player 2's joystick, in port 1.</span></p>
 				<div class="actions"><button data-event-click="bind_defaults">Restore defaults</button></div>
 			</div>
 			<div data-if="page == 'settings'">

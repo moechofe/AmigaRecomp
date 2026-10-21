@@ -29,10 +29,10 @@ void sdl_menu_banner(const char *text);
  * open; `error` marks a failure. */
 void sdl_menu_notify(const char *text, int error);
 void sdl_menu_refresh(int booted);
-/* While the Controls page waits for a key (after "Add key…"), key presses go to sdl_menu_bind:
- * a scancode binds that key to the waiting command, -1 cancels. */
+/* While the Controls page waits for an input (after "Add key…"), key and gamepad button presses
+ * go to sdl_menu_bind: an input (bindings.h) binds it to the waiting command, -1 cancels. */
 int sdl_menu_binding(void);
-void sdl_menu_bind(int scancode);
+void sdl_menu_bind(int input);
 /* The welcome card, at the window's top left while the menu is closed, shows from launch until
  * its Close button, and at every launch until a Close with Remember ticked stores `welcome=0` in
  * settings.ini. While the mouse is not captured, the mouse goes to the card when it is over it. */
