@@ -7,7 +7,6 @@
 #include "RmlUi_Include_GL3.h"
 
 #include <stdio.h>
-#include <string.h>
 
 static GLuint video_program, video_crt_program, video_vao, video_vbo, video_texture;
 
@@ -32,12 +31,6 @@ static const char *video_fs =
 	"	color = vec4(texture(frame, uv).rgb, 1.0);\n"
 	"}\n";
 
-/* crt-lottes keeps the defaults of its #pragma parameter lines, except these. */
-static const struct { const char *name; float value; } video_crt_values[] = {
-	{"shadowMask", 4.0f},
-	{"brightBoost", 1.3f},
-};
-
 /* `lengths` as glShaderSource takes it: NULL when every source ends in a NUL. */
 static GLuint video_shader(GLenum type, GLsizei count, const char *const *sources, const GLint *lengths, const char *what)
 {
@@ -57,8 +50,7 @@ static GLuint video_shader(GLenum type, GLsizei count, const char *const *source
 	return s;
 }
 
-/* Takes both shaders, 0 for one that failed. Binds libretro's attribute names to the quad's
- * locations. */
+/* Takes both shaders, 0 for one that failed. */
 static GLuint video_link(GLuint vs, GLuint fs, const char *what)
 {
 	GLuint p;
@@ -72,8 +64,6 @@ static GLuint video_link(GLuint vs, GLuint fs, const char *what)
 	p = glCreateProgram();
 	glAttachShader(p, vs);
 	glAttachShader(p, fs);
-	glBindAttribLocation(p, 0, "VertexCoord");
-	glBindAttribLocation(p, 1, "TexCoord");
 	glLinkProgram(p);
 	glDeleteShader(vs);
 	glDeleteShader(fs);
@@ -89,53 +79,19 @@ static GLuint video_link(GLuint vs, GLuint fs, const char *what)
 	return p;
 }
 
-/* Sets each `#pragma parameter <name> "<label>" <default> <min> <max> <step>` uniform of the
- * bound program to its default. */
-static void video_crt_defaults(GLuint p, const struct SdlAsset *a)
-{
-	static const char pragma[] = "#pragma parameter ";
-	const char *s = (const char *)a->data, *end = s + a->size;
-	while(s < end)
-	{
-		const char *eol = memchr(s, '\n', (size_t)(end - s));
-		size_t n = (size_t)((eol ? eol : end) - s);
-		char line[256], name[64];
-		float v;
-		if(n < sizeof line && n > sizeof pragma - 1 && !memcmp(s, pragma, sizeof pragma - 1))
-		{
-			memcpy(line, s, n);
-			line[n] = 0;
-			if(sscanf(line, "#pragma parameter %63s \"%*[^\"]\" %f", name, &v) == 2)
-				glUniform1f(glGetUniformLocation(p, name), v);
-		}
-		s = eol ? eol + 1 : end;
-	}
-}
-
-/* crt-lottes, as a libretro GLSL shader: one source for both stages, chosen by VERTEX or
- * FRAGMENT, its parameters as uniforms. 0 when it does not build. */
+/* crt-lottes (frontend/shaders/crt-lottes.glsl), its fragment stage after video_vs. 0 when it
+ * does not build. */
 static GLuint video_crt_build(const struct SdlView *view)
 {
-	static const float identity[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
 	const struct SdlAsset *a = sdl_video_shaders;
-	const char *sources[2] = {"#version 330 core\n#define VERTEX\n#define PARAMETER_UNIFORM\n", (const char *)a->data};
+	const char *sources[2] = {"#version 330 core\n", (const char *)a->data};
 	const GLint lengths[2] = {-1, (GLint)a->size};
-	GLuint vs, fs, p;
-	size_t i;
-	vs = video_shader(GL_VERTEX_SHADER, 2, sources, lengths, "crt-lottes vertex");
-	sources[0] = "#version 330 core\n#define FRAGMENT\n#define PARAMETER_UNIFORM\n";
-	fs = video_shader(GL_FRAGMENT_SHADER, 2, sources, lengths, "crt-lottes fragment");
-	p = video_link(vs, fs, "crt-lottes");
+	GLuint p = video_link(video_shader(GL_VERTEX_SHADER, 1, &video_vs, NULL, "crt-lottes vertex"),
+		video_shader(GL_FRAGMENT_SHADER, 2, sources, lengths, "crt-lottes fragment"), "crt-lottes");
 	if(!p)
 		return 0;
 	glUseProgram(p);
-	video_crt_defaults(p, a);
-	for(i = 0; i < sizeof video_crt_values / sizeof video_crt_values[0]; i++)
-		glUniform1f(glGetUniformLocation(p, video_crt_values[i].name), video_crt_values[i].value);
-	glUniformMatrix4fv(glGetUniformLocation(p, "MVPMatrix"), 1, GL_FALSE, identity);
-	glUniform2f(glGetUniformLocation(p, "TextureSize"), (float)view->w, (float)view->h);
-	glUniform2f(glGetUniformLocation(p, "InputSize"), (float)view->w, (float)view->h);
-	glUniform1i(glGetUniformLocation(p, "Texture"), 0);
+	glUniform2f(glGetUniformLocation(p, "SourceSize"), (float)view->w, (float)view->h);
 	glUseProgram(0);
 	return p;
 }
@@ -261,7 +217,7 @@ void sdl_video_draw(SDL_Window *window, const uint32_t frame[AMIGA_FRAME_ROWS][A
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, AMIGA_FRAME_STRIDE);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, video_texture);
-	/* 0x00RRGGBB is BGRA 8888 reversed: B in bits 0-7 up to an alpha byte the shader ignores. */
+	/* 0x00RRGGBB is BGRA 8888 reversed: B in bits 0-7 up to an alpha byte the shaders ignore. */
 	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r.view.w, r.view.h, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, &frame[r.view.y][r.view.x]);
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 	glUseProgram(video_crt_program && sdl_setting(SdlSettingCrt) ? video_crt_program : video_program);

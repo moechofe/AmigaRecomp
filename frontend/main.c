@@ -59,6 +59,7 @@ struct SdlOptions
 	const char *state;
 	const char *dump;
 	int no_sprites;
+	int no_crt;
 	int scale;
 };
 
@@ -72,7 +73,8 @@ static int sdl_usage(void)
 {
 	fprintf(stderr,
 		"usage: %s [-h | --help] [--headless] [--frames N] [--script FILE] [--shot-dir DIR]\n"
-		"          [--state PATH] [--pref DIR] [--dump FILE] [--no-sprites] [--scale N] <image>...\n"
+		"          [--state PATH] [--pref DIR] [--dump FILE] [--no-sprites] [--no-crt] [--scale N]\n"
+		"          <image>...\n"
 		"Run '%s --help' for what each argument does.\n",
 		game_def.id, game_def.id);
 	return 2;
@@ -118,6 +120,8 @@ static int sdl_help(void)
 		"  --dump FILE      write chip RAM (512 KB, or 1 MB) to FILE at exit\n"
 		"  --no-sprites     start with sprites hidden (a script's 'sprites on' shows\n"
 		"                   them again)\n"
+		"  --no-crt         window: draw the plain picture whatever the 'crt' setting\n"
+		"                   says, until it is changed in the menu\n"
 		"  --scale N        window: open at N times the game's view, N from 1 to %d,\n"
 		"                   and draw at that whole multiple, or the largest that fits;\n"
 		"                   overrides the 'scale' setting until it is changed in the menu\n\n"
@@ -927,6 +931,7 @@ int main(int argc, char **argv)
 		}
 		else if(!strcmp(a, "--headless")) o.headless = 1;
 		else if(!strcmp(a, "--no-sprites")) o.no_sprites = 1;
+		else if(!strcmp(a, "--no-crt")) o.no_crt = 1;
 		else if(!strcmp(a, "--scale") && v)
 		{
 			char *end;
@@ -1018,6 +1023,8 @@ int main(int argc, char **argv)
 			return 2;
 		sdl_settings_apply(&machine, o.script == 0);
 		sdl_bindings_apply();
+		if(o.no_crt)
+			sdl_setting_override(SdlSettingCrt, 0);
 		if(o.scale)
 			sdl_scale_force(o.scale);
 		code = sdl_window(&o, paths, path_count);

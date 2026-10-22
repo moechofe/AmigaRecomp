@@ -26,6 +26,9 @@ int sdl_setting(enum SdlSetting s);
  * shows no `scale` choice as chosen while it holds; choosing one (sdl_settings_choose) clears it. */
 void sdl_scale_force(int n);
 int sdl_scale_forced(void);
+/* A value for this run (`--no-crt`), kept until the menu chooses one; settings.ini is not
+ * changed. */
+void sdl_setting_override(enum SdlSetting s, int value);
 /* Reads every frontend setting and, when `hacks` is set, every hack of game_def from the table into
  * the values and the machine. A missing or bad key gives the default. */
 void sdl_settings_apply(struct Amiga *m, int hacks);

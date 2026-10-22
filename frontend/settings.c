@@ -149,6 +149,12 @@ int sdl_scale_forced(void)
 	return sdl_scale_n;
 }
 
+void sdl_setting_override(enum SdlSetting s, int value)
+{
+	setting_defaults();
+	sdl_setting_values[s] = value;
+}
+
 /* The text a value has in settings.ini, or NULL when the value is out of range. */
 static const char *setting_text(const struct GameSetting *s, int v)
 {
