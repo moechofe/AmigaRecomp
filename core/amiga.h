@@ -476,6 +476,9 @@ struct Amiga
 	int sprites_enabled;
 	int pointer_hidden;      /* 1: Denise does not draw game_def.pointer_sprites; set by the frontend each frame */
 	int os_cursor;           /* 1: the OS cursor shows over the running game, so the HLE's own pointer is not drawn; set by the frontend each frame */
+	int steered;             /* 1: this frame's mouse counts are the frontend's steering error, the distance from the game's pointer to the OS cursor, not the mouse's motion (docs/runtime.md, "Build and run"); set by the frontend each frame */
+	int cursor_x, cursor_y;  /* while steered: the frame point the OS cursor is over, DIW x (lores) and scanline, held inside game_def.view */
+	int cursor_dx, cursor_dy; /* while steered: cursor_x and cursor_y's change since the frame before, 0 when that frame was not steered; set by the frontend each frame */
 	struct Hacks hacks;
 
 	uint32_t frame[AMIGA_FRAME_ROWS][AMIGA_FRAME_STRIDE]; /* 0x00RRGGBB */

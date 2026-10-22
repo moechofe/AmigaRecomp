@@ -429,19 +429,20 @@ static int sdl_pointer_counts(int target, int at, int first, int last)
 	return d;
 }
 
-/* 0 when the game's pointer is not on screen, and nothing steers it. */
-static int sdl_pointer_step(const struct SdlPointer *p, SDL_Window *window, int *dx, int *dy)
+/* 0 when the game's pointer is not on screen, and nothing steers it. *tx, *ty: the frame point the
+ * OS cursor is over, held inside the view. */
+static int sdl_pointer_step(const struct SdlPointer *p, SDL_Window *window, int *dx, int *dy, int *tx, int *ty)
 {
 	struct SdlVideoRect r;
-	int px, py, ww = 0, wh = 0, tx, ty;
+	int px, py, ww = 0, wh = 0;
 	*dx = *dy = 0;
 	if(!p->inside || !denise_pointer(&machine, &px, &py) || !SDL_GetWindowSize(window, &ww, &wh) || ww <= 0 || wh <= 0
 		|| sdl_video_rect(window, &r))
 		return 0;
-	tx = sdl_clamp(r.view.x + (int)SDL_floorf((p->wx * r.window_w / ww - r.x) * r.view.w / r.w), r.view.x, r.view.x + r.view.w - 1);
-	ty = sdl_clamp(r.view.y + (int)SDL_floorf((p->wy * r.window_h / wh - r.y) * r.view.h / r.h), r.view.y, r.view.y + r.view.h - 1);
-	*dx = sdl_pointer_counts(tx, px, r.view.x, r.view.x + r.view.w - 1);
-	*dy = sdl_pointer_counts(ty, py, r.view.y, r.view.y + r.view.h - 1);
+	*tx = sdl_clamp(r.view.x + (int)SDL_floorf((p->wx * r.window_w / ww - r.x) * r.view.w / r.w), r.view.x, r.view.x + r.view.w - 1);
+	*ty = sdl_clamp(r.view.y + (int)SDL_floorf((p->wy * r.window_h / wh - r.y) * r.view.h / r.h), r.view.y, r.view.y + r.view.h - 1);
+	*dx = sdl_pointer_counts(*tx, px, r.view.x, r.view.x + r.view.w - 1);
+	*dy = sdl_pointer_counts(*ty, py, r.view.y, r.view.y + r.view.h - 1);
 	return 1;
 }
 
@@ -818,10 +819,23 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 		}
 		if(sdl_booted && !sdl_menu_is_open())
 		{
+			int was_steered = machine.steered, tx, ty;
+			machine.steered = 0;
+			machine.cursor_dx = machine.cursor_dy = 0;
 			if(o->script)
 				dx = dy = 0;
-			else if(!captured && sdl_pointer_step(&ptr, window, &dx, &dy))
+			else if(!captured && sdl_pointer_step(&ptr, window, &dx, &dy, &tx, &ty))
+			{
 				fx = fy = 0;
+				if(was_steered)
+				{
+					machine.cursor_dx = tx - machine.cursor_x;
+					machine.cursor_dy = ty - machine.cursor_y;
+				}
+				machine.cursor_x = tx;
+				machine.cursor_y = ty;
+				machine.steered = 1;
+			}
 			else
 			{
 				dx = sdl_clamp((int)fx, -127, 127);

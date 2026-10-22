@@ -35,9 +35,9 @@ static const struct GameDisk settlers_disks[] = {
  * and its loader starts the game from Disk 3 (docs/format.md, "Boot chains"). */
 static const int settlers_intro_drives[4] = {0, -1, -1, -1};
 
-extern const struct GameHack settlers_hack_system_cursor;
+extern const struct GameHack settlers_hack_system_cursor, settlers_hack_drag_scroll;
 
-static const struct GameHack *const settlers_hacks[] = {&settlers_hack_system_cursor};
+static const struct GameHack *const settlers_hacks[] = {&settlers_hack_system_cursor, &settlers_hack_drag_scroll};
 
 const struct GameDef game_def = {
 	.id = "settlers",
@@ -50,6 +50,6 @@ const struct GameDef game_def = {
 	.pointer_sprites = 0x01,
 	.view = {120, 32, 335, 273},
 	.hacks = settlers_hacks,
-	.hack_count = 1,
+	.hack_count = 2,
 	.system_cursor = &settlers_hack_system_cursor,
 };

@@ -30,7 +30,7 @@ static int superfrog_identify_disk4(const uint8_t *adf, uint32_t size)
 static const struct GameDisk superfrog_disks[] = {
 	{"disk1", "Disk 1", 0, superfrog_identify_disk1},
 	{"disk2", "Disk 2", 0, superfrog_identify_disk2},
-	{"disk3", "Disk 3", 0, superfrog_identify_disk3},
+	{"disk3", "Disk 3 (Intro)", 0, superfrog_identify_disk3},
 	{"disk4", "Disk 4", 0, superfrog_identify_disk4},
 };
 
