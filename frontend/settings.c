@@ -114,6 +114,7 @@ const struct GameSetting sdl_settings[SdlSettingCount] = {
 	{"mouse_capture", "Capture the mouse", "Off: the system cursor moves the game's pointer and can leave the window.", GameValueBool, 0, 0},
 	{"scale", "Scale", "integer: the largest whole multiple of the Amiga screen that fits the window. float: the screen fills the window as far as its shape allows.", GameValueChoice, SdlScaleFloat, sdl_scale_choices},
 	{"fullscreen", "Fullscreen", "On: the window fills its display, borderless, without changing the video mode. Alt+Enter switches it too.", GameValueBool, 0, 0},
+	{"crt", "CRT screen", "On: the picture looks as on a curved CRT monitor, with scanlines, a shadow mask and glow (crt-lottes, by Timothy Lottes). Screenshots stay plain.", GameValueBool, 0, 0},
 	{"stereo", "Stereo", "original: channels 0 and 3 play only on the left, 1 and 2 only on the right, as on the Amiga. modern: each side also hears the other's sound, softer and a fraction of a millisecond later, as from two speakers.", GameValueChoice, SdlStereoModern, sdl_stereo_choices},
 };
 

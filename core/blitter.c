@@ -110,7 +110,9 @@ static void blit_area(struct Amiga *m, int width, int height)
 }
 
 /* Line mode. BLTAPT carries the error term, ASH the pixel within the word, BLTCON1 the
- * octant (SUD, SUL, AUL), SING one-dot-per-row and SIGN the initial error sign. */
+ * octant (SUD, SUL, AUL), SING one-dot-per-row and SIGN the initial error sign. The first dot
+ * goes to BLTDPT; every later one to the word its C was read from, as FS-UAE's blitter.cpp
+ * (actually_do_blit) moves D to C after each step. */
 static void blit_line(struct Amiga *m, int height)
 {
 	struct Blitter *b = &m->blit;
@@ -135,7 +137,6 @@ static void blit_line(struct Amiga *m, int height)
 		if(d)
 			b->zero = 0;
 		mem_chip_write16(m, b->dpt, d);
-		b->dpt = b->cpt;
 
 		if(!sign)
 		{
@@ -175,6 +176,7 @@ static void blit_line(struct Amiga *m, int height)
 			onedot = 0;
 		}
 		sign = (int16_t)b->apt < 0;
+		b->dpt = b->cpt;
 		tex = (uint16_t)((tex << 1) | (tex >> 15));
 	}
 	b->con0 = (uint16_t)((b->con0 & 0x0FFF) | (shift << 12));

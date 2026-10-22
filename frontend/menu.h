@@ -13,6 +13,7 @@ extern "C" {
 struct SdlAsset { const char *name; const uint8_t *data; uint32_t size; };
 extern const struct SdlAsset sdl_menu_shared[];
 extern const struct SdlAsset sdl_menu_game[];
+extern const struct SdlAsset sdl_video_shaders[];
 enum SdlMenuAction { SdlMenuOpenDisk, SdlMenuImportDisk, SdlMenuStateSave, SdlMenuStateLoad, SdlMenuReset };
 /* SDL event type. user.code = enum SdlMenuAction; data1 = SDL_strdup'd path, or NULL for the
  * default state file (the main loop SDL_frees it); data2 = the role index (SdlMenuImportDisk). */

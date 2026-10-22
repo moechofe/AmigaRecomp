@@ -134,8 +134,9 @@ list(APPEND AMIGA_MENU_SHARED
 	"${rmlui_SOURCE_DIR}/Samples/assets/LatoLatin-Regular.ttf"
 	"${rmlui_SOURCE_DIR}/Samples/assets/LatoLatin-Bold.ttf")
 amiga_embed("${CMAKE_BINARY_DIR}/menu_shared.c" sdl_menu_shared ${AMIGA_MENU_SHARED})
+amiga_embed("${CMAKE_BINARY_DIR}/video_shaders.c" sdl_video_shaders "${AMIGA_ROOT}/frontend/shaders/crt-lottes.glsl")
 add_library(amiga_frontend STATIC ${AMIGA_FRONTEND_SOURCES} "${RMLUI_GL3_SOURCE}" "${rmlui_SOURCE_DIR}/Backends/RmlUi_Platform_SDL.cpp"
-	"${CMAKE_BINARY_DIR}/menu_shared.c")
+	"${CMAKE_BINARY_DIR}/menu_shared.c" "${CMAKE_BINARY_DIR}/video_shaders.c")
 target_include_directories(amiga_frontend PUBLIC
 	"${AMIGA_ROOT}/frontend"
 	"${rmlui_SOURCE_DIR}/Backends")
@@ -225,4 +226,8 @@ if(NOT TARGET test_image)
 	target_link_libraries(test_copper PRIVATE amiga_core)
 	amiga_warnings(test_copper)
 	add_test(NAME test_copper COMMAND test_copper)
+	add_executable(test_blitter "${AMIGA_ROOT}/tests/test_blitter.c")
+	target_link_libraries(test_blitter PRIVATE amiga_core)
+	amiga_warnings(test_blitter)
+	add_test(NAME test_blitter COMMAND test_blitter)
 endif()

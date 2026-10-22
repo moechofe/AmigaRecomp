@@ -2,7 +2,7 @@
 
 AmigaRecomp's own code is under the [MIT License](LICENSE). The components below are built
 into every executable, with the licences they require us to reproduce. Sources and versions
-are pinned in `cmake/amigarecomp.cmake`.
+are pinned in `cmake/amigarecomp.cmake`; crt-lottes is a copy in `frontend/shaders/`.
 
 |Component|Version|Licence|Used for|
 |---|---|---|---|
@@ -12,6 +12,7 @@ are pinned in `cmake/amigarecomp.cmake`.
 |[FreeType](https://freetype.org)|`2.14.1`|FreeType Licence (FTL)|font rendering for RmlUi|
 |[Lato](http://www.latofonts.com/) (`LatoLatin-Regular`, `LatoLatin-Bold`)|from RmlUi `6.3`|SIL OFL 1.1|menu font, embedded in the executable|
 |[miniz](https://github.com/richgel999/miniz)|`3.1.2`|MIT|`ZIP` and `GZ` inflate|
+|[crt-lottes](https://github.com/libretro/glsl-shaders/blob/e80b60a84bed2fa243684ecea76e814d773154fe/crt/shaders/crt-lottes.glsl) (Timothy Lottes)|libretro glsl-shaders `e80b60a`|public domain|the `crt` setting's shader, embedded in the executable|
 
 ## Musashi
 
@@ -218,4 +219,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+```
+
+## crt-lottes
+
+Public domain; nothing to reproduce. Its header, as copied:
+
+```text
+// PUBLIC DOMAIN CRT STYLED SCAN-LINE SHADER
+//
+//   by Timothy Lottes
 ```
