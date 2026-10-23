@@ -290,7 +290,9 @@
 #define MP_SIGBIT 0x0F
 #define MP_SIGTASK 0x10
 #define MP_MSGLIST 0x14
+#define MP_SIZE 0x22
 #define MN_REPLYPORT 0x0E
+#define MN_LENGTH 0x12
 #define IO_DEVICE 0x14
 #define IO_UNIT 0x18
 #define IO_COMMAND 0x1C
@@ -354,6 +356,7 @@
 /* The V34 Process on the A500; Kickstart 3.0's, with pr_HomeDir and the V36 fields after it, on
  * the A1200 (NDK 3.2 dos/dosextens.i). */
 #define PR_HOMEDIR 0xBC
+#define PR_ARGUMENTS 0xCC
 #define PR_SIZEOF (AMIGA_A1200 ? 0xE4 : 0xBC)
 /* dos error codes, NDK 3.2 dos/dos.i. */
 #define HLE_DOS_NO_FREE_STORE 103
@@ -372,7 +375,8 @@ enum HleFrameKind
 	HleFrameLibInit,
 	HleFrameIcr,
 	HleFrameDosRequest,
-	HleFrameFmt
+	HleFrameFmt,
+	HleFrameRunCommand
 };
 
 /* hle.c */
@@ -460,6 +464,7 @@ int hle_layers_call(struct Amiga *m, uint32_t lvo);
 #define HLE_CIAB_BASE 0xC07158u
 #define HLE_RES_STRINGS 0xC07300u
 #define HLE_ICR_NODES 0xC07700u
+#define HLE_DISK_BASE 0xC07824u
 void hle_res_build(struct Amiga *m);
 int hle_res_call(struct Amiga *m, int lib, uint32_t lvo);
 uint32_t hle_res_icr_next(struct Amiga *m, int which, uint32_t *pending);
@@ -510,6 +515,7 @@ void hle_dos_mount(struct Amiga *m);
 void hle_dos_cli_return(struct Amiga *m);
 int hle_dos_call(struct Amiga *m, uint32_t lvo);
 void hle_dos_request_done(struct Amiga *m, const struct HleFrame *f);
+void hle_dos_run_done(struct Amiga *m, const struct HleFrame *f);
 uint32_t hle_dos_loadseg(struct Amiga *m, const char *path);
 int hle_dos_packet(struct Amiga *m, uint32_t port, uint32_t msg);
 void hle_dos_time(struct Amiga *m, uint32_t *secs, uint32_t *micros);

@@ -20,6 +20,12 @@
  * them from row AMIGA_FRAME_CAPTURE_ROW. */
 #define AMIGA_FRAME_ROWS (AMIGA_LINES - AMIGA_DISPLAY_LINE0)
 #define AMIGA_FRAME_CAPTURE_ROW (AMIGA_FRAME_LINE0 - AMIGA_DISPLAY_LINE0)
+/* The frame buffer holds each lores pixel as AMIGA_FRAME_XS columns, so a hires line keeps both
+ * pixels of every pair, and each line as AMIGA_FRAME_YS rows, one per field of an interlaced
+ * frame (decision 027; docs/runtime.md, "Timing"). Row and column counts above are in lines and
+ * lores pixels. */
+#define AMIGA_FRAME_XS 2
+#define AMIGA_FRAME_YS 2
 
 /* 1: the machine is an A1200 (68EC020, AGA, 2 MB chip RAM, Kickstart 3.0), chosen by the game's
  * CMakeLists (docs/game.md, item 2); 0: an A500. */
@@ -93,6 +99,7 @@
 #define HLE_LIB_TIMER 19
 #define HLE_LIB_KEYBOARD 20
 #define HLE_LIB_UTILITY 21
+#define HLE_LIB_DISK 22
 #define HLE_TIMER_REQUESTS 16
 #define HLE_INPUT_EVENTS 16
 
@@ -182,8 +189,11 @@ struct Denise
 	int load_lead;   /* lores pixels from the plane-load grid to first_x (denise_fetch) */
 	uint16_t plane[AMIGA_PLANES][64];
 	int drawn_x;
-	uint32_t linebuf[512];
+	uint32_t linebuf[512 * AMIGA_FRAME_XS];
 	int frame_done;
+	uint8_t short_frame;  /* VPOSR's LOF reads 0; toggles each frame while BPLCON0's LACE is set */
+	uint8_t laced;        /* LACE was set at this frame's start: each line fills its field's row alone */
+	uint8_t capture_row;  /* the row of each line's pair the capture reads: the last frame's field */
 };
 
 struct Blitter
@@ -481,7 +491,7 @@ struct Amiga
 	int cursor_dx, cursor_dy; /* while steered: cursor_x and cursor_y's change since the frame before, 0 when that frame was not steered; set by the frontend each frame */
 	struct Hacks hacks;
 
-	uint32_t frame[AMIGA_FRAME_ROWS][AMIGA_FRAME_STRIDE]; /* 0x00RRGGBB */
+	uint32_t frame[AMIGA_FRAME_ROWS * AMIGA_FRAME_YS][AMIGA_FRAME_STRIDE * AMIGA_FRAME_XS]; /* 0x00RRGGBB */
 
 	int fatal;
 	char fatal_msg[AMIGA_FATAL_LEN];
@@ -535,6 +545,10 @@ void copper_restart(struct Amiga *m, int list);
 void copper_run(struct Amiga *m, int line, int to_hpos);
 
 /* denise.c */
+void denise_begin_frame(struct Amiga *m);
+/* The capture window's pixel x, y (0 ≤ x < AMIGA_FRAME_W, 0 ≤ y < AMIGA_FRAME_H) as the oracle's
+ * lores capture shows it: the first hires pixel of each pair and the last frame's field. */
+uint32_t denise_capture(const struct Amiga *m, int x, int y);
 void denise_begin_line(struct Amiga *m, int line);
 void denise_render_to(struct Amiga *m, int hpos);
 void denise_end_line(struct Amiga *m);

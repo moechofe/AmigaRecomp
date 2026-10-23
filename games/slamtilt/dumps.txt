@@ -1,0 +1,5 @@
+# docs/game.md, item 4. The oracle's set (docs/dumps.md, "The oracle's set").
+d8a40dcc disk1 verified Slam Tilt v1.224 (1996)(21st Century)(AGA)(Disk 1 of 5)
+ec91b982 disk2 verified Slam Tilt v1.224 (1996)(21st Century)(AGA)(Disk 2 of 5)[h DLM]
+33e8d5c7 disk3 verified Slam Tilt v1.224 (1996)(21st Century)(AGA)(Disk 3 of 5)[h DLM]
+6199b9dc disk4 verified Slam Tilt v1.224 (1996)(21st Century)(AGA)(Disk 4 of 5)

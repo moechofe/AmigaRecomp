@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Slam Tilt
+Comment=Amiga game running natively from your own disks
+Exec=slamtilt %F
+Icon=slamtilt
+Terminal=false
+Categories=Game;ArcadeGame;
+StartupWMClass=slamtilt

@@ -57,7 +57,7 @@ static void sdl_chunk(FILE *f, const char *type, const uint8_t *data, uint32_t l
 static uint8_t sdl_png_raw[SDL_PNG_RAW];
 static uint8_t sdl_png_z[2 + SDL_PNG_RAW + SDL_PNG_BLOCKS * 5 + 4];
 
-int sdl_png_write(const char *path, const uint32_t frame[AMIGA_FRAME_ROWS][AMIGA_FRAME_STRIDE])
+int sdl_png_write(const char *path, const struct Amiga *m)
 {
 	static const uint8_t sig[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
 	uint8_t ihdr[13];
@@ -70,7 +70,7 @@ int sdl_png_write(const char *path, const uint32_t frame[AMIGA_FRAME_ROWS][AMIGA
 		sdl_png_raw[i++] = 0;
 		for(x = 0; x < AMIGA_FRAME_W; x++)
 		{
-			uint32_t c = frame[AMIGA_FRAME_CAPTURE_ROW + y][x];
+			uint32_t c = denise_capture(m, x, y);
 			sdl_png_raw[i++] = (uint8_t)(c >> 16);
 			sdl_png_raw[i++] = (uint8_t)(c >> 8);
 			sdl_png_raw[i++] = (uint8_t)c;

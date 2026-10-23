@@ -24,6 +24,7 @@ static void sched_line_start(struct Amiga *m, int line)
 		cia_tod_tick(m, &m->cia_a);
 		cia_frame(m);
 		m->denise.frame_done = 1;
+		denise_begin_frame(m);
 		m->frame_count++;
 	}
 	denise_begin_line(m, line);

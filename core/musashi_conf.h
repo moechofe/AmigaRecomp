@@ -9,11 +9,15 @@
 
 #define M68K_COMPILE_FOR_MAME      M68K_OPT_OFF
 
-/* The A500's CPU is a plain 68000, the A1200's a 68EC020 (AMIGA_A1200, core/amiga.h). */
-#define M68K_EMULATE_010           M68K_OPT_OFF
+/* The A500's CPU is a plain 68000, the A1200's a 68EC020 (AMIGA_A1200, core/amiga.h). The
+ * A1200 needs the 68010 switch too: without it Musashi's CPU_TYPE_IS_010_LESS falls back to
+ * CPU_TYPE_IS_EC020_LESS, which counts the EC020 in, so its indexed addressing modes lose the
+ * scale factor and the full extension word (m68kcpu.h, m68ki_get_ea_ix). */
 #if defined(AMIGA_A1200) && AMIGA_A1200
+#define M68K_EMULATE_010           M68K_OPT_ON
 #define M68K_EMULATE_EC020         M68K_OPT_ON
 #else
+#define M68K_EMULATE_010           M68K_OPT_OFF
 #define M68K_EMULATE_EC020         M68K_OPT_OFF
 #endif
 #define M68K_EMULATE_020           M68K_OPT_OFF

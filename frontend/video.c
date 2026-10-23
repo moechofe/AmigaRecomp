@@ -8,7 +8,9 @@
 
 #include <stdio.h>
 
-static GLuint video_program, video_crt_program, video_vao, video_vbo, video_texture;
+static GLuint video_program, video_crt_program, video_vao, video_vbo, video_texture, video_crt_texture;
+/* crt-lottes's source: one texel per lores pixel and line of the view. */
+static uint32_t video_crt_pixels[AMIGA_FRAME_ROWS * AMIGA_FRAME_STRIDE];
 
 static const char *video_vs =
 	"#version 330 core\n"
@@ -132,6 +134,13 @@ int sdl_video_init(void)
 	glBindVertexArray(0);
 	glGenTextures(1, &video_texture);
 	glBindTexture(GL_TEXTURE_2D, video_texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, view.w * AMIGA_FRAME_XS, view.h * AMIGA_FRAME_YS, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+	glGenTextures(1, &video_crt_texture);
+	glBindTexture(GL_TEXTURE_2D, video_crt_texture);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, view.w, view.h, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -144,6 +153,30 @@ int sdl_video_init(void)
 		return -1;
 	}
 	return 0;
+}
+
+/* Each lores pixel and line of the view as the mean of its AMIGA_FRAME_XS × AMIGA_FRAME_YS
+ * frame-buffer pixels, rounded to nearest: a lores, non-interlaced pixel keeps its colour. */
+static void video_crt_source(const struct Amiga *m, const struct SdlView *v)
+{
+	int x, y, i, j;
+	for(y = 0; y < v->h; y++)
+		for(x = 0; x < v->w; x++)
+		{
+			uint32_t r = 0, g = 0, b = 0;
+			for(j = 0; j < AMIGA_FRAME_YS; j++)
+				for(i = 0; i < AMIGA_FRAME_XS; i++)
+				{
+					uint32_t c = m->frame[(v->y + y) * AMIGA_FRAME_YS + j][(v->x + x) * AMIGA_FRAME_XS + i];
+					r += (c >> 16) & 0xFF;
+					g += (c >> 8) & 0xFF;
+					b += c & 0xFF;
+				}
+			r = (r + AMIGA_FRAME_XS * AMIGA_FRAME_YS / 2) / (AMIGA_FRAME_XS * AMIGA_FRAME_YS);
+			g = (g + AMIGA_FRAME_XS * AMIGA_FRAME_YS / 2) / (AMIGA_FRAME_XS * AMIGA_FRAME_YS);
+			b = (b + AMIGA_FRAME_XS * AMIGA_FRAME_YS / 2) / (AMIGA_FRAME_XS * AMIGA_FRAME_YS);
+			video_crt_pixels[y * v->w + x] = r << 16 | g << 8 | b;
+		}
 }
 
 int sdl_video_view(struct SdlView *v)
@@ -200,11 +233,13 @@ int sdl_video_rect(SDL_Window *window, struct SdlVideoRect *r)
 	return 0;
 }
 
-void sdl_video_draw(SDL_Window *window, const uint32_t frame[AMIGA_FRAME_ROWS][AMIGA_FRAME_STRIDE])
+void sdl_video_draw(SDL_Window *window, const struct Amiga *m)
 {
 	struct SdlVideoRect r;
+	int crt;
 	if(sdl_video_rect(window, &r))
 		return;
+	crt = video_crt_program && sdl_setting(SdlSettingCrt);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glDisable(GL_BLEND);
 	glDisable(GL_SCISSOR_TEST);
@@ -214,19 +249,30 @@ void sdl_video_draw(SDL_Window *window, const uint32_t frame[AMIGA_FRAME_ROWS][A
 	glClear(GL_COLOR_BUFFER_BIT);
 	glViewport(r.x, r.window_h - r.y - r.h, r.w, r.h);
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-	glPixelStorei(GL_UNPACK_ROW_LENGTH, AMIGA_FRAME_STRIDE);
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, video_texture);
 	/* 0x00RRGGBB is BGRA 8888 reversed: B in bits 0-7 up to an alpha byte the shaders ignore. */
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r.view.w, r.view.h, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, &frame[r.view.y][r.view.x]);
-	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-	glUseProgram(video_crt_program && sdl_setting(SdlSettingCrt) ? video_crt_program : video_program);
+	if(crt)
+	{
+		video_crt_source(m, &r.view);
+		glBindTexture(GL_TEXTURE_2D, video_crt_texture);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r.view.w, r.view.h, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, video_crt_pixels);
+	}
+	else
+	{
+		glPixelStorei(GL_UNPACK_ROW_LENGTH, AMIGA_FRAME_STRIDE * AMIGA_FRAME_XS);
+		glBindTexture(GL_TEXTURE_2D, video_texture);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r.view.w * AMIGA_FRAME_XS, r.view.h * AMIGA_FRAME_YS, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV,
+			&m->frame[r.view.y * AMIGA_FRAME_YS][r.view.x * AMIGA_FRAME_XS]);
+		glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	}
+	glUseProgram(crt ? video_crt_program : video_program);
 	glBindVertexArray(video_vao);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
 void sdl_video_quit(void)
 {
+	glDeleteTextures(1, &video_crt_texture);
 	glDeleteTextures(1, &video_texture);
 	glDeleteBuffers(1, &video_vbo);
 	glDeleteVertexArrays(1, &video_vao);

@@ -1,18 +1,20 @@
 #include "amiga.h"
 #include "game.h"
 
+#include <string.h>
+
 /* Bitplanes, sprites and the colour registers, HRM chapters 3, 4 and 6, and on the A1200 the AGA
  * registers of Commodore's AA documentation (AGA.guide). One line at a time into linebuf, as
- * 0x00RRGGBB, indexed by DIW horizontal coordinate (lores pixels); a hires line is drawn one of
- * its two pixels per lores pixel. docs/runtime.md, "Timing". */
+ * 0x00RRGGBB, AMIGA_FRAME_XS entries per DIW horizontal coordinate (lores pixel): both pixels of a
+ * hires pair, a lores pixel twice. docs/runtime.md, "Timing". */
 
 #define DENISE_X_MAX 456
 /* The first line of sprite DMA, where every sprite's control-word fetch restarts: the line after
  * PAL vertical blank, during which there is no sprite DMA. */
 #define DENISE_SPRITE_LINE AMIGA_DISPLAY_LINE0
-/* Which pixel of each hires pair a lores pixel shows: the first, as the oracle's lores capture
+/* Which pixel of each hires pair the capture shows: the first, as the oracle's lores capture
  * does (docs/runtime.md, "Timing"). */
-#define DENISE_HIRES_PIXEL 0
+#define DENISE_CAPTURE_PIXEL 0
 
 enum SpriteDma
 {
@@ -240,6 +242,24 @@ int denise_pointer(struct Amiga *m, int *x, int *y)
 	return 1;
 }
 
+/* At line 0. While BPLCON0's LACE is set LOF toggles every frame, and the long frame's lines fill
+ * the upper row of each pair, the short frame's the lower (FS-UAE 3.1.66 custom.cpp, vsync_handler
+ * and hsync_handler's lineno). The short frame's 312 lines are not modelled: every frame has
+ * AMIGA_LINES. */
+void denise_begin_frame(struct Amiga *m)
+{
+	struct Denise *d = &m->denise;
+	d->capture_row = d->laced && d->short_frame;
+	d->laced = (d->bplcon0 & 0x0004) != 0;
+	if(d->laced)
+		d->short_frame ^= 1;
+}
+
+uint32_t denise_capture(const struct Amiga *m, int x, int y)
+{
+	return m->frame[(AMIGA_FRAME_CAPTURE_ROW + y) * AMIGA_FRAME_YS + m->denise.capture_row][x * AMIGA_FRAME_XS + DENISE_CAPTURE_PIXEL];
+}
+
 void denise_begin_line(struct Amiga *m, int line)
 {
 	struct Denise *d = &m->denise;
@@ -371,7 +391,8 @@ static int denise_delay(const struct Denise *d, int pf2)
 	return pf2 ? ((v >> 4) & 15) | ((v >> 10) & 0x30) : (v & 15) | ((v >> 6) & 0x30);
 }
 
-static int denise_playfield(const struct Denise *d, int x)
+/* The playfield's colour number at x; in hires, of the pixel `sub` (0 or 1) of the pair there. */
+static int denise_playfield(const struct Denise *d, int x, int sub)
 {
 	int p, idx = 0;
 	int bpu = denise_planes(d);
@@ -386,7 +407,7 @@ static int denise_playfield(const struct Denise *d, int x)
 		 * on that grid from DIW 0x81 plus the delay, at the first such start at or after the first
 		 * block's pixel (docs/runtime.md, "Timing"). */
 		int off = (denise_delay(d, p & 1) - d->load_lead) & (period - 1);
-		int px = hires ? (x - d->first_x - off) * 2 + DENISE_HIRES_PIXEL : x - d->first_x - off;
+		int px = hires ? (x - d->first_x - off) * 2 + sub : x - d->first_x - off;
 		if(px < 0 || px >= d->words * 16)
 			continue;
 		idx |= ((d->plane[p][px >> 4] >> (15 - (px & 15))) & 1) << p;
@@ -468,6 +489,13 @@ static void denise_add_modulos(struct Denise *d)
 	d->mod_at = -1;
 }
 
+/* Single playfield: a sprite pixel shows over playfield colour 0 and over a playfield whose
+ * priority code PF2P it is in front of. HRM. */
+static uint32_t denise_mix(const struct Denise *d, int idx, int sp, int pair)
+{
+	return sp && (idx == 0 || pair < ((d->bplcon2 >> 3) & 7)) ? d->color[sp] : denise_colour(d, idx);
+}
+
 void denise_render_to(struct Amiga *m, int hpos)
 {
 	struct Denise *d = &m->denise;
@@ -477,6 +505,7 @@ void denise_render_to(struct Amiga *m, int hpos)
 	 * (AGA.guide, BPLCON3 and BPLCON0). */
 	int ecsena = AMIGA_A1200 && (d->bplcon0 & 1);
 	int border_sprites = ecsena && (d->bplcon3 & 0x0002);
+	int hires = (d->bplcon0 & 0x8000) != 0;
 	uint32_t border = ecsena && (d->bplcon3 & 0x0020) ? 0 : d->color[0];
 	unsigned hide = m->pointer_hidden ? game_def.pointer_sprites : 0u;
 	int inv;
@@ -494,20 +523,20 @@ void denise_render_to(struct Amiga *m, int hpos)
 	for(x = d->drawn_x; x < to; x++)
 	{
 		int inside = inv && x >= hstart && x < hstop;
-		uint32_t c = border;
+		uint32_t c = border, c1;
 		if(inside || border_sprites)
 		{
 			int pair = 0, sp = m->sprites_enabled ? denise_sprite(d, x, hide, &pair) : 0;
 			if(inside)
-			{
-				int idx = denise_playfield(d, x);
-				/* Single playfield: PF2P is the playfield's priority code. HRM. */
-				c = sp && (idx == 0 || pair < ((d->bplcon2 >> 3) & 7)) ? d->color[sp] : denise_colour(d, idx);
-			}
+				c = denise_mix(d, denise_playfield(d, x, 0), sp, pair);
 			else if(sp)
 				c = d->color[sp];
+			c1 = inside && hires ? denise_mix(d, denise_playfield(d, x, 1), sp, pair) : c;
 		}
-		d->linebuf[x] = c;
+		else
+			c1 = c;
+		d->linebuf[x * AMIGA_FRAME_XS] = c;
+		d->linebuf[x * AMIGA_FRAME_XS + 1] = c1;
 	}
 	d->drawn_x = to;
 }
@@ -515,12 +544,13 @@ void denise_render_to(struct Amiga *m, int hpos)
 void denise_end_line(struct Amiga *m)
 {
 	struct Denise *d = &m->denise;
-	int row = d->line - AMIGA_DISPLAY_LINE0, x;
+	int row = d->line - AMIGA_DISPLAY_LINE0, f;
 	denise_render_to(m, AMIGA_CCK_PER_LINE);
 	if(row < 0 || row >= AMIGA_FRAME_ROWS)
 		return;
-	for(x = 0; x < AMIGA_FRAME_STRIDE; x++)
-		m->frame[row][x] = d->linebuf[AMIGA_FRAME_DIW_X0 + x];
+	for(f = 0; f < AMIGA_FRAME_YS; f++)
+		if(!d->laced || f == d->short_frame)
+			memcpy(m->frame[row * AMIGA_FRAME_YS + f], &d->linebuf[AMIGA_FRAME_DIW_X0 * AMIGA_FRAME_XS], sizeof m->frame[0]);
 }
 
 /* A CPU or copper write to a wide sprite's data register repeats the word across the image, as

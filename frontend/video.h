@@ -5,7 +5,7 @@
 
 #include <SDL3/SDL.h>
 
-struct SdlView { int x, y, w, h; }; /* the shown part of the frame, in frame pixels */
+struct SdlView { int x, y, w, h; }; /* the shown part of the frame, in lores pixels and lines */
 /* game_def.view in frame pixels, or the whole capture window when the game sets none.
  * -1 when it does not lie inside the frame buffer. */
 int sdl_video_view(struct SdlView *v);
@@ -20,10 +20,12 @@ struct SdlVideoRect
 int sdl_video_rect(SDL_Window *window, struct SdlVideoRect *r);
 
 /* The game's view of the frame as one textured quad, centred in the window and scaled by the setting
- * `scale`, through crt-lottes while the setting `crt` is on, OpenGL 3.3 core. Needs the window's
- * context current. */
+ * `scale`, OpenGL 3.3 core: every frame-buffer column and row, so a hires or interlaced picture
+ * shows at twice the view's density in the same rectangle; through crt-lottes while the setting
+ * `crt` is on, fed one texel per lores pixel and line, the mean of its columns and rows. Needs the
+ * window's context current. */
 int sdl_video_init(void);
-void sdl_video_draw(SDL_Window *window, const uint32_t frame[AMIGA_FRAME_ROWS][AMIGA_FRAME_STRIDE]);
+void sdl_video_draw(SDL_Window *window, const struct Amiga *m);
 void sdl_video_quit(void);
 
 #endif

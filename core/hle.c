@@ -556,6 +556,9 @@ static void hle_continue(struct Amiga *m)
 	case HleFrameDosRequest:
 		hle_dos_request_done(m, &f);
 		return;
+	case HleFrameRunCommand:
+		hle_dos_run_done(m, &f);
+		return;
 #endif
 	default:
 		amiga_fatal(m, "bad HLE frame kind %d", f.kind);
@@ -735,7 +738,7 @@ int hle_dispatch(struct Amiga *m)
 		static const char *names[HLE_LIBS] = {"exec.library", "graphics.library", "trackdisk.device", "input.device",
 			"intuition.library", "dos.library", "layers.library", "audio.device", [HLE_LIB_POTGO] = "potgo.resource",
 			[HLE_LIB_CIAA] = "ciaa.resource", [HLE_LIB_CIAB] = "ciab.resource", [HLE_LIB_TIMER] = "timer.device",
-			[HLE_LIB_KEYBOARD] = "keyboard.device", [HLE_LIB_UTILITY] = "utility.library"};
+			[HLE_LIB_KEYBOARD] = "keyboard.device", [HLE_LIB_UTILITY] = "utility.library", [HLE_LIB_DISK] = "disk.resource"};
 		char buf[64];
 		const char *who = names[lib] ? names[lib] : "unknown library";
 		if(lib >= HLE_LIB_STUB && lib - HLE_LIB_STUB < m->hle.stub_count)

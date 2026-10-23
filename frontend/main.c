@@ -176,7 +176,7 @@ static int sdl_shot(const struct SdlOptions *o, const char *name)
 	char path[1280];
 	SDL_CreateDirectory(o->shot_dir);
 	snprintf(path, sizeof path, "%s/%s.png", o->shot_dir, name);
-	if(sdl_png_write(path, machine.frame))
+	if(sdl_png_write(path, &machine))
 	{
 		fprintf(stderr, "cannot write %s\n", path);
 		return -1;
@@ -885,7 +885,7 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 		else
 			fx = fy = 0;
 
-		sdl_video_draw(window, machine.frame);
+		sdl_video_draw(window, &machine);
 		sdl_menu_render(window);
 		SDL_GL_SwapWindow(window);
 

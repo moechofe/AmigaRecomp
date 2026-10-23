@@ -714,6 +714,38 @@ int hle_exec_call(struct Amiga *m, uint32_t lvo)
 		if(A1)
 			hle_free(m, A1 - 4, hle_r32(m, A1 - 4));
 		return 0;
+	case 654: /* CreateIORequest(a0 ioReplyPort, d0 size): a cleared block of size bytes, its
+	           * mn_ReplyPort and mn_Length set; NULL with no port */
+	{
+		uint32_t io = A0 ? hle_alloc(m, D0, MEMF_PUBLIC | MEMF_CLEAR, 0) : 0;
+		if(io)
+		{
+			hle_w32(m, io + MN_REPLYPORT, A0);
+			hle_w16(m, io + MN_LENGTH, (uint16_t)D0);
+		}
+		D0 = io;
+		return 0;
+	}
+	case 666: /* CreateMsgPort(): a public port that signals the task on a new signal; NULL with
+	           * no memory or no signal */
+	{
+		uint32_t port = hle_alloc(m, MP_SIZE, MEMF_PUBLIC | MEMF_CLEAR, 0);
+		int32_t bit = port ? hle_exec_alloc_signal(m, -1) : -1;
+		if(port && bit < 0)
+		{
+			hle_free(m, port, MP_SIZE);
+			port = 0;
+		}
+		if(port)
+		{
+			hle_w8(m, port + LN_TYPE, NT_MSGPORT);
+			hle_w8(m, port + MP_SIGBIT, (uint8_t)bit);
+			hle_w32(m, port + MP_SIGTASK, hle_task(m));
+			hle_new_list(m, port + MP_MSGLIST, NT_MESSAGE);
+		}
+		D0 = port;
+		return 0;
+	}
 	case 522: /* RawDoFmt(a0 format, a1 data, a2 putChProc, a3 putChData): each character,
 	           * the NUL too, to putChProc; D0 the data after the arguments */
 	{

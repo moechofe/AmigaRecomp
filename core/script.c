@@ -31,7 +31,8 @@ static const struct ScriptKey script_keys[] = {
 	{"h", 0x25}, {"j", 0x26}, {"k", 0x27}, {"l", 0x28},
 	{"z", 0x31}, {"x", 0x32}, {"c", 0x33}, {"v", 0x34}, {"b", 0x35},
 	{"n", 0x36}, {"m", 0x37},
-	{"space", 0x40}, {"return", 0x44}, {"esc", 0x45},
+	{"space", 0x40}, {"return", 0x44}, {"esc", 0x45}, {"del", 0x46}, {"help", 0x5F},
+	{"up", 0x4C}, {"down", 0x4D}, {"right", 0x4E}, {"left", 0x4F},
 	{"f1", 0x50}, {"f2", 0x51}, {"f3", 0x52}, {"f4", 0x53}, {"f5", 0x54},
 	{"f6", 0x55}, {"f7", 0x56}, {"f8", 0x57}, {"f9", 0x58}, {"f10", 0x59},
 	{"shift", 0x60},
@@ -59,7 +60,7 @@ int script_colours(const struct Amiga *m)
 	{
 		for(x = 0; x < AMIGA_FRAME_W; x++)
 		{
-			uint32_t c = m->frame[AMIGA_FRAME_CAPTURE_ROW + y][x] & 0xFFFFFF;
+			uint32_t c = denise_capture(m, x, y) & 0xFFFFFF;
 			if(!(script_seen[c >> 3] & (1u << (c & 7))))
 			{
 				script_seen[c >> 3] |= (uint8_t)(1u << (c & 7));
@@ -70,7 +71,7 @@ int script_colours(const struct Amiga *m)
 	for(y = 0; y < AMIGA_FRAME_H; y++)
 		for(x = 0; x < AMIGA_FRAME_W; x++)
 		{
-			uint32_t c = m->frame[AMIGA_FRAME_CAPTURE_ROW + y][x] & 0xFFFFFF;
+			uint32_t c = denise_capture(m, x, y) & 0xFFFFFF;
 			script_seen[c >> 3] &= (uint8_t)~(1u << (c & 7));
 		}
 	return n;

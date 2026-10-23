@@ -105,8 +105,9 @@
 #define WFLG_ACTIVATE 0x1000
 #define WFLG_WINDOWACTIVE 0x2000
 
-#define MP_SIZE 0x22
 #define PA_IGNORE 2
+/* struct Remember (intuition/intuition.h): NextRemember, RememberSize, Memory. */
+#define REMEMBER_SIZE 12
 
 static uint32_t int_alloc(struct Amiga *m, uint32_t size, uint32_t req, const char *what)
 {
@@ -468,7 +469,6 @@ static void int_close_window(struct Amiga *m, uint32_t w)
 #define IM_MOUSEX 0x20
 #define IM_MOUSEY 0x22
 #define IM_IDCMPWINDOW 0x2C
-#define MN_LENGTH 0x12
 #define WFLG_REPORTMOUSE 0x0200
 
 /* The message, or 0 after a fatal error. */
@@ -616,6 +616,38 @@ int hle_int_call(struct Amiga *m, uint32_t lvo)
 	case 390: /* RethinkDisplay */
 		int_rethink(m);
 		return 0;
+	case 396: /* AllocRemember(a0 rememberKey, d0 size, d1 flags): AllocMem's block, linked at
+	           * the head of the key's list in a Remember (NextRemember, RememberSize, Memory);
+	           * NULL if either allocation fails */
+	{
+		uint32_t node = hle_alloc(m, REMEMBER_SIZE, MEMF_PUBLIC, 0), mem = node ? hle_alloc(m, D0, D1, 0) : 0;
+		if(node && !mem)
+			hle_free(m, node, REMEMBER_SIZE);
+		if(mem)
+		{
+			hle_w32(m, node, hle_r32(m, A0));
+			hle_w32(m, node + 4, D0);
+			hle_w32(m, node + 8, mem);
+			hle_w32(m, A0, node);
+		}
+		D0 = mem;
+		return 0;
+	}
+	case 408: /* FreeRemember(a0 rememberKey, d0 reallyForget): every Remember freed, and with
+	           * reallyForget its memory too; the key becomes NULL */
+	{
+		uint32_t node = hle_r32(m, A0);
+		while(node)
+		{
+			uint32_t next = hle_r32(m, node);
+			if(D0)
+				hle_free(m, hle_r32(m, node + 8), hle_r32(m, node + 4));
+			hle_free(m, node, REMEMBER_SIZE);
+			node = next;
+		}
+		hle_w32(m, A0, 0);
+		return 0;
+	}
 	case 414: /* LockIBase(d0 dontknow): a value for UnlockIBase; one task runs, so nothing waits on it */
 		D0 = 0;
 		return 0;

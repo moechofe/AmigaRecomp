@@ -3,6 +3,7 @@
 
 #include "amiga.h"
 
-int sdl_png_write(const char *path, const uint32_t frame[AMIGA_FRAME_ROWS][AMIGA_FRAME_STRIDE]);
+/* The capture window as the oracle's lores capture shows it (denise_capture). */
+int sdl_png_write(const char *path, const struct Amiga *m);
 
 #endif

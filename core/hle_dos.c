@@ -136,10 +136,16 @@ static void dos_error(struct Amiga *m, uint32_t code)
 	hle_w32(m, dos_process(m) + PR_RESULT2, code);
 }
 
+/* DFn's disk, for a read of dos's. Kickstart's dos reads through trackdisk, whose seek steps the
+ * head, and a step with a disk in clears /CHNG (*Floppy hardware*), so a game that watches
+ * /CHNG sees the disk settled once dos has read it. */
 static const uint8_t *dos_image(struct Amiga *m, int drive)
 {
 	int role = drive >= 0 && drive < AMIGA_DRIVES ? m->drive_role[drive] : -1;
-	return role >= 0 ? m->disks[role].image : 0;
+	if(role < 0)
+		return 0;
+	m->floppy.changed[drive] = 0;
+	return m->disks[role].image;
 }
 
 /* A guest buffer as host bytes, or 0 (after a fatal) when it is not wholly inside one RAM. */
@@ -232,7 +238,6 @@ static int dos_drive_of_volume(struct Amiga *m, uint32_t node)
 #define DP_RES2 0x10
 #define DP_ARG1 0x14
 #define ACTION_INHIBIT 31
-#define MP_SIZEOF 0x22
 #define PA_IGNORE 2
 
 /* A message PutMsg sends to DFn's handler port holds a DosPacket at its ln_Name (dos/dosextens.i,
@@ -359,6 +364,15 @@ static int dos_resolve(struct Amiga *m, uint32_t lock, const char *path, int *dr
 			*block = 880;
 			found = 1;
 		}
+#if AMIGA_A1200
+		/* PROGDIR: is the program's directory, pr_HomeDir (dos.doc, GetProgramDir). */
+		if(!found && dos_same(dev, "PROGDIR") && hle_r32(m, dos_process(m) + PR_HOMEDIR))
+		{
+			if(dos_lock_place(m, hle_r32(m, dos_process(m) + PR_HOMEDIR), drive, block) < 0)
+				return -1;
+			found = 1;
+		}
+#endif
 		for(i = 0; !found && i < AMIGA_DRIVES; i++)
 		{
 			char df[4] = {'D', 'F', (char)('0' + i), 0};
@@ -834,6 +848,9 @@ static void dos_cli_run(struct Amiga *m, const char *cmd, const char *args, int 
 	}
 	for(i = 0; i <= len; i++)
 		hle_w8(m, d->cmd_args + i, (uint8_t)args[i]);
+#if AMIGA_A1200
+	hle_w32(m, d->process + PR_ARGUMENTS, d->cmd_args); /* GetArgStr (dos autodoc) */
+#endif
 	d->cmd_in = nil_in ? dos_open(m, "NIL:", "CLI") : 0;
 	d->cmd_out = nil_out ? dos_open(m, "NIL:", "CLI") : 0;
 	if(m->fatal)
@@ -895,6 +912,7 @@ void hle_dos_cli_return(struct Amiga *m)
 	if(hle_r32(m, d->process + PR_HOMEDIR))
 		hle_free(m, hle_r32(m, d->process + PR_HOMEDIR) << 2, FL_SIZEOF);
 	hle_w32(m, d->process + PR_HOMEDIR, 0);
+	hle_w32(m, d->process + PR_ARGUMENTS, 0);
 #endif
 	dos_cli_io(m, d->files[0].fh, d->files[0].fh);
 	if(d->cmd_in)
@@ -909,6 +927,71 @@ void hle_dos_cli_return(struct Amiga *m)
 	}
 	dos_cli_next(m);
 }
+
+#if AMIGA_A1200
+/* RunCommand's save area, above the program's stack: the caller's D2-D7 and A2-A7, then the
+ * process's tc_SPLower, tc_SPUpper, pr_StackSize and pr_Arguments, all given back when the
+ * program returns. */
+#define DOS_RUN_SAVE (16 * 4)
+
+static int dos_run_command(struct Amiga *m)
+{
+	struct HleFrame f;
+	uint32_t proc = dos_process(m), seg = D1, size = (D2 + 3) & ~3u, args = D3, len = m->cpu.d[4];
+	uint32_t stack = hle_alloc(m, size + DOS_RUN_SAVE, MEMF_PUBLIC, 0), top = stack + size, i;
+	if(!stack)
+	{
+		dos_error(m, HLE_DOS_NO_FREE_STORE);
+		D0 = 0xFFFFFFFFu;
+		return 0;
+	}
+	for(i = 0; i < 6; i++)
+	{
+		hle_w32(m, top + i * 4, m->cpu.d[2 + i]);
+		hle_w32(m, top + 24 + i * 4, m->cpu.a[2 + i]);
+	}
+	hle_w32(m, top + 48, hle_r32(m, proc + TC_SPLOWER));
+	hle_w32(m, top + 52, hle_r32(m, proc + TC_SPUPPER));
+	hle_w32(m, top + 56, hle_r32(m, proc + PR_STACKSIZE));
+	hle_w32(m, top + 60, hle_r32(m, proc + PR_ARGUMENTS));
+	hle_w32(m, proc + TC_SPLOWER, stack);
+	hle_w32(m, proc + TC_SPUPPER, top);
+	hle_w32(m, proc + PR_STACKSIZE, size);
+	hle_w32(m, proc + PR_ARGUMENTS, args);
+	memset(&f, 0, sizeof f);
+	f.kind = HleFrameRunCommand;
+	f.saved[0] = stack;
+	f.saved[1] = size;
+	/* The CLI's program entry (dos_cli_run), the return address into HLE_CONTINUE. */
+	m->cpu.a[7] = top - 4;
+	hle_w32(m, top - 4, size);
+	hle_call(m, &f, (seg << 2) + 4);
+	D0 = len;
+	D1 = args;
+	D2 = size;
+	m->cpu.a[0] = args;
+	m->cpu.a[3] = seg << 2;
+	m->cpu.a[4] = top - 4;
+	return 1;
+}
+
+void hle_dos_run_done(struct Amiga *m, const struct HleFrame *f)
+{
+	uint32_t proc = dos_process(m), top = f->saved[0] + f->saved[1], i;
+	for(i = 0; i < 6; i++)
+	{
+		m->cpu.d[2 + i] = hle_r32(m, top + i * 4);
+		m->cpu.a[2 + i] = hle_r32(m, top + 24 + i * 4);
+	}
+	hle_w32(m, proc + TC_SPLOWER, hle_r32(m, top + 48));
+	hle_w32(m, proc + TC_SPUPPER, hle_r32(m, top + 52));
+	hle_w32(m, proc + PR_STACKSIZE, hle_r32(m, top + 56));
+	hle_w32(m, proc + PR_ARGUMENTS, hle_r32(m, top + 60));
+	hle_free(m, f->saved[0], f->saved[1] + DOS_RUN_SAVE);
+	D1 = D0;
+	m->cpu.pc = cpu_pop32(m);
+}
+#endif
 
 /* --- boot --------------------------------------------------------------------------------- */
 
@@ -956,7 +1039,7 @@ void hle_dos_boot(struct Amiga *m)
 	for(i = 0; i < AMIGA_DRIVES; i++)
 	{
 		char df[4] = {'D', 'F', (char)('0' + i), 0};
-		uint32_t node = dos_node(m, DLT_DEVICE, df, 0), port = hle_alloc(m, MP_SIZEOF, MEMF_PUBLIC | MEMF_CLEAR, 0);
+		uint32_t node = dos_node(m, DLT_DEVICE, df, 0), port = hle_alloc(m, MP_SIZE, MEMF_PUBLIC | MEMF_CLEAR, 0);
 		if(!node || !port)
 		{
 			if(!m->fatal)
@@ -1338,6 +1421,27 @@ static int dos_call(struct Amiga *m, uint32_t lvo)
 #if AMIGA_A1200
 	case 600: /* GetProgramDir: pr_HomeDir, which the caller must not unlock */
 		D0 = hle_r32(m, dos_process(m) + PR_HOMEDIR);
+		return 0;
+	case 390: /* ExamineFH(d1 fh, d2 fib): Examine of the file the handle reads */
+	{
+		struct HleDosFile *f = dos_file(m, D1);
+		if(!f)
+			return 0;
+		if(f->drive < 0)
+		{
+			amiga_fatal(m, "dos ExamineFH of a handle on no disk file is not implemented");
+			return 0;
+		}
+		dos_examine(m, f->drive, f->header, D2);
+		D0 = DOSTRUE;
+		return 0;
+	}
+	case 504: /* RunCommand(d1 seg, d2 stack, d3 paramptr, d4 paramlen): the program run on this
+	           * process, on a new stack, as the CLI runs a command; its return code, or -1 with
+	           * no memory for the stack (hle_dos_run_done) */
+		return dos_run_command(m);
+	case 534: /* GetArgStr: pr_Arguments, the program's argument string */
+		D0 = hle_r32(m, dos_process(m) + PR_ARGUMENTS);
 		return 0;
 	/* Buffered I/O (dos autodoc, V36): no buffer is kept, each call reads or writes at once
 	 * through Read and Write. */

@@ -73,8 +73,8 @@ uint16_t custom_read(struct Amiga *m, uint32_t reg)
 		return (uint16_t)((m->paula.dmacon & 0x07FF) | (m->blit.zero ? 0x2000 : 0));
 	case REG_VPOSR:
 		line = sched_line(m, now);
-		/* LOF set, then the Agnus ID. */
-		return (uint16_t)(0x8000 | (AMIGA_AGNUS_ID << 8) | ((line >> 8) & 1));
+		/* LOF, then the Agnus ID. */
+		return (uint16_t)((m->denise.short_frame ? 0 : 0x8000) | (AMIGA_AGNUS_ID << 8) | ((line >> 8) & 1));
 	case REG_VHPOSR:
 		line = sched_line(m, now);
 		hpos = sched_hpos(m, now);
