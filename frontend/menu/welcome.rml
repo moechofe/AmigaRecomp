@@ -4,4 +4,4 @@
 <div class="row" data-if="state_keys"><span class="label">F5 / F9</span><span>quick save / quick load</span></div>
 <div class="row"><span class="label">F12</span><span>screenshot</span></div>
 <div class="row"><span class="label">Alt+Enter</span><span>fullscreen on / off</span></div>
-<div class="row" data-if="controls"><span class="label">arrows</span><span>joystick; Right Ctrl fires. Rebind them on the menu's Controls page.</span></div>
+<div class="row" data-if="joystick"><span class="label">arrows</span><span>joystick; Right Ctrl fires. Rebind them on the menu's Controls page.</span></div>

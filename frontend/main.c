@@ -140,6 +140,14 @@ static int sdl_help(void)
 			"                   (any button fires on a plain joystick)\n");
 	if(game_def.joystick >= 2)
 		printf("  2nd controller   the joystick in port 1, for player 2, in place of the mouse\n");
+	for(r = 0; r < game_def.command_count; r++)
+	{
+		const struct GameCommand *c = &game_def.commands[r];
+		char keys[64];
+		snprintf(keys, sizeof keys, "%s%s%s", c->keys[0] ? SDL_GetScancodeName((SDL_Scancode)c->keys[0]) : "",
+			c->keys[0] && c->keys[1] ? ", " : "", c->keys[1] ? SDL_GetScancodeName((SDL_Scancode)c->keys[1]) : "");
+		printf("  %-16s %s, bound on the menu's Controls page\n", keys, c->label);
+	}
 	printf("\n"
 		"Exit codes\n"
 		"  0 normal end, 1 fatal runtime error, 2 usage, image or script error,\n"
@@ -325,13 +333,17 @@ static int sdl_script_step(const struct SdlOptions *o)
 	}
 }
 
-/* SDL scancode to Amiga raw keycode, HRM appendix H; game_def.keys first. */
+/* SDL scancode to Amiga raw keycode, HRM appendix H; keys bound to game_def.commands first, then
+ * game_def.keys. */
 static int sdl_amiga_key(SDL_Scancode sc)
 {
 	static const uint8_t letters[26] = {
 		0x20, 0x35, 0x33, 0x22, 0x12, 0x23, 0x24, 0x25, 0x17, 0x26, 0x27, 0x28, 0x37,
 		0x36, 0x18, 0x19, 0x10, 0x13, 0x21, 0x14, 0x16, 0x34, 0x11, 0x32, 0x15, 0x31};
 	uint32_t i;
+	int k = sdl_bindings_amiga_key(sc);
+	if(k >= 0)
+		return k;
 	for(i = 0; i < game_def.key_count; i++)
 		if(game_def.keys[i].host == sc)
 			return game_def.keys[i].amiga;

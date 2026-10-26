@@ -154,6 +154,7 @@ struct KeyChip
 struct CommandRow
 {
 	Rml::String label;
+	bool pad = false; /* gamepad buttons may bind it */
 	std::vector<KeyChip> keys;
 };
 
@@ -180,10 +181,11 @@ struct MenuModel
 	bool desktop_offered = false;
 	bool desktop_installed = false;
 	Rml::String desktop_note;
-	bool controls = false;
+	bool controls = false; /* the game has commands to bind (bindings.h) */
+	bool joystick = false; /* game_def.joystick: the Controls page binds the port-2 joystick */
 	bool two_joysticks = false; /* game_def.joystick 2: a second controller is port 1 */
 	std::vector<CommandRow> commands;
-	int binding = -1; /* the command waiting for a key */
+	int binding = -1; /* the row of `commands` waiting for a key */
 	bool disk_light = false; /* a disk transfer within menu_disk_ms */
 };
 
@@ -367,9 +369,13 @@ void menu_disks_refresh()
 void menu_controls_refresh()
 {
 	std::vector<CommandRow> &rows = menu->model.commands;
-	rows.assign(SdlCommandCount, CommandRow());
-	for(int c = 0; c < SdlCommandCount; c++)
-		rows[c].label = sdl_command_labels[c];
+	const int first = sdl_commands_first();
+	rows.assign(sdl_commands_end() - first, CommandRow());
+	for(int c = first; c < sdl_commands_end(); c++)
+	{
+		rows[c - first].label = sdl_command_label(c);
+		rows[c - first].pad = sdl_command_pad(c) != 0;
+	}
 	for(int i = 0; i < sdl_bindings_count(); i++)
 	{
 		const SdlBinding *b = sdl_bindings_get(i);
@@ -378,7 +384,7 @@ void menu_controls_refresh()
 		sdl_bindings_name(b->input, name, (int)sizeof name);
 		key.name = name;
 		key.input = b->input;
-		rows[b->command].keys.push_back(key);
+		rows[b->command - first].keys.push_back(key);
 	}
 	menu->handle.DirtyVariable("commands");
 }
@@ -524,6 +530,7 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 	if(auto row = ctor.RegisterStruct<CommandRow>())
 	{
 		row.RegisterMember("label", &CommandRow::label);
+		row.RegisterMember("pad", &CommandRow::pad);
 		row.RegisterMember("keys", &CommandRow::keys);
 	}
 	ctor.RegisterArray<std::vector<CommandRow>>();
@@ -547,6 +554,7 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 	ctor.Bind("desktop_installed", &menu->model.desktop_installed);
 	ctor.Bind("desktop_note", &menu->model.desktop_note);
 	ctor.Bind("controls", &menu->model.controls);
+	ctor.Bind("joystick", &menu->model.joystick);
 	ctor.Bind("two_joysticks", &menu->model.two_joysticks);
 	ctor.Bind("commands", &menu->model.commands);
 	ctor.Bind("binding", &menu->model.binding);
@@ -634,7 +642,8 @@ int sdl_menu_init(SDL_Window *window, struct Amiga *m)
 	menu->model.state_keys = game_def.no_state_keys == 0;
 	menu->model.desktop_offered = sdl_desktop_offered() != 0;
 	menu->model.desktop_installed = sdl_desktop_installed() != 0;
-	menu->model.controls = game_def.joystick != 0;
+	menu->model.controls = sdl_commands_end() > sdl_commands_first();
+	menu->model.joystick = game_def.joystick != 0;
 	menu->model.two_joysticks = game_def.joystick >= 2;
 	if(const SdlAsset *a = menu_asset("about.rml"))
 		menu->model.about.assign((const char *)a->data, a->size);
@@ -696,7 +705,7 @@ int sdl_menu_binding(void)
 void sdl_menu_bind(int input)
 {
 	if(input >= 0 && menu->model.binding >= 0)
-		sdl_bindings_add(input, (SdlCommand)menu->model.binding);
+		sdl_bindings_add(input, sdl_commands_first() + menu->model.binding);
 	menu_binding_set(-1);
 	menu_controls_refresh();
 }

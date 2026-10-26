@@ -1,0 +1,10 @@
+<p>Requires the five disks of the original game.</p>
+<h2>Controls</h2>
+<div class="row"><span class="label">F1 to F8</span><span class="state">on a table: start a game for that many players</span></div>
+<div class="row"><span class="label">Alt</span><span class="state">left and right flippers</span></div>
+<div class="row"><span class="label">Enter</span><span class="state">launch the ball</span></div>
+<div class="row"><span class="label">Space</span><span class="state">nudge the table up</span></div>
+<div class="row"><span class="label">Shift</span><span class="state">nudge the table on the side</span></div>
+<div class="row"><span class="label">Esc</span><span class="state">quit the table</span></div>
+<div class="row"><span class="label">Home</span><span class="state">switch to hires mode</span></div>
+<div class="row"><span class="label">End</span><span class="state">switch to lowres mode</span></div>

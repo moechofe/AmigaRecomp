@@ -1,0 +1,8 @@
+<h2>{{title}}</h2>
+<p>Played with the keyboard</p>
+<div class="row"><span class="label">F1 to F8</span><span class="state">number of players</span></div>
+<div class="row"><span class="label">Shift, Alt</span><span class="state">flippers</span></div>
+<div class="row"><span class="label">Enter</span><span class="state">launch</span></div>
+<div class="row"><span class="label">Space</span><span class="state">nudge</span></div>
+<div class="row"><span class="label">Shift</span><span class="state">side nudge</span></div>
+<div class="row"><span class="label">{{menu_key}}</span><span>recomp menu</span></div>

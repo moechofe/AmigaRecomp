@@ -2,7 +2,7 @@
 <h2>Controls</h2>
 <div class="row"><span class="label">F1 / F2</span><span class="state">on the menu: load the first or second table</span></div>
 <div class="row"><span class="label">F1 to F8</span><span class="state">on a table: start a game for that many players</span></div>
-<div class="row"><span class="label">Left / Right Shift / Alt</span><span class="state">left and right flippers</span></div>
+<div class="row"><span class="label">Shift / Alt</span><span class="state">left and right flippers</span></div>
 <div class="row"><span class="label">Down</span><span class="state">pull the plunger; let go to launch the ball</span></div>
 <div class="row"><span class="label">Space</span><span class="state">nudge the table</span></div>
 <div class="row"><span class="label">Esc</span><span class="state">quit the table</span></div>

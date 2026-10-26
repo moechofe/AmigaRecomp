@@ -38,6 +38,7 @@ struct GameDisk
 };
 struct GameView { int x, y, w, h; }; /* the game's picture: DIW x (lores) of its first column, its first scanline, its size */
 struct GameKey { uint16_t host; uint8_t amiga; }; /* a host key, by its USB HID usage ID, and the Amiga raw key code it sends */
+struct GameCommand { const char *id, *label; uint8_t amiga; uint16_t keys[2]; }; /* an Amiga raw key code the menu's Controls page binds host keys to: its name in settings.ini, its label on the page, and its default host keys by USB HID usage ID (0 none) */
 struct GameDef
 {
 	const char *id, *title;
@@ -53,6 +54,7 @@ struct GameDef
 	uint16_t menu_key;           /* USB HID usage ID of the host key that opens the menu; 0: F1 (0x3A) */
 	int no_state_keys;           /* 1: F5 and F9 reach the game, and states are saved and loaded from the menu alone; 0: F5 saves, F9 loads */
 	const struct GameKey *keys; uint32_t key_count; /* host keys that send another Amiga key than their own; NULL none */
+	const struct GameCommand *commands; uint32_t command_count; /* Amiga keys the player binds host keys to on the menu's Controls page; NULL none */
 	int grab_keyboard;           /* 1: while the game runs, the window grabs the keyboard, so desktop shortcuts such as Alt+Space reach the game */
 };
 extern const struct GameDef game_def;

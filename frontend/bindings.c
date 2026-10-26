@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-const char *const sdl_command_labels[SdlCommandCount] = {"Joystick up", "Joystick down", "Joystick left", "Joystick right", "Joystick fire", "Joystick button 2"};
+static const char *const bind_labels[SdlCommandCount] = {"Joystick up", "Joystick down", "Joystick left", "Joystick right", "Joystick fire", "Joystick button 2"};
 static const char *const bind_ids[SdlCommandCount] = {"joy_up", "joy_down", "joy_left", "joy_right", "joy_fire", "joy_fire2"};
 static const uint8_t bind_joy[SdlCommandCount] = {AmigaJoyUp, AmigaJoyDown, AmigaJoyLeft, AmigaJoyRight, AmigaJoyFire, AmigaJoyFire2};
 
@@ -38,12 +38,77 @@ int sdl_menu_key(void)
 	return game_def.menu_key ? game_def.menu_key : SDL_SCANCODE_F1;
 }
 
+int sdl_commands_first(void)
+{
+	return game_def.joystick ? 0 : SdlCommandCount;
+}
+
+int sdl_commands_end(void)
+{
+	return SdlCommandCount + (int)game_def.command_count;
+}
+
+const char *sdl_command_label(int command)
+{
+	return command < SdlCommandCount ? bind_labels[command] : game_def.commands[command - SdlCommandCount].label;
+}
+
+int sdl_command_pad(int command)
+{
+	return command < SdlCommandCount;
+}
+
+static const char *bind_id(int command)
+{
+	return command < SdlCommandCount ? bind_ids[command] : game_def.commands[command - SdlCommandCount].id;
+}
+
+/* Kind 0 is the keys, stored under `bind`; kind 1 the gamepad buttons, under `bind_pad`. */
+static const char *const bind_keys[2] = {"bind", "bind_pad"};
+
+static int bind_kind(int input)
+{
+	return input >= SDL_BIND_PAD(0);
+}
+
+/* Appends `input` bound to `command` to t[*n], unless t already holds it. */
+static void bind_default(int input, int command, struct SdlBinding *t, int *n)
+{
+	int i;
+	for(i = 0; i < *n && t[i].input != input; i++)
+		;
+	if(i < *n || *n == SDL_BINDINGS_MAX)
+		return;
+	t[*n].input = input;
+	t[*n].command = command;
+	(*n)++;
+}
+
+/* Appends the defaults of one kind to t[*n]: the joystick's, then the game's commands' keys. */
+static void bind_defaults_add(int kind, struct SdlBinding *t, int *n)
+{
+	uint32_t c;
+	int i;
+	for(i = 0; game_def.joystick && i < BIND_DEFAULTS; i++)
+		if(bind_kind(bind_defaults[i].input) == kind)
+			bind_default(bind_defaults[i].input, bind_defaults[i].command, t, n);
+	for(c = 0; kind == 0 && c < game_def.command_count; c++)
+		for(i = 0; i < 2; i++)
+			if(game_def.commands[c].keys[i])
+				bind_default(game_def.commands[c].keys[i], SdlCommandCount + (int)c, t, n);
+}
+
+static void bind_defaults_all(void)
+{
+	bind_count = 0;
+	bind_defaults_add(0, bind_table, &bind_count);
+	bind_defaults_add(1, bind_table, &bind_count);
+}
+
 static void bind_ready(void)
 {
-	if(bind_count >= 0)
-		return;
-	memcpy(bind_table, bind_defaults, sizeof bind_defaults);
-	bind_count = BIND_DEFAULTS;
+	if(bind_count < 0)
+		bind_defaults_all();
 }
 
 static int bind_find(int input)
@@ -62,28 +127,13 @@ int sdl_bindings_pad_button(int button)
 		&& (button < SDL_GAMEPAD_BUTTON_DPAD_UP || button > SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
 }
 
-static int bind_valid(int input)
+static int bind_valid(int input, int command)
 {
+	if(command < sdl_commands_first() || command >= sdl_commands_end())
+		return 0;
 	if(input >= SDL_BIND_PAD(0))
-		return sdl_bindings_pad_button(input - SDL_BIND_PAD(0));
+		return sdl_command_pad(command) && sdl_bindings_pad_button(input - SDL_BIND_PAD(0));
 	return input > SDL_SCANCODE_UNKNOWN && input < SDL_SCANCODE_COUNT;
-}
-
-/* Kind 0 is the keys, stored under `bind`; kind 1 the gamepad buttons, under `bind_pad`. */
-static const char *const bind_keys[2] = {"bind", "bind_pad"};
-
-static int bind_kind(int input)
-{
-	return input >= SDL_BIND_PAD(0);
-}
-
-/* Appends the defaults of one kind to t[*n]. */
-static void bind_defaults_add(int kind, struct SdlBinding *t, int *n)
-{
-	int i;
-	for(i = 0; i < BIND_DEFAULTS && *n < SDL_BINDINGS_MAX; i++)
-		if(bind_kind(bind_defaults[i].input) == kind)
-			t[(*n)++] = bind_defaults[i];
 }
 
 /* Appends `<input>:<command id>` pairs, separated by spaces, to t[*n]: an input is a scancode for
@@ -118,19 +168,19 @@ static int bind_parse(const char *text, int kind, struct SdlBinding *t, int *n)
 			if(*end)
 				return -1;
 		}
-		if(!bind_valid((int)input) || bind_kind((int)input) != kind)
+		if(bind_kind((int)input) != kind)
 			return -1;
 		p += len + 1;
 		len = strcspn(p, " ");
-		for(c = 0; c < SdlCommandCount && (strlen(bind_ids[c]) != len || strncmp(p, bind_ids[c], len)); c++)
+		for(c = sdl_commands_first(); c < sdl_commands_end() && (strlen(bind_id(c)) != len || strncmp(p, bind_id(c), len)); c++)
 			;
-		if(c == SdlCommandCount)
+		if(!bind_valid((int)input, c))
 			return -1;
 		for(i = *n; i < k; i++)
 			if(t[i].input == (int)input)
 				return -1;
 		t[k].input = (int)input;
-		t[k].command = (enum SdlCommand)c;
+		t[k].command = c;
 		k++;
 		p += len;
 	}
@@ -154,9 +204,9 @@ static void bind_store(void)
 				continue;
 			if(kind)
 				n += (size_t)snprintf(text + n, sizeof text - n, "%s%s:%s", n ? " " : "",
-					SDL_GetGamepadStringForButton((SDL_GamepadButton)(input - SDL_BIND_PAD(0))), bind_ids[bind_table[i].command]);
+					SDL_GetGamepadStringForButton((SDL_GamepadButton)(input - SDL_BIND_PAD(0))), bind_id(bind_table[i].command));
 			else
-				n += (size_t)snprintf(text + n, sizeof text - n, "%s%d:%s", n ? " " : "", input, bind_ids[bind_table[i].command]);
+				n += (size_t)snprintf(text + n, sizeof text - n, "%s%d:%s", n ? " " : "", input, bind_id(bind_table[i].command));
 		}
 		changed |= sdl_settings_set(bind_keys[kind], text) != 0;
 	}
@@ -193,10 +243,10 @@ const struct SdlBinding *sdl_bindings_get(int i)
 	return i >= 0 && i < bind_count ? &bind_table[i] : 0;
 }
 
-int sdl_bindings_add(int input, enum SdlCommand command)
+int sdl_bindings_add(int input, int command)
 {
 	int i = bind_find(input);
-	if(!bind_valid(input) || (unsigned)command >= SdlCommandCount)
+	if(!bind_valid(input, command))
 		return -1;
 	if(i < 0)
 	{
@@ -241,17 +291,23 @@ void sdl_bindings_name(int input, char *out, int size)
 
 void sdl_bindings_reset(void)
 {
-	memcpy(bind_table, bind_defaults, sizeof bind_defaults);
-	bind_count = BIND_DEFAULTS;
+	bind_defaults_all();
 	bind_store();
 }
 
 int sdl_bindings_key(int scancode, int down)
 {
-	if(!game_def.joystick || bind_find(scancode) < 0)
+	const int i = bind_find(scancode);
+	if(i < 0 || bind_table[i].command >= SdlCommandCount)
 		return 0;
 	bind_held[scancode] = (uint8_t)(down != 0);
 	return 1;
+}
+
+int sdl_bindings_amiga_key(int scancode)
+{
+	const int i = bind_find(scancode);
+	return i >= 0 && bind_table[i].command >= SdlCommandCount ? game_def.commands[bind_table[i].command - SdlCommandCount].amiga : -1;
 }
 
 void sdl_bindings_release(void)
@@ -265,7 +321,7 @@ uint8_t sdl_bindings_joystick(void)
 	int i;
 	bind_ready();
 	for(i = 0; i < bind_count; i++)
-		if(bind_table[i].input < SDL_SCANCODE_COUNT && bind_held[bind_table[i].input])
+		if(bind_table[i].input < SDL_SCANCODE_COUNT && bind_table[i].command < SdlCommandCount && bind_held[bind_table[i].input])
 			joy |= bind_joy[bind_table[i].command];
 	return joy;
 }
