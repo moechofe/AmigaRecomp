@@ -546,8 +546,10 @@ void copper_run(struct Amiga *m, int line, int to_hpos);
 
 /* denise.c */
 void denise_begin_frame(struct Amiga *m);
-/* The capture window's pixel x, y (0 ≤ x < AMIGA_FRAME_W, 0 ≤ y < AMIGA_FRAME_H) as the oracle's
- * lores capture shows it: the first hires pixel of each pair and the last frame's field. */
+/* The pixel at x, y from the capture window's top-left (AMIGA_FRAME_DIW_X0, AMIGA_FRAME_LINE0) as
+ * the oracle's lores capture shows it: the first hires pixel of each pair and the last frame's
+ * field. Any pixel of the frame buffer: x from 0 to AMIGA_FRAME_STRIDE - 1, y from
+ * -AMIGA_FRAME_CAPTURE_ROW to AMIGA_FRAME_ROWS - AMIGA_FRAME_CAPTURE_ROW - 1. */
 uint32_t denise_capture(const struct Amiga *m, int x, int y);
 void denise_begin_line(struct Amiga *m, int line);
 void denise_render_to(struct Amiga *m, int hpos);

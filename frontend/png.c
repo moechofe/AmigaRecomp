@@ -51,42 +51,43 @@ static void sdl_chunk(FILE *f, const char *type, const uint8_t *data, uint32_t l
 	fwrite(tail, 1, 4, f);
 }
 
-#define SDL_PNG_RAW (AMIGA_FRAME_H * (1 + AMIGA_FRAME_W * 3))
-#define SDL_PNG_BLOCKS ((SDL_PNG_RAW + 65534) / 65535)
+#define SDL_PNG_RAW_MAX (AMIGA_FRAME_ROWS * (1 + AMIGA_FRAME_STRIDE * 3))
+#define SDL_PNG_BLOCKS ((SDL_PNG_RAW_MAX + 65534) / 65535)
 
-static uint8_t sdl_png_raw[SDL_PNG_RAW];
-static uint8_t sdl_png_z[2 + SDL_PNG_RAW + SDL_PNG_BLOCKS * 5 + 4];
+static uint8_t sdl_png_raw[SDL_PNG_RAW_MAX];
+static uint8_t sdl_png_z[2 + SDL_PNG_RAW_MAX + SDL_PNG_BLOCKS * 5 + 4];
 
-int sdl_png_write(const char *path, const struct Amiga *m)
+int sdl_png_write(const char *path, const struct Amiga *m, const struct SdlView *v)
 {
 	static const uint8_t sig[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+	const uint32_t raw = (uint32_t)v->h * (1 + (uint32_t)v->w * 3);
 	uint8_t ihdr[13];
 	uint32_t a = 1, b = 0, i, zn = 0, done = 0;
 	int x, y;
 	FILE *f;
 	sdl_crc_init();
-	for(y = 0, i = 0; y < AMIGA_FRAME_H; y++)
+	for(y = 0, i = 0; y < v->h; y++)
 	{
 		sdl_png_raw[i++] = 0;
-		for(x = 0; x < AMIGA_FRAME_W; x++)
+		for(x = 0; x < v->w; x++)
 		{
-			uint32_t c = denise_capture(m, x, y);
+			uint32_t c = denise_capture(m, v->x + x, v->y - AMIGA_FRAME_CAPTURE_ROW + y);
 			sdl_png_raw[i++] = (uint8_t)(c >> 16);
 			sdl_png_raw[i++] = (uint8_t)(c >> 8);
 			sdl_png_raw[i++] = (uint8_t)c;
 		}
 	}
-	for(i = 0; i < SDL_PNG_RAW; i++)
+	for(i = 0; i < raw; i++)
 	{
 		a = (a + sdl_png_raw[i]) % 65521;
 		b = (b + a) % 65521;
 	}
 	sdl_png_z[zn++] = 0x78;
 	sdl_png_z[zn++] = 0x01;
-	while(done < SDL_PNG_RAW)
+	while(done < raw)
 	{
-		uint32_t n = SDL_PNG_RAW - done > 65535 ? 65535 : SDL_PNG_RAW - done;
-		sdl_png_z[zn++] = done + n == SDL_PNG_RAW ? 1 : 0;
+		uint32_t n = raw - done > 65535 ? 65535 : raw - done;
+		sdl_png_z[zn++] = done + n == raw ? 1 : 0;
 		sdl_png_z[zn++] = (uint8_t)n;
 		sdl_png_z[zn++] = (uint8_t)(n >> 8);
 		sdl_png_z[zn++] = (uint8_t)~n;
@@ -98,8 +99,8 @@ int sdl_png_write(const char *path, const struct Amiga *m)
 	sdl_be32(sdl_png_z + zn, (b << 16) | a);
 	zn += 4;
 
-	sdl_be32(ihdr, AMIGA_FRAME_W);
-	sdl_be32(ihdr + 4, AMIGA_FRAME_H);
+	sdl_be32(ihdr, (uint32_t)v->w);
+	sdl_be32(ihdr + 4, (uint32_t)v->h);
 	ihdr[8] = 8;
 	ihdr[9] = 2;
 	ihdr[10] = 0;

@@ -177,13 +177,34 @@ static int denise_in_vwindow(const struct Denise *d)
 	return d->line >= denise_vstart(d) && d->line < denise_vstop(d);
 }
 
+/* A sprite's pixels per lores pixel as a power of two: BPLCON3 SPRES 1, 2 and 3 give lores, hires
+ * and super-hires; 0, the ECS default, gives lores, hires on a super-hires screen (AGA.guide,
+ * BPLCON3; WinUAE drawing.cpp, update_sprres). OCS sprites are lores. */
+static int denise_sprite_res(const struct Denise *d)
+{
+	int spres = (d->bplcon3 >> 6) & 3;
+	if(!AMIGA_A1200)
+		return 0;
+	return spres ? spres - 1 : (d->bplcon0 & 0x0040) != 0;
+}
+
+/* A sprite's first pixel, counted in its own pixels from DIW x 0 (res, denise_sprite_res): DIW x
+ * HSTART + 1, and on AGA SPRxCTL SH1 (bit 4, 70 ns) and SH0 (bit 3, 35 ns) as far as its pixels
+ * are that fine (AGA.guide, SPRxCTL; WinUAE drawing.cpp, the sprites' xpos). */
+static int denise_sprite_start(uint16_t pos, uint16_t ctl, int res)
+{
+	int h = ((pos & 0xFF) << 1) | (ctl & 1);
+	return ((h + 1) << res) | (((ctl >> 3) & 3) >> (2 - res));
+}
+
 /* The pointer the frontend steers: on the A1200, while an EasyRequestArgs requester is up, the
  * HLE's own pointer's hot spot (hle_con_pointer), whether drawn or not. Otherwise the game's
  * pointer sprite, the lowest in `game_def.pointer_sprites`: the frame pixel at the centre
  * of the pixels its first control words and image describe on the lines the display window
  * shows, read from chip RAM where this frame's sprite DMA started, so a position the game
- * wrote after the fetch counts. Image bit 15 - c of a row is column c at DIW x HSTART + 1 + c,
- * as denise_sprite() draws it; row r is line VSTART + r. A VSTOP below VSTART is never met,
+ * wrote after the fetch counts. Image bit 15 - c of a row is the sprite's pixel c from
+ * denise_sprite_start(), as denise_sprite() draws it; row r is line VSTART + r. A VSTOP below
+ * VSTART is never met,
  * so the image runs on to the end of the frame, as denise_sprite_dma() fetches it.
  * Returns 0 with no pointer sprite, sprite DMA off or no pixel shown. */
 int denise_pointer(struct Amiga *m, int *x, int *y)
@@ -192,7 +213,7 @@ int denise_pointer(struct Amiga *m, int *x, int *y)
 	uint32_t pt = d->pointer_list;
 	uint16_t pos, ctl;
 	int w = denise_sprite_words(d), width = 16 * w;
-	int vstart, vstop, first, last, h, row, c, x0 = width, x1 = -1, y0 = -1, y1 = -1;
+	int vstart, vstop, first, last, h, res = denise_sprite_res(d), row, c, x0 = width, x1 = -1, y0 = -1, y1 = -1;
 #if AMIGA_A1200
 	if(hle_con_pointer(m, x, y))
 	{
@@ -209,7 +230,7 @@ int denise_pointer(struct Amiga *m, int *x, int *y)
 		return 0;
 	vstart = denise_sprite_vstart(pos, ctl);
 	vstop = denise_sprite_vstop(ctl);
-	h = ((pos & 0xFF) << 1) | (ctl & 1);
+	h = denise_sprite_start(pos, ctl, res);
 	first = denise_vstart(d);
 	if(first < vstart)
 		first = vstart;
@@ -237,7 +258,7 @@ int denise_pointer(struct Amiga *m, int *x, int *y)
 	}
 	if(y0 < 0)
 		return 0;
-	*x = h + 1 + (x0 + x1) / 2 - AMIGA_FRAME_DIW_X0;
+	*x = ((h + (x0 + x1) / 2) >> res) - AMIGA_FRAME_DIW_X0;
 	*y = vstart + (y0 + y1) / 2 - AMIGA_DISPLAY_LINE0;
 	return 1;
 }
@@ -424,19 +445,18 @@ static int denise_sprite_base(const struct Denise *d, int odd)
 	return ((odd ? d->bplcon4 : d->bplcon4 >> 4) & 15) << 4;
 }
 
-/* Highest-priority sprite pixel at x: colour register index, or 0. Pair number in *pair.
- * The sprites in mask `hide` draw nothing; when one is half of an attached pair, the whole
- * pair draws nothing. */
-static int denise_sprite(const struct Denise *d, int x, unsigned hide, int *pair)
+/* Highest-priority sprite pixel at x, in column `sub` (0 or 1) of the frame's two there, for
+ * sprites of resolution res: colour register index, or 0. Pair number in *pair. A super-hires
+ * sprite shows the first of the two pixels each column covers. The sprites in mask `hide` draw
+ * nothing; when one is half of an attached pair, the whole pair draws nothing. */
+static int denise_sprite(const struct Denise *d, int x, int sub, int res, unsigned hide, int *pair)
 {
-	int i, width = 16 * denise_sprite_words(d);
+	int i, width = 16 * denise_sprite_words(d), p = (x << res) + ((sub << res) >> 1);
 	for(i = 0; i < 8; i += 2)
 	{
 		const struct Sprite *e = &d->spr[i], *o = &d->spr[i + 1];
 		int ve = 0, vo = 0;
-		int he = ((e->pos & 0xFF) << 1) | (e->ctl & 1);
-		int ho = ((o->pos & 0xFF) << 1) | (o->ctl & 1);
-		int be = x - he - 1, bo = x - ho - 1;
+		int be = p - denise_sprite_start(e->pos, e->ctl, res), bo = p - denise_sprite_start(o->pos, o->ctl, res);
 		int hidden_e = (hide >> i) & 1, hidden_o = (hide >> (i + 1)) & 1, attached = (o->ctl & 0x80) != 0;
 		if(attached)
 			hidden_e = hidden_o = hidden_e | hidden_o;
@@ -506,6 +526,7 @@ void denise_render_to(struct Amiga *m, int hpos)
 	int ecsena = AMIGA_A1200 && (d->bplcon0 & 1);
 	int border_sprites = ecsena && (d->bplcon3 & 0x0002);
 	int hires = (d->bplcon0 & 0x8000) != 0;
+	int sres = denise_sprite_res(d);
 	uint32_t border = ecsena && (d->bplcon3 & 0x0020) ? 0 : d->color[0];
 	unsigned hide = m->pointer_hidden ? game_def.pointer_sprites : 0u;
 	int inv;
@@ -526,12 +547,22 @@ void denise_render_to(struct Amiga *m, int hpos)
 		uint32_t c = border, c1;
 		if(inside || border_sprites)
 		{
-			int pair = 0, sp = m->sprites_enabled ? denise_sprite(d, x, hide, &pair) : 0;
+			int pair = 0, pair1 = 0, idx = inside ? denise_playfield(d, x, 0) : 0;
+			int sp = m->sprites_enabled ? denise_sprite(d, x, 0, sres, hide, &pair) : 0, sp1 = sp;
+			if(sres && m->sprites_enabled)
+				sp1 = denise_sprite(d, x, 1, sres, hide, &pair1);
+			else
+				pair1 = pair;
 			if(inside)
-				c = denise_mix(d, denise_playfield(d, x, 0), sp, pair);
+				c = denise_mix(d, idx, sp, pair);
 			else if(sp)
 				c = d->color[sp];
-			c1 = inside && hires ? denise_mix(d, denise_playfield(d, x, 1), sp, pair) : c;
+			if(!hires && sp1 == sp && pair1 == pair)
+				c1 = c;
+			else if(inside)
+				c1 = denise_mix(d, hires ? denise_playfield(d, x, 1) : idx, sp1, pair1);
+			else
+				c1 = sp1 ? d->color[sp1] : border;
 		}
 		else
 			c1 = c;
@@ -647,9 +678,10 @@ void denise_write(struct Amiga *m, uint32_t reg, uint16_t v)
 	case 0x10A: d->bpl2mod = (int16_t)v; return;
 #if AMIGA_A1200
 	case 0x106:
-		/* SPRES 2 and 3, hires and super-hires sprite pixels (AGA.guide, BPLCON3). */
-		if((v & 0x00C0) >= 0x0080)
-			amiga_log_once(m, 0x95000000u, "BPLCON3 0x%04X: hires and super-hires sprite pixels are drawn lores", v);
+		/* SPRES 3, super-hires sprite pixels: two to each of the frame's columns (AGA.guide,
+		 * BPLCON3). */
+		if((v & 0x00C0) == 0x00C0)
+			amiga_log_once(m, 0x95000000u, "BPLCON3 0x%04X: super-hires sprites show the first pixel of each pair", v);
 		d->bplcon3 = v;
 		return;
 	case 0x10C: d->bplcon4 = v; return;

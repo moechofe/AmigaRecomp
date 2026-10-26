@@ -55,11 +55,18 @@ static const int slamtilt_drives_all[4] = {0, 1, 2, 3};
 
 /* The Amiga's Help (raw 0x5F, HRM appendix H) switches a table to hires and has no key of its
  * own on a PC keyboard: Insert (0x49) and Home (0x4A) send it. Page Down (0x4E) sends Del (raw
- * 0x46), which switches it back to lores (docs/format.md, "Controls"). */
+ * 0x46), which switches it back to lores. The game's default keys flip with Left and Right Shift
+ * (0x60, 0x61) and nudge from the sides with Left and Right Amiga (0x66, 0x67): Left and Right
+ * Alt (0xE2, 0xE6) send the Shifts and Left and Right Shift (0xE1, 0xE5) the Amiga keys; Space
+ * keeps its own centre nudge (docs/format.md, "Controls"). */
 static const struct GameKey slamtilt_keys[] = {
 	{0x49, 0x5F},
 	{0x4A, 0x5F},
 	{0x4E, 0x46},
+	{0xE2, 0x60},
+	{0xE6, 0x61},
+	{0xE1, 0x66},
+	{0xE5, 0x67},
 };
 
 /* F1 starts a game on a table (docs/format.md, "Controls"), so the menu is on F11 (USB HID 0x44),
@@ -77,6 +84,6 @@ const struct GameDef game_def = {
 	.menu_key = 0x44,
 	.no_state_keys = 1,
 	.keys = slamtilt_keys,
-	.key_count = 3,
+	.key_count = 7,
 	.grab_keyboard = 1,
 };

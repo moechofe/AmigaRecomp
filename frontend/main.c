@@ -171,12 +171,16 @@ static int sdl_write_file(const char *path, const void *buf, long n)
 	return fclose(f) ? -1 : 0;
 }
 
-static int sdl_shot(const struct SdlOptions *o, const char *name)
+/* The oracle's capture window, which a script's shot writes for pixdiff. */
+static const struct SdlView sdl_capture = {0, AMIGA_FRAME_CAPTURE_ROW, AMIGA_FRAME_W, AMIGA_FRAME_H};
+
+/* v: the window's view for F12, sdl_capture for a script's shot. */
+static int sdl_shot(const struct SdlOptions *o, const char *name, const struct SdlView *v)
 {
 	char path[1280];
 	SDL_CreateDirectory(o->shot_dir);
 	snprintf(path, sizeof path, "%s/%s.png", o->shot_dir, name);
-	if(sdl_png_write(path, &machine))
+	if(sdl_png_write(path, &machine, v))
 	{
 		fprintf(stderr, "cannot write %s\n", path);
 		return -1;
@@ -298,7 +302,7 @@ static int sdl_script_step(const struct SdlOptions *o)
 		case ScriptRunFrame:
 			return -1;
 		case ScriptShot:
-			if(sdl_shot(o, sdl_script.name))
+			if(sdl_shot(o, sdl_script.name, &sdl_capture))
 				return 1;
 			continue;
 		case ScriptStateSave:
@@ -744,7 +748,7 @@ static int sdl_window(const struct SdlOptions *o, const char *const *paths, int 
 					{
 						char name[32];
 						snprintf(name, sizeof name, "frame-%06u", machine.frame_count);
-						sdl_shot(o, name);
+						sdl_shot(o, name, &view);
 					}
 				}
 				else if(sdl_state_key(e.key.scancode))
