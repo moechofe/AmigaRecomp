@@ -278,12 +278,14 @@ struct Floppy
 #endif
 };
 
-/* A disk image a game role holds. rw is the same buffer as image for a writable role, else
- * NULL. */
+/* A disk image a game role holds. image is what the game reads; rw is the same buffer when the
+ * game may write it (a writable or an overlay role), else NULL; dump is the player's image (a
+ * read-only or an overlay role), else NULL. */
 struct AmigaDisk
 {
 	const uint8_t *image;
 	uint8_t *rw;
+	const uint8_t *dump;
 	uint8_t dirty;
 };
 
@@ -503,7 +505,7 @@ struct Amiga
 /* amiga.c */
 void amiga_init(struct Amiga *m);
 int amiga_boot(struct Amiga *m);
-void amiga_attach(struct Amiga *m, int role, uint8_t *image, int writable);
+void amiga_attach(struct Amiga *m, int role, const uint8_t *dump, uint8_t *rw);
 void amiga_insert(struct Amiga *m, int drive, int role);
 uint32_t amiga_crc32(const uint8_t *p, uint32_t len);
 int amiga_run_frame(struct Amiga *m);
@@ -623,7 +625,7 @@ struct StateHeader
 {
 	char magic[8];                  /* "ARSTATE" */
 	uint32_t version;               /* STATE_VERSION */
-	uint32_t role_crc[AMIGA_ROLES]; /* CRC-32 of each attached read-only role, else 0 */
+	uint32_t role_crc[AMIGA_ROLES]; /* CRC-32 of each attached role's dump, else 0 */
 };
 
 struct StateSection

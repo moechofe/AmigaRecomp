@@ -50,7 +50,8 @@ static const struct GameDisk slamtilt_disks[] = {
 };
 
 /* The oracle's four drives hold Disks 1 to 4; Disk 1 alone boots the game (docs/format.md,
- * "Disks and drives"). */
+ * "Disks and drives"). The game writes the options and each table's high scores back into their
+ * files on Disk 1, so Disk 1 is an overlay role (docs/format.md, "High scores"). */
 static const int slamtilt_drives_all[4] = {0, 1, 2, 3};
 
 /* The Amiga's Help (raw 0x5F, HRM appendix H) switches a table to hires and has no key of its
@@ -83,6 +84,7 @@ const struct GameDef game_def = {
 	.drives = {0, -1, -1, -1},
 	.drives_optional = slamtilt_drives_all,
 	.drive_count = 4,
+	.overlays = 1 << 0,
 	.view = {129, 44, 322, 256},
 	.menu_key = 0x44,
 	.no_state_keys = 1,

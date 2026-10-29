@@ -32,8 +32,8 @@ static void state_crcs(const struct Amiga *m, uint32_t crc[AMIGA_ROLES])
 	int r;
 	memset(crc, 0, AMIGA_ROLES * sizeof crc[0]);
 	for(r = 0; r < AMIGA_ROLES; r++)
-		if(m->disks[r].image && !m->disks[r].rw)
-			crc[r] = amiga_crc32(m->disks[r].image, AMIGA_ADF_SIZE);
+		if(m->disks[r].dump)
+			crc[r] = amiga_crc32(m->disks[r].dump, AMIGA_ADF_SIZE);
 }
 
 uint32_t state_save(const struct Amiga *m, uint8_t *out)

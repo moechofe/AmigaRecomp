@@ -9,6 +9,16 @@
 #include <string.h>
 
 struct SdlRole sdl_roles[AMIGA_ROLES];
+static const char *disks_pref;
+
+static int disks_overlay(int r)
+{
+	return (game_def.overlays >> r) & 1;
+}
+
+/* An overlay file is records of a block number (4 bytes, big-endian) and the block's 512 bytes. */
+#define DISKS_BLOCK 512u
+#define DISKS_RECORD (4u + DISKS_BLOCK)
 
 static const char *disks_rank_word(enum SdlRank rank)
 {
@@ -51,10 +61,26 @@ int sdl_disks_init(const char *pref)
 			fprintf(stderr, "game_def.drives%s[%d] is beyond drive_count %d\n", game_def.drives[n] >= 0 ? "" : "_optional", n, game_def.drive_count);
 			return -1;
 		}
+	disks_pref = pref;
 	for(r = 0; r < game_def.disk_count; r++)
 	{
 		struct SdlRole *role = &sdl_roles[r];
 		FILE *f;
+		if(disks_overlay((int)r))
+		{
+			if(game_def.disks[r].writable)
+			{
+				fprintf(stderr, "game_def.overlays names the writable role %s\n", game_def.disks[r].id);
+				return -1;
+			}
+			role->work = malloc(AMIGA_ADF_SIZE);
+			if(!role->work)
+			{
+				fprintf(stderr, "out of memory\n");
+				return -1;
+			}
+			continue;
+		}
 		if(!game_def.disks[r].writable)
 			continue;
 		role->adf = malloc(AMIGA_ADF_SIZE);
@@ -119,6 +145,64 @@ static int disks_other_set(int role, const char *set)
 	return -1;
 }
 
+/* An overlay role's work image: its dump, with the blocks of <pref><id>-<CRC>.overlay laid over
+ * it. A file that is not whole records, or names a block beyond the disk, is reported and not
+ * used. */
+static void disks_overlay_load(int r)
+{
+	struct SdlRole *role = &sdl_roles[r];
+	uint8_t rec[DISKS_RECORD];
+	size_t got;
+	FILE *f;
+	snprintf(role->overlay, sizeof role->overlay, "%s%s-%08x.overlay", disks_pref, game_def.disks[r].id,
+		(unsigned)amiga_crc32(role->adf, AMIGA_ADF_SIZE));
+	memcpy(role->work, role->adf, AMIGA_ADF_SIZE);
+	f = fopen(role->overlay, "rb");
+	if(!f)
+		return;
+	while((got = fread(rec, 1, DISKS_RECORD, f)) == DISKS_RECORD)
+	{
+		uint32_t block = ((uint32_t)rec[0] << 24) | ((uint32_t)rec[1] << 16) | ((uint32_t)rec[2] << 8) | rec[3];
+		if(block >= AMIGA_ADF_SIZE / DISKS_BLOCK)
+			break;
+		memcpy(role->work + block * DISKS_BLOCK, rec + 4, DISKS_BLOCK);
+	}
+	if(got || ferror(f))
+	{
+		fprintf(stderr, "%s: not an overlay file; %s is used without it\n", role->overlay, game_def.disks[r].label);
+		memcpy(role->work, role->adf, AMIGA_ADF_SIZE);
+	}
+	fclose(f);
+}
+
+int sdl_disks_save_overlay(const struct Amiga *m, int r)
+{
+	const struct AmigaDisk *d = &m->disks[r];
+	FILE *f = fopen(sdl_roles[r].overlay, "wb");
+	uint32_t b;
+	int failed = 0;
+	if(!f)
+		return -1;
+	for(b = 0; b < AMIGA_ADF_SIZE / DISKS_BLOCK; b++)
+	{
+		const uint8_t num[4] = {(uint8_t)(b >> 24), (uint8_t)(b >> 16), (uint8_t)(b >> 8), (uint8_t)b};
+		if(!memcmp(d->rw + b * DISKS_BLOCK, d->dump + b * DISKS_BLOCK, DISKS_BLOCK))
+			continue;
+		failed |= fwrite(num, 1, 4, f) != 4 || fwrite(d->rw + b * DISKS_BLOCK, 1, DISKS_BLOCK, f) != DISKS_BLOCK;
+	}
+	return fclose(f) || failed ? -1 : 0;
+}
+
+static void disks_attach_role(struct Amiga *m, int r)
+{
+	const struct GameDisk *g = &game_def.disks[r];
+	struct SdlRole *role = &sdl_roles[r];
+	if(disks_overlay(r))
+		disks_overlay_load(r);
+	amiga_attach(m, r, g->writable ? NULL : role->adf, g->writable ? role->adf : disks_overlay(r) ? role->work : NULL);
+	role->attached = 1;
+}
+
 /* Empties role `r` and forgets its settings.ini path, first taking it from `m` and its drives
  * when the machine holds it. */
 static void disks_release(struct Amiga *m, int r)
@@ -136,7 +220,7 @@ static void disks_release(struct Amiga *m, int r)
 		for(n = 0; n < AMIGA_DRIVES; n++)
 			if(m->drive_role[n] == r)
 				amiga_insert(m, n, -1);
-		amiga_attach(m, r, NULL, 0);
+		amiga_attach(m, r, NULL, NULL);
 		role->attached = 0;
 	}
 	free(role->adf);
@@ -225,11 +309,7 @@ static int disks_offer(const char *path, enum SdlOffer how, struct Amiga *open, 
 				*swapped |= sdl_roles[other].attached;
 				disks_release(open, other);
 			}
-			if(held->attached)
-			{
-				amiga_attach(open, id.role, c->adf, 0);
-				*swapped = 1;
-			}
+			*swapped |= held->attached;
 		}
 		else if(held->adf && how == SdlOfferRemembered)
 		{
@@ -255,6 +335,8 @@ static int disks_offer(const char *path, enum SdlOffer how, struct Amiga *open, 
 		held->adf = c->adf;
 		held->rank = id.rank;
 		held->set = id.set;
+		if(open && held->attached)
+			disks_attach_role(open, id.role);
 		snprintf(held->source, sizeof held->source, "%s", absolute);
 		snprintf(held->name, sizeof held->name, "%.255s", id.name ? id.name : c->name);
 		snprintf(line, sizeof line, "%.255s: %s, %s dump", c->name, label, disks_rank_word(id.rank));
@@ -400,8 +482,7 @@ void sdl_disks_attach(struct Amiga *m, void (*banner)(const char *text))
 		struct SdlRole *role = &sdl_roles[r];
 		if(!role->adf || role->attached)
 			continue;
-		amiga_attach(m, (int)r, role->adf, game_def.disks[r].writable);
-		role->attached = 1;
+		disks_attach_role(m, (int)r);
 		if(!game_def.disks[r].writable && role->rank == SdlRankUnknown)
 		{
 			char text[160];

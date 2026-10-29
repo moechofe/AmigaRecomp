@@ -91,7 +91,7 @@ int main(void)
 	}
 
 	n = state_save(&a, buf);
-	amiga_attach(&b, 0, image, 0);
+	amiga_attach(&b, 0, image, NULL);
 	why = state_load(&b, buf, n);
 	check(why && !strcmp(why, "state was saved with different disk images"), "different read-only disks are refused",
 		why ? why : "accepted");
@@ -101,8 +101,8 @@ int main(void)
 	memset(image, 0x11, sizeof image);
 	memset(image2, 0x22, sizeof image2);
 	amiga_init(&b);
-	amiga_attach(&b, 0, image, 0);
-	amiga_attach(&b, 1, image2, 1);
+	amiga_attach(&b, 0, image, NULL);
+	amiga_attach(&b, 1, NULL, image2);
 	amiga_insert(&b, 0, 1);
 	amiga_insert(&b, 1, 0);
 	amiga_insert(&b, 2, -1);
@@ -111,8 +111,8 @@ int main(void)
 	b.hle.calls[0][1] = 9;
 	n = state_save(&b, fresh);
 	amiga_init(&a);
-	amiga_attach(&a, 0, image, 0);
-	amiga_attach(&a, 1, image2, 1);
+	amiga_attach(&a, 0, image, NULL);
+	amiga_attach(&a, 1, NULL, image2);
 	amiga_insert(&a, 0, 0);
 	amiga_boot(&a);
 	amiga_insert(&a, 0, 1);

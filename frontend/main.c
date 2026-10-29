@@ -197,7 +197,8 @@ static int sdl_shot(const struct SdlOptions *o, const char *name, const struct S
 	return 0;
 }
 
-/* Every writable role whose image the game changed goes to <pref><id>.adf. */
+/* Every writable role whose image the game changed goes to <pref><id>.adf, and every overlay
+ * role's changed blocks to its overlay file. */
 static void sdl_flush_disks(void)
 {
 	uint32_t r;
@@ -207,9 +208,17 @@ static void sdl_flush_disks(void)
 		char path[1280];
 		if(!d->rw || !d->dirty)
 			continue;
-		snprintf(path, sizeof path, "%s%s.adf", sdl_pref, game_def.disks[r].id);
-		if(sdl_write_file(path, d->rw, AMIGA_ADF_SIZE))
-			fprintf(stderr, "cannot write %s\n", path);
+		if(d->dump)
+		{
+			if(sdl_disks_save_overlay(&machine, (int)r))
+				fprintf(stderr, "cannot write %s\n", sdl_roles[r].overlay);
+		}
+		else
+		{
+			snprintf(path, sizeof path, "%s%s.adf", sdl_pref, game_def.disks[r].id);
+			if(sdl_write_file(path, d->rw, AMIGA_ADF_SIZE))
+				fprintf(stderr, "cannot write %s\n", path);
+		}
 		d->dirty = 0;
 	}
 }

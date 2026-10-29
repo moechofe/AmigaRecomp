@@ -46,6 +46,7 @@ struct GameDef
 	int drives[4];               /* role index in DF0–DF3 at boot, -1 empty */
 	const int *drives_optional;  /* NULL, or 4 role indexes (-1 empty): DF0–DF3 at boot in place of drives[] when every role they name has an image; drives[] alone decides when the machine boots */
 	int drive_count;             /* DF0–DF(n-1): the machine's drives, which the Disks page offers, 1–4 */
+	uint8_t overlays;            /* bit n: role n is the player's dump, which the game also writes: the blocks it changes are kept in <pref><id>-<dump's CRC-32>.overlay; 0 none */
 	uint8_t pointer_sprites;     /* bit n: sprite n draws part of the game's mouse pointer; steering follows the lowest; 0 none */
 	struct GameView view;        /* what the window shows; w 0: the capture window */
 	int joystick;                /* joysticks the game reads: 1 port 2, worked by the keys bound on the menu's Controls page and game controllers; 2 also port 1, in place of the mouse, worked by the second controller; 0 none */

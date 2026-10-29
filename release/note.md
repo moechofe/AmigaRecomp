@@ -8,7 +8,7 @@ Players need their own copies of the games as `ADF` or `ADZ` files, either loose
 
 All games has a way to swap disks, fullscreen and stereo output. Some games has quality-of-life improvement.
 
-| | Games | Windows | Linux | macOS | Hacks |
+| Screen | Games | Windows | Linux | macOS | Hacks |
 |---|---|---|---|---|---|
 | <a href="https://www.mobygames.com/game/13123/deuteros-the-next-millennium/"><img src="https://cdn.mobygames.com/screenshots/16292219-deuteros-the-next-millennium-amiga-earth-city.png" height=36px width=auto></a> | Deuteros: The Next Millennium<br>1991 Activision | [x86_64](https://github.com/$REPO/releases/download/$TAG/deuteros-windows-x86_64.exe) | [x86_64](https://github.com/$REPO/releases/download/$TAG/deuteros-linux-x86_64.AppImage)<br>[aarch64](https://github.com/$REPO/releases/download/$TAG/deuteros-linux-aarch64.AppImage) | [universal](https://github.com/$REPO/releases/download/$TAG/deuteros-macos-universal.zip) | OS cursor<br>Key to advance time |
 | <a href="https://www.mobygames.com/game/683/lemmings/"><img src="https://cdn.mobygames.com/0623f3b4-c1dc-11ed-ab6b-02420a000194.webp" height=36px width=auto></a> | Lemmings<br>1991 Psygnosis | [x86_64](https://github.com/$REPO/releases/download/$TAG/lemmings-windows-x86_64.exe) | [x86_64](https://github.com/$REPO/releases/download/$TAG/lemmings-linux-x86_64.AppImage)<br>[aarch64](https://github.com/$REPO/releases/download/$TAG/lemmings-linux-aarch64.AppImage) | [universal](https://github.com/$REPO/releases/download/$TAG/lemmings-macos-universal.zip) | OS cursor |

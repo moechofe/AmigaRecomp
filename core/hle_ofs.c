@@ -3,7 +3,8 @@
 #include <string.h>
 
 /* The Old and Fast File Systems (DOS\0, DOS\1) on a double-density ADF, read straight from the
- * image. Block layout per docs/formats/adf.md, "OFS and FFS files and directories". */
+ * image, and written in place inside a file's existing data blocks. Block layout per
+ * docs/formats/adf.md, "OFS and FFS files and directories". */
 
 #define OFS_BSIZE 512u
 #define OFS_ROOT 880u
@@ -141,7 +142,28 @@ static uint32_t ofs_data_block(const uint8_t *adf, uint32_t header, uint32_t k)
 	return n;
 }
 
-uint32_t hle_ofs_read(const uint8_t *adf, uint32_t header, uint32_t pos, uint8_t *out, uint32_t n)
+static void ofs_put(uint8_t *adf, uint32_t block, uint32_t off, uint32_t v)
+{
+	uint8_t *p = adf + block * OFS_BSIZE + off;
+	p[0] = (uint8_t)(v >> 24);
+	p[1] = (uint8_t)(v >> 16);
+	p[2] = (uint8_t)(v >> 8);
+	p[3] = (uint8_t)v;
+}
+
+/* The block checksum at +20: the negated sum of the block's longwords with it zeroed. */
+static void ofs_checksum(uint8_t *adf, uint32_t block)
+{
+	uint32_t sum = 0, i;
+	ofs_put(adf, block, 20, 0);
+	for(i = 0; i < OFS_BSIZE; i += 4)
+		sum += ofs_l(adf, block, i);
+	ofs_put(adf, block, 20, 0u - sum);
+}
+
+/* Up to n bytes of the file at `pos`, never past its end: copied into `buf`, or with `write`
+ * from `buf` into its data blocks. Returns how many. */
+static uint32_t ofs_copy(uint8_t *adf, uint32_t header, uint32_t pos, uint8_t *buf, uint32_t n, int write)
 {
 	uint32_t size, bsize = ofs_data_size(adf), done = 0;
 	if(!ofs_valid(header) || ofs_l(adf, header, 0) != OFS_T_HEADER || (int32_t)ofs_l(adf, header, 508) >= 0)
@@ -154,6 +176,7 @@ uint32_t hle_ofs_read(const uint8_t *adf, uint32_t header, uint32_t pos, uint8_t
 	while(done < n)
 	{
 		uint32_t at = pos + done, off = at % bsize, k = at / bsize, blk = ofs_data_block(adf, header, k), have, take;
+		uint8_t *data;
 		if(!blk)
 			break;
 		have = ofs_ffs(adf) ? (size - k * FFS_DATA < FFS_DATA ? size - k * FFS_DATA : FFS_DATA) : ofs_l(adf, blk, 12);
@@ -162,8 +185,43 @@ uint32_t hle_ofs_read(const uint8_t *adf, uint32_t header, uint32_t pos, uint8_t
 		take = have - off;
 		if(take > n - done)
 			take = n - done;
-		memcpy(out + done, adf + blk * OFS_BSIZE + (ofs_ffs(adf) ? 0 : 24) + off, take);
+		data = adf + blk * OFS_BSIZE + (ofs_ffs(adf) ? 0 : 24) + off;
+		if(write)
+		{
+			memcpy(data, buf + done, take);
+			if(!ofs_ffs(adf))
+				ofs_checksum(adf, blk);
+		}
+		else
+			memcpy(buf + done, data, take);
 		done += take;
 	}
 	return done;
+}
+
+uint32_t hle_ofs_read(const uint8_t *adf, uint32_t header, uint32_t pos, uint8_t *out, uint32_t n)
+{
+	return ofs_copy((uint8_t *)adf, header, pos, out, n, 0);
+}
+
+uint32_t hle_ofs_write(uint8_t *adf, uint32_t header, uint32_t pos, const uint8_t *in, uint32_t n)
+{
+	return ofs_copy(adf, header, pos, (uint8_t *)in, n, 1);
+}
+
+/* The blocks the bitmap covers, 2 to 1759; how many of them it marks in use; and the data bytes
+ * a block holds. The root's bm_flag at +312 is -1 when the bitmap is valid and bm_pages[0] at
+ * +316 is its first block, whose longwords from +4 hold a bit per block from block 2, bit 0 the
+ * lowest, set when free. -1 when the bitmap is not valid. */
+int hle_ofs_info(const uint8_t *adf, uint32_t *blocks, uint32_t *used, uint32_t *block_bytes)
+{
+	uint32_t bm = ofs_l(adf, OFS_ROOT, 316), i, avail = 0;
+	if(ofs_l(adf, OFS_ROOT, 312) != 0xFFFFFFFFu || !ofs_valid(bm))
+		return -1;
+	*blocks = AMIGA_ADF_SIZE / OFS_BSIZE - 2;
+	for(i = 0; i < *blocks; i++)
+		avail += (ofs_l(adf, bm, 4 + i / 32 * 4) >> (i % 32)) & 1;
+	*used = *blocks - avail;
+	*block_bytes = ofs_data_size(adf);
+	return 0;
 }

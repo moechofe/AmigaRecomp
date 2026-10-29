@@ -363,6 +363,7 @@
 #define HLE_DOS_OBJECT_IN_USE 202
 #define HLE_DOS_OBJECT_NOT_FOUND 205
 #define HLE_DOS_OBJECT_WRONG_TYPE 212
+#define HLE_DOS_DISK_WRITE_PROTECTED 214
 #define HLE_DOS_DEVICE_NOT_MOUNTED 218
 #define HLE_DOS_SEEK_ERROR 219
 
@@ -524,7 +525,8 @@ void hle_dos_time(struct Amiga *m, uint32_t *secs, uint32_t *micros);
 void hle_dos_readargs(struct Amiga *m, uint32_t args_line);
 void hle_dos_freeargs(struct Amiga *m);
 
-/* hle_ofs.c: the Old and Fast File Systems (DOS\0, DOS\1), read from an ADF image. */
+/* hle_ofs.c: the Old and Fast File Systems (DOS\0, DOS\1) on an ADF image: read, and written in
+ * place inside a file's existing data blocks. */
 struct HleOfsEntry
 {
 	int32_t type;        /* sec_type: 1 root, 2 directory, -3 file */
@@ -538,6 +540,8 @@ int hle_ofs_volume(const uint8_t *adf, char name[32]);
 void hle_ofs_volume_date(const uint8_t *adf, uint32_t *days, uint32_t *mins, uint32_t *ticks);
 int32_t hle_ofs_lookup(const uint8_t *adf, uint32_t dir, const char *name);
 uint32_t hle_ofs_read(const uint8_t *adf, uint32_t header, uint32_t pos, uint8_t *out, uint32_t n);
+uint32_t hle_ofs_write(uint8_t *adf, uint32_t header, uint32_t pos, const uint8_t *in, uint32_t n);
+int hle_ofs_info(const uint8_t *adf, uint32_t *blocks, uint32_t *used, uint32_t *block_bytes);
 int hle_ofs_entry(const uint8_t *adf, uint32_t block, struct HleOfsEntry *e);
 
 /* hle_hunk.c: AmigaDOS load files. `read` copies up to n bytes from the source's current

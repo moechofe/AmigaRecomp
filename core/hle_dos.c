@@ -62,6 +62,18 @@
 #define FIB_NUMBLOCKS 0x80
 #define FIB_DATE 0x84
 #define FIB_COMMENT 0x90
+/* dos/dos.i: an InfoData and its disk states. */
+#define ID_NUMSOFTERRORS 0x00
+#define ID_UNITNUMBER 0x04
+#define ID_DISKSTATE 0x08
+#define ID_NUMBLOCKS 0x0C
+#define ID_NUMBLOCKSUSED 0x10
+#define ID_BYTESPERBLOCK 0x14
+#define ID_DISKTYPE 0x18
+#define ID_VOLUMENODE 0x1C
+#define ID_INUSE 0x20
+#define ID_WRITE_PROTECTED 80
+#define ID_VALIDATED 82
 #define CLI_RETURNCODE 0x0C
 #define CLI_COMMANDNAME 0x10
 #define CLI_STANDARDINPUT 0x1C
@@ -558,6 +570,44 @@ static uint32_t dos_read(struct Amiga *m, struct HleDosFile *f, uint8_t *out, ui
 	m->disk_accesses++;
 	f->pos += got;
 	return got;
+}
+
+/* Write `n` bytes from guest `at` into a file in place, inside its size: no block is allocated
+ * and no date changes. On a role the game may not write it fails as on a write-protected disk.
+ * Returns the count, or -1. */
+static uint32_t dos_write(struct Amiga *m, struct HleDosFile *f, uint32_t at, uint32_t n)
+{
+	struct AmigaDisk *d;
+	const uint8_t *p;
+	if(!dos_image(m, f->drive))
+	{
+		amiga_fatal(m, "dos: writing a file whose disk has left DF%d", f->drive);
+		return 0;
+	}
+	d = &m->disks[m->drive_role[f->drive]];
+	if(!d->rw)
+	{
+		dos_error(m, HLE_DOS_DISK_WRITE_PROTECTED);
+		return DOSTRUE;
+	}
+	if(n > f->size - f->pos)
+	{
+		amiga_fatal(m, "dos: writing past the end of a file is not implemented (%u bytes at %u of %u)", n, f->pos, f->size);
+		return 0;
+	}
+	p = dos_buffer(m, at, n);
+	if(!p && n)
+		return 0;
+	if(hle_ofs_write(d->rw, f->header, f->pos, p, n) != n)
+	{
+		amiga_fatal(m, "dos: the data blocks of the file at block %u end before its size", f->header);
+		return 0;
+	}
+	amiga_logf(m, "dos: Write DF%d block %u: %u bytes at %u", f->drive, f->header, n, f->pos);
+	m->disk_accesses++;
+	f->pos += n;
+	d->dirty = 1;
+	return n;
 }
 
 static uint32_t dos_hunk_read(struct Amiga *m, void *ctx, uint8_t *out, uint32_t n)
@@ -1165,6 +1215,31 @@ static void dos_examine(struct Amiga *m, int drive, uint32_t block, uint32_t fib
 	hle_string(m, fib + FIB_COMMENT, e.comment);
 }
 
+/* An InfoData (dos/dos.i) for the volume in DFn, its fields as AROS's afs.handler fills them
+ * (rom/filesys/afs/misc.c, getDiskInfo): no soft errors, the unit, the bitmap's blocks without
+ * the two boot blocks and those in use, the data bytes of a block, the bootblock's DOS type, the
+ * volume node, and in use. A role the game may not write is write-protected. -1 after a fatal. */
+static int dos_info(struct Amiga *m, int drive, uint32_t id)
+{
+	const uint8_t *adf = dos_image(m, drive);
+	uint32_t blocks, used, bytes;
+	if(!adf || hle_ofs_info(adf, &blocks, &used, &bytes) < 0)
+	{
+		amiga_fatal(m, "dos: Info of DF%d, %s, is not implemented", drive, adf ? "whose bitmap is not valid" : "which is empty");
+		return -1;
+	}
+	hle_w32(m, id + ID_NUMSOFTERRORS, 0);
+	hle_w32(m, id + ID_UNITNUMBER, (uint32_t)drive);
+	hle_w32(m, id + ID_DISKSTATE, m->disks[m->drive_role[drive]].rw ? ID_VALIDATED : ID_WRITE_PROTECTED);
+	hle_w32(m, id + ID_NUMBLOCKS, blocks);
+	hle_w32(m, id + ID_NUMBLOCKSUSED, used);
+	hle_w32(m, id + ID_BYTESPERBLOCK, bytes);
+	hle_w32(m, id + ID_DISKTYPE, ((uint32_t)adf[0] << 24) | ((uint32_t)adf[1] << 16) | ((uint32_t)adf[2] << 8) | adf[3]);
+	hle_w32(m, id + ID_VOLUMENODE, dos_volume_node(m, m->hle.dos.volume[drive]) >> 2);
+	hle_w32(m, id + ID_INUSE, 1);
+	return 0;
+}
+
 static int dos_call(struct Amiga *m, uint32_t lvo)
 {
 	struct HleDos *d = &m->hle.dos;
@@ -1232,7 +1307,7 @@ static int dos_call(struct Amiga *m, uint32_t lvo)
 		D0 = dos_read(m, f, p, D3);
 		return 0;
 	}
-	case 48: /* Write(d1 file, d2 buffer, d3 length): the console and NIL: only */
+	case 48: /* Write(d1 file, d2 buffer, d3 length) */
 	{
 		struct HleDosFile *f = dos_file(m, D1);
 		char text[DOS_LINE];
@@ -1244,9 +1319,9 @@ static int dos_call(struct Amiga *m, uint32_t lvo)
 			D0 = D3;
 			return 0;
 		}
-		if(f != &d->files[0] && f->drive != DOS_CON)
+		if(f->drive >= 0)
 		{
-			amiga_fatal(m, "dos: writing files is not implemented (Write)");
+			D0 = dos_write(m, f, D2, D3);
 			return 0;
 		}
 		for(i = 0; i < n; i++)
@@ -1324,6 +1399,17 @@ static int dos_call(struct Amiga *m, uint32_t lvo)
 		if(dos_lock_place(m, D1, &drive, &block) < 0)
 			return 0;
 		dos_examine(m, drive, block, D2);
+		D0 = DOSTRUE;
+		return 0;
+	}
+	case 114: /* Info(d1 lock, d2 infoData) */
+	{
+		int drive;
+		uint32_t block;
+		if(dos_lock_place(m, D1, &drive, &block) < 0)
+			return 0;
+		if(dos_info(m, drive, D2) < 0)
+			return 0;
 		D0 = DOSTRUE;
 		return 0;
 	}
@@ -1509,7 +1595,10 @@ static int dos_call(struct Amiga *m, uint32_t lvo)
 		r = dos_call(m, 48);
 		if(lvo == 312)
 			hle_free(m, buf, 1);
-		D0 = lvo == 312 ? ch : lvo == 342 ? 0 : number;
+		if(D0 == DOSTRUE)
+			D0 = lvo == 330 ? 0 : DOSTRUE;
+		else
+			D0 = lvo == 312 ? ch : lvo == 342 ? 0 : number;
 		return r;
 	}
 	case 360: /* Flush(d1 fh): nothing is buffered */

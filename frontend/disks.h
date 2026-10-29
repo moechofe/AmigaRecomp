@@ -18,6 +18,8 @@ struct SdlRole
 	char name[256];     /* dumps.txt name, or the candidate name of an unknown dump */
 	const char *set;    /* dumps.txt set, NULL for none */
 	char source[1024];  /* absolute path given (the container for a ZIP member); <pref><id>.adf for writable */
+	uint8_t *work;      /* overlay roles: AMIGA_ADF_SIZE bytes, the dump with the game's writes, which the machine reads */
+	char overlay[1040]; /* overlay roles: <pref><id>-<dump's CRC-32>.overlay, set when attached */
 	int attached;       /* handed to the machine with amiga_attach */
 };
 extern struct SdlRole sdl_roles[AMIGA_ROLES];
@@ -48,6 +50,9 @@ void sdl_disks_attach(struct Amiga *m, void (*banner)(const char *text));
  * changes. */
 void sdl_disks_insert(struct Amiga *m, int drive, int role, void (*report)(const char *text));
 void sdl_disks_remember(void);
+/* An attached overlay role's blocks that differ from its dump go to sdl_roles[role].overlay.
+ * 0, or -1 when the file cannot be written. */
+int sdl_disks_save_overlay(const struct Amiga *m, int role);
 
 #ifdef __cplusplus
 }

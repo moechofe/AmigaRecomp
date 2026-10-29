@@ -14,15 +14,16 @@ void amiga_init(struct Amiga *m)
 		m->drive_role[n] = -1;
 }
 
-void amiga_attach(struct Amiga *m, int role, uint8_t *image, int writable)
+void amiga_attach(struct Amiga *m, int role, const uint8_t *dump, uint8_t *rw)
 {
 	if(role < 0 || role >= AMIGA_ROLES)
 	{
 		amiga_fatal(m, "role %d: the runtime holds %d roles", role, AMIGA_ROLES);
 		return;
 	}
-	m->disks[role].image = image;
-	m->disks[role].rw = writable ? image : NULL;
+	m->disks[role].image = rw ? rw : dump;
+	m->disks[role].rw = rw;
+	m->disks[role].dump = dump;
 	m->disks[role].dirty = 0;
 }
 
